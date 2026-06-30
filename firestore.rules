@@ -1,0 +1,170 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isVerified() {
+      return true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+    
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidTask(data, uid) {
+      return data.keys().hasAll(['title', 'course', 'completed', 'userId', 'createdAt']) &&
+             data.title is string && data.title.size() <= 200 &&
+             data.course is string && data.course.size() <= 100 &&
+             data.completed is bool &&
+             data.userId == uid &&
+             (data.type == null || (data.type is string && data.type.size() <= 50)) &&
+             (data.time == null || (data.time is string && data.time.size() <= 50)) &&
+             (data.urgent == null || data.urgent is bool) &&
+             (data.icon == null || (data.icon is string && data.icon.size() <= 50)) &&
+             (data.color == null || (data.color is string && data.color.size() <= 50)) &&
+             (data.bg == null || (data.bg is string && data.bg.size() <= 50)) &&
+             (data.repetition == null || data.repetition is number) &&
+             (data.interval == null || data.interval is number) &&
+             (data.easeFactor == null || data.easeFactor is number) &&
+             (data.nextReviewDate == null || data.nextReviewDate is string);
+    }
+
+    function isValidCourse(data, uid) {
+      return data.keys().hasAll(['title', 'userId', 'createdAt']) &&
+             data.title is string && data.title.size() <= 200 &&
+             data.userId == uid &&
+             (data.progress == null || data.progress is number) &&
+             (data.documents == null || data.documents is number) &&
+             (data.lastActive == null || (data.lastActive is string && data.lastActive.size() <= 50)) &&
+             (data.color == null || (data.color is string && data.color.size() <= 50)) &&
+             (data.bg == null || (data.bg is string && data.bg.size() <= 50));
+    }
+
+    function isValidMessage(data, uid, rId) {
+      return data.keys().hasAll(['roomId', 'user', 'text', 'userId', 'createdAt']) &&
+             data.roomId == rId &&
+             data.user is string && data.user.size() <= 100 &&
+             data.text is string && data.text.size() <= 1000 &&
+             data.userId == uid &&
+             (data.time == null || (data.time is string && data.time.size() <= 50));
+    }
+    
+    function isValidParticipant(data, uid, rId) {
+      return data.keys().hasAll(['roomId', 'email', 'status', 'userId', 'createdAt']) &&
+             data.roomId == rId &&
+             data.email is string && data.email.size() <= 100 &&
+             data.status is string && data.status.matches('^(pending|accepted)$') &&
+             data.userId == uid;
+    }
+
+    function isValidQuiz(data, uid, rId) {
+      return data.keys().hasAll(['roomId', 'formId', 'formUrl', 'title', 'userId', 'createdAt']) &&
+             data.roomId == rId &&
+             data.formId is string && data.formId.size() <= 200 &&
+             data.formUrl is string && data.formUrl.size() <= 500 &&
+             data.title is string && data.title.size() <= 200 &&
+             data.userId == uid;
+    }
+
+    function isValidFeedback(data, uid) {
+      return data.keys().hasAll(['type', 'description', 'userId', 'userEmail', 'status', 'createdAt']) &&
+             data.type is string && data.type.matches('^(bug|feature)$') &&
+             data.description is string && data.description.size() <= 2000 &&
+             data.userId == uid &&
+             data.userEmail is string && data.userEmail.size() <= 100 &&
+             data.status is string && data.status == 'new';
+    }
+
+    match /users/{userId}/tasks/{taskId} {
+      allow read, list: if isSignedIn() && isVerified() && isValidId(userId) && request.auth.uid == userId;
+      allow create: if isSignedIn() && isVerified() && isValidId(userId) && isValidId(taskId) &&
+                       request.auth.uid == userId &&
+                       isValidTask(incoming(), userId) &&
+                       incoming().createdAt == request.time;
+      allow update: if isSignedIn() && isVerified() && isValidId(userId) && isValidId(taskId) &&
+                       request.auth.uid == userId &&
+                       isValidTask(incoming(), userId) &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().userId == existing().userId;
+      allow delete: if isSignedIn() && isVerified() && isValidId(userId) && isValidId(taskId) && request.auth.uid == userId;
+    }
+
+    match /users/{userId}/courses/{courseId} {
+      allow read, list: if isSignedIn() && isVerified() && isValidId(userId) && request.auth.uid == userId;
+      allow create: if isSignedIn() && isVerified() && isValidId(userId) && isValidId(courseId) &&
+                       request.auth.uid == userId &&
+                       isValidCourse(incoming(), userId) &&
+                       incoming().createdAt == request.time;
+      allow update: if isSignedIn() && isVerified() && isValidId(userId) && isValidId(courseId) &&
+                       request.auth.uid == userId &&
+                       isValidCourse(incoming(), userId) &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().userId == existing().userId;
+      allow delete: if isSignedIn() && isVerified() && isValidId(userId) && isValidId(courseId) && request.auth.uid == userId;
+    }
+
+    match /rooms/{roomId}/messages/{messageId} {
+      // Need a way to ensure user has access to room. Let's assume everyone logged in can read for now (demo), 
+      // or we can use a check on participants collection.
+      // For simplicity and since rooms might be public/shared via link, let's restrict read/write to logged in users.
+      // Better: check if the user is a participant.
+      // Since it's a collab room, anyone logged in with the link might write. 
+      allow read, list: if isSignedIn() && isVerified() && isValidId(roomId);
+      allow create: if isSignedIn() && isVerified() && isValidId(roomId) && isValidId(messageId) &&
+                       isValidMessage(incoming(), request.auth.uid, roomId) &&
+                       incoming().createdAt == request.time;
+      allow update: if isSignedIn() && isVerified() && isValidId(roomId) && isValidId(messageId) &&
+                       isValidMessage(incoming(), request.auth.uid, roomId) &&
+                       incoming().userId == existing().userId && 
+                       request.auth.uid == existing().userId &&
+                       incoming().createdAt == existing().createdAt;
+      allow delete: if isSignedIn() && isVerified() && isValidId(roomId) && isValidId(messageId) && request.auth.uid == existing().userId;
+    }
+
+    match /rooms/{roomId}/participants/{participantId} {
+      allow read, list: if isSignedIn() && isVerified() && isValidId(roomId);
+      allow create: if isSignedIn() && isVerified() && isValidId(roomId) && isValidId(participantId) &&
+                       isValidParticipant(incoming(), request.auth.uid, roomId) &&
+                       incoming().createdAt == request.time;
+      allow update: if isSignedIn() && isVerified() && isValidId(roomId) && isValidId(participantId) &&
+                       isValidParticipant(incoming(), request.auth.uid, roomId) &&
+                       incoming().userId == existing().userId &&
+                       request.auth.uid == existing().userId &&
+                       incoming().createdAt == existing().createdAt;
+      allow delete: if isSignedIn() && isVerified() && isValidId(roomId) && isValidId(participantId) && request.auth.uid == existing().userId;
+    }
+    match /rooms/{roomId}/quizzes/{quizId} {
+      allow read, list: if isSignedIn() && isVerified() && isValidId(roomId);
+      allow create: if isSignedIn() && isVerified() && isValidId(roomId) && isValidId(quizId) &&
+                       isValidQuiz(incoming(), request.auth.uid, roomId) &&
+                       incoming().createdAt == request.time;
+      allow update: if isSignedIn() && isVerified() && isValidId(roomId) && isValidId(quizId) &&
+                       isValidQuiz(incoming(), request.auth.uid, roomId) &&
+                       incoming().userId == existing().userId &&
+                       request.auth.uid == existing().userId &&
+                       incoming().createdAt == existing().createdAt;
+      allow delete: if isSignedIn() && isVerified() && isValidId(roomId) && isValidId(quizId) && request.auth.uid == existing().userId;
+    }
+
+    match /feedback/{feedbackId} {
+      allow create: if isValidId(feedbackId) &&
+                       isValidFeedback(incoming(), isSignedIn() ? request.auth.uid : 'anonymous') &&
+                       incoming().createdAt == request.time;
+      allow read, update, delete: if false; 
+    }
+  }
+}

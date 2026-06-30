@@ -1,0 +1,6 @@
+{
+  "name": "Memora",
+  "description": "An adaptive study companion.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

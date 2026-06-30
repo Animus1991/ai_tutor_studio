@@ -1,0 +1,84 @@
+{
+  "entities": {
+    "Task": {
+      "title": "Task",
+      "description": "A study task.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "Title of the task" },
+        "course": { "type": "string", "description": "Associated course" },
+        "type": { "type": "string", "description": "Type of task" },
+        "time": { "type": "string", "description": "Estimated time" },
+        "urgent": { "type": "boolean" },
+        "icon": { "type": "string" },
+        "color": { "type": "string" },
+        "bg": { "type": "string" },
+        "completed": { "type": "boolean" },
+        "userId": { "type": "string", "description": "User who owns the task" },
+        "createdAt": { "type": "string", "format": "timestamp" }
+      },
+      "required": ["title", "course", "completed", "userId", "createdAt"]
+    },
+    "Course": {
+      "title": "Course",
+      "description": "A course imported from Classroom or created manually.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "progress": { "type": "number" },
+        "documents": { "type": "number" },
+        "lastActive": { "type": "string" },
+        "color": { "type": "string" },
+        "bg": { "type": "string" },
+        "userId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "timestamp" }
+      },
+      "required": ["title", "userId", "createdAt"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "A message in a collab room.",
+      "type": "object",
+      "properties": {
+        "roomId": { "type": "string" },
+        "user": { "type": "string" },
+        "text": { "type": "string" },
+        "time": { "type": "string" },
+        "userId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "timestamp" }
+      },
+      "required": ["roomId", "user", "text", "userId", "createdAt"]
+    },
+    "Participant": {
+      "title": "Participant",
+      "description": "A participant in a collab room.",
+      "type": "object",
+      "properties": {
+        "roomId": { "type": "string" },
+        "email": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "accepted"] },
+        "userId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "timestamp" }
+      },
+      "required": ["roomId", "email", "status", "userId", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/tasks/{taskId}": {
+      "schema": { "$ref": "#/entities/Task" },
+      "description": "Tasks created by a user."
+    },
+    "/users/{userId}/courses/{courseId}": {
+      "schema": { "$ref": "#/entities/Course" },
+      "description": "Courses belonging to a user."
+    },
+    "/rooms/{roomId}/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/Message" },
+      "description": "Messages sent in a room."
+    },
+    "/rooms/{roomId}/participants/{participantId}": {
+      "schema": { "$ref": "#/entities/Participant" },
+      "description": "Participants invited to a room."
+    }
+  }
+}
