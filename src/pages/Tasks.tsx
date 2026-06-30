@@ -15,7 +15,6 @@ import {
   Square,
   Download,
   GripVertical,
-  RefreshCw,
 } from "lucide-react";
 import { motion, AnimatePresence, Reorder } from "framer-motion";
 import PomodoroTimer from "../components/PomodoroTimer";
@@ -284,70 +283,6 @@ export default function Tasks() {
     URL.revokeObjectURL(url);
   };
 
-  const [isSyncing, setIsSyncing] = useState(false);
-
-  const handleGoogleCalendarSync = async () => {
-    setIsSyncing(true);
-    try {
-      const { getAccessToken } = await import("../lib/auth");
-      const token = await getAccessToken();
-      if (!token) {
-        alert("Google account not connected or token missing. Please sign in with Google.");
-        return;
-      }
-
-      const activeTasks = tasks.filter(t => !t.completed);
-      if (activeTasks.length === 0) {
-        alert("No active tasks to sync.");
-        return;
-      }
-
-      let successCount = 0;
-      for (const task of activeTasks) {
-        const startDate = new Date(); // Start from today
-        // A simple scheduling algorithm based on duration (assuming 1 hour if not specified)
-        const durationMatch = task.time.match(/(\d+)/);
-        const durationMins = durationMatch ? parseInt(durationMatch[1]) : 60;
-        
-        startDate.setHours(startDate.getHours() + 1 + successCount); // schedule them 1 hour apart
-        const endDate = new Date(startDate.getTime() + durationMins * 60000);
-
-        const event = {
-          summary: `Study: ${task.title}`,
-          description: `Course: ${task.course}\nType: ${task.type}\nMemora Autonomous Scheduler`,
-          start: {
-            dateTime: startDate.toISOString(),
-            timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-          },
-          end: {
-            dateTime: endDate.toISOString(),
-            timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-          },
-        };
-
-        const response = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(event),
-        });
-        
-        if (response.ok) {
-          successCount++;
-        }
-      }
-
-      alert(`Successfully synced ${successCount} tasks to Google Calendar!`);
-    } catch (err) {
-      console.error(err);
-      alert("Failed to sync to Google Calendar.");
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
   const [activeFilter, setActiveFilter] = useState("All");
   const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
   const [isNewTaskModalOpen, setIsNewTaskModalOpen] = useState(false);
@@ -595,14 +530,6 @@ export default function Tasks() {
                   {category}
                 </button>
               ))}
-              <button
-                onClick={handleGoogleCalendarSync}
-                disabled={isSyncing}
-                className="ml-auto text-xs font-bold uppercase tracking-wider px-3 py-1.5 rounded-full transition-colors bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400 hover:bg-indigo-200 dark:hover:bg-indigo-800/50 flex items-center gap-1"
-              >
-                <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin' : ''}`} />
-                {isSyncing ? "Syncing..." : "Sync to Calendar"}
-              </button>
             </div>
           </div>
 

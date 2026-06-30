@@ -1,12 +1,23 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>App</title>
+    <title>My Google AI Studio App</title>
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
+    <script>
+      window.addEventListener('error', (event) => {
+        document.body.innerHTML += `<div style="color: red; padding: 20px; z-index: 9999; position: absolute; top: 0;">GLOBAL ERROR: ${event.error?.message || event.message}</div>`;
+        fetch('/api/health', { method: 'POST', body: JSON.stringify({ type: 'global', message: event.message }) });
+      });
+      window.addEventListener('unhandledrejection', (event) => {
+        document.body.innerHTML += `<div style="color: red; padding: 20px; z-index: 9999; position: absolute; top: 0;">PROMISE REJECTION: ${event.reason?.message || event.reason}</div>`;
+        fetch('/api/health', { method: 'POST', body: JSON.stringify({ type: 'promise', message: event.reason?.message }) });
+      });
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
+
