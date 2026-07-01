@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import { useState } from 'react';
 import { MessageSquare, Bug, Lightbulb, X, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -35,7 +36,7 @@ export default function FeedbackModal() {
       }, 2000);
     } catch (error) {
       console.error('Error submitting feedback:', error);
-      alert('Failed to submit feedback. Please try again.');
+      toast.error('Failed to submit feedback. Please try again.');
     } finally {
       setIsSubmitting(false);
     }

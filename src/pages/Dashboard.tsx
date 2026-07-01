@@ -4,6 +4,9 @@ import { Link, useNavigate } from "react-router-dom";
 import MasteryDashboard from "../components/MasteryDashboard";
 import DailyStreak from "../components/DailyStreak";
 import TaskCompletionChart from "../components/TaskCompletionChart";
+import StudyProgressChart from "../components/StudyProgressChart";
+import AudioNoteRecorder from "../components/AudioNoteRecorder";
+import FocusSession from "../components/FocusSession";
 import { useState, useEffect } from "react";
 import { auth, db } from "../lib/firebase";
 import { collection, query, getDocs, limit, orderBy } from "firebase/firestore";
@@ -14,6 +17,7 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
   const [upcomingTasks, setUpcomingTasks] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -50,6 +54,9 @@ export default function Dashboard() {
         icon: "Bot",
       }));
       setRecentActivity(recentLogs);
+      
+      // Simulate network loading for skeletons
+      setTimeout(() => setLoading(false), 800);
     };
 
     fetchData();
@@ -92,10 +99,17 @@ export default function Dashboard() {
                 Study Time
               </h3>
             </div>
-            <div>
-              <p className="text-2xl font-bold text-slate-900 dark:text-white mb-1">12.5h</p>
-              <p className="text-xs font-medium text-sky-600 dark:text-sky-400">+2.5h from last week</p>
-            </div>
+            {loading ? (
+              <div className="animate-pulse">
+                <div className="h-8 bg-slate-200 dark:bg-slate-700 w-16 rounded mb-2"></div>
+                <div className="h-4 bg-slate-100 dark:bg-slate-800 w-24 rounded"></div>
+              </div>
+            ) : (
+              <div>
+                <p className="text-2xl font-bold text-slate-900 dark:text-white mb-1">12.5h</p>
+                <p className="text-xs font-medium text-sky-600 dark:text-sky-400">+2.5h from last week</p>
+              </div>
+            )}
           </div>
 
           <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 rounded-xl p-4 sm:p-5 shadow-sm flex flex-col justify-between">
@@ -107,27 +121,34 @@ export default function Dashboard() {
                 Tasks Done
               </h3>
             </div>
-            <div>
-              <p className="text-2xl font-bold text-slate-900 dark:text-white mb-1">24</p>
-              <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400">80% completion rate</p>
-            </div>
+            {loading ? (
+              <div className="animate-pulse">
+                <div className="h-8 bg-slate-200 dark:bg-slate-700 w-12 rounded mb-2"></div>
+                <div className="h-4 bg-slate-100 dark:bg-slate-800 w-28 rounded"></div>
+              </div>
+            ) : (
+              <div>
+                <p className="text-2xl font-bold text-slate-900 dark:text-white mb-1">24</p>
+                <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400">80% completion rate</p>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Charts Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div className="h-[320px]">
-            <MasteryDashboard />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="h-[320px] lg:col-span-2">
+            <StudyProgressChart />
           </div>
-          <div className="h-[320px]">
+          <div className="h-[320px] lg:col-span-1">
             <TaskCompletionChart />
           </div>
         </div>
 
         {/* Actionable Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {/* Upcoming Tasks */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 rounded-xl p-4 sm:p-5 shadow-sm">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 rounded-xl p-4 sm:p-5 shadow-sm lg:col-span-1">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-slate-900 dark:text-white tracking-tight">
                 Upcoming Deadlines
@@ -137,7 +158,13 @@ export default function Dashboard() {
               </Link>
             </div>
             
-            {upcomingTasks.length > 0 ? (
+            {loading ? (
+              <div className="space-y-3 animate-pulse">
+                {[1, 2, 3].map(i => (
+                  <div key={i} className="h-14 bg-slate-100 dark:bg-slate-800/50 rounded-lg"></div>
+                ))}
+              </div>
+            ) : upcomingTasks.length > 0 ? (
               <div className="space-y-3">
                 {upcomingTasks.map((task) => (
                   <div key={task.id} className="flex items-center justify-between p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700/50">
@@ -163,33 +190,46 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* Recent Activity */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 rounded-xl p-4 sm:p-5 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-slate-900 dark:text-white tracking-tight">
-                Recent Activity
-              </h3>
+          <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-4">
+              <FocusSession />
+              <AudioNoteRecorder />
             </div>
             
-            {recentActivity.length > 0 ? (
-              <div className="space-y-3">
-                {recentActivity.map((activity, i) => (
-                  <div key={i} className="flex items-center justify-between p-3 rounded-lg border border-slate-100 dark:border-slate-800 hover:border-slate-200 dark:hover:border-slate-700 transition-colors">
-                    <div className="flex items-center gap-3">
-                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                      <div>
-                        <h4 className="text-xs font-medium text-slate-900 dark:text-white">{activity.title}</h4>
-                        <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">{activity.time}</p>
+            {/* Recent Activity */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 rounded-xl p-4 sm:p-5 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-white tracking-tight">
+                  Recent Activity
+                </h3>
+              </div>
+              
+              {loading ? (
+                <div className="space-y-3 animate-pulse">
+                  {[1, 2, 3].map(i => (
+                    <div key={i} className="h-10 bg-slate-100 dark:bg-slate-800/50 rounded-lg"></div>
+                  ))}
+                </div>
+              ) : recentActivity.length > 0 ? (
+                <div className="space-y-3">
+                  {recentActivity.map((activity, i) => (
+                    <div key={i} className="flex items-center justify-between p-3 rounded-lg border border-slate-100 dark:border-slate-800 hover:border-slate-200 dark:hover:border-slate-700 transition-colors">
+                      <div className="flex items-center gap-3">
+                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                        <div>
+                          <h4 className="text-xs font-medium text-slate-900 dark:text-white">{activity.title}</h4>
+                          <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">{activity.time}</p>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-6">
-                <p className="text-sm text-slate-500 dark:text-slate-400">No recent activity.</p>
-              </div>
-            )}
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-6">
+                  <p className="text-sm text-slate-500 dark:text-slate-400">No recent activity.</p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 

@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import { useState, useEffect, useRef } from "react";
 import { Search, FileText, CheckSquare, X, BrainCircuit, Type, BookOpen, ChevronRight, Moon, Bot } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -259,10 +260,10 @@ export default function CommandPalette() {
           });
         }
       }
-      alert("Knowledge base synced successfully!");
+      toast.success("Knowledge base synced successfully!");
     } catch (e) {
       console.error(e);
-      alert("Failed to sync knowledge base");
+      toast.error("Failed to sync knowledge base");
     }
   };
 

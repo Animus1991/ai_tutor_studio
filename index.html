@@ -60,12 +60,16 @@
       }
 
       window.addEventListener('error', (event) => {
-        showGlobalError(event.error?.message || event.message || "An unexpected error occurred.");
-        fetch('/api/health', { method: 'POST', body: JSON.stringify({ type: 'global', message: event.message }) }).catch(() => {});
+        const msg = event.error?.message || event.message || "An unexpected error occurred.";
+        if (typeof msg === 'string' && msg.includes('[vite]')) return;
+        showGlobalError(msg);
+        fetch('/api/health', { method: 'POST', body: JSON.stringify({ type: 'global', message: msg }) }).catch(() => {});
       });
       window.addEventListener('unhandledrejection', (event) => {
-        showGlobalError(event.reason?.message || event.reason || "An unexpected promise rejection occurred.");
-        fetch('/api/health', { method: 'POST', body: JSON.stringify({ type: 'promise', message: event.reason?.message }) }).catch(() => {});
+        const msg = event.reason?.message || event.reason || "An unexpected promise rejection occurred.";
+        if (typeof msg === 'string' && msg.includes('[vite]')) return;
+        showGlobalError(msg);
+        fetch('/api/health', { method: 'POST', body: JSON.stringify({ type: 'promise', message: msg }) }).catch(() => {});
       });
     </script>
     <script type="module" src="/src/main.tsx"></script>

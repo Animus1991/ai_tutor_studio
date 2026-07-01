@@ -6,7 +6,8 @@ export type AuditAction =
   | 'ROLE_CHANGED'
   | 'PII_DETECTED'
   | 'ROOM_JOINED'
-  | 'PERFORMANCE_METRIC';
+  | 'PERFORMANCE_METRIC'
+  | 'APP_ACCESSED';
 
 export interface AuditEvent {
   id: string;

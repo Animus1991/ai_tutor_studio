@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -181,7 +182,7 @@ export default function CollabRoom() {
       }
     } catch (e) {
       console.error(e);
-      alert("Failed to create Demo Form");
+      toast.error("Failed to create Demo Form");
     } finally {
       setIsCreatingQuiz(false);
     }
@@ -212,7 +213,7 @@ export default function CollabRoom() {
       }
     } catch (err) {
       console.error(err);
-      alert("Failed to create Meet space.");
+      toast.error("Failed to create Meet space.");
     } finally {
       setIsCreatingMeet(false);
     }
@@ -241,7 +242,7 @@ export default function CollabRoom() {
       window.open(demoLink, "_blank");
     } catch (err) {
       console.error(err);
-      alert("Failed to schedule session.");
+      toast.error("Failed to schedule session.");
     }
   };
 
@@ -264,7 +265,7 @@ export default function CollabRoom() {
         setShowContactSuggestions(false);
       } catch (err) {
         console.error(err);
-        alert("Failed to invite.");
+        toast.error("Failed to invite.");
       }
     }
   };
@@ -406,7 +407,7 @@ export default function CollabRoom() {
                   ]);
                 } catch (e) {
                   console.error(e);
-                  alert("Failed to create chat space.");
+                  toast.error("Failed to create chat space.");
                 }
               }}
               className="px-2.5 py-1.5 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold hover:shadow-md transition-all flex items-center gap-1.5 shadow-sm"

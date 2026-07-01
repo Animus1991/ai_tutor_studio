@@ -127,7 +127,7 @@ export default function Library() {
     try {
       setIsImportingClassroom(true);
       if (!user) {
-        alert("Please sign in to the platform first.");
+        toast.info("Please sign in to the platform first.");
         return;
       }
       
@@ -150,10 +150,10 @@ export default function Library() {
           createdAt: serverTimestamp(),
         });
       }
-      alert("Successfully imported demo courses!");
+      toast.success("Successfully imported demo courses!");
     } catch (e) {
       console.error(e);
-      alert("Failed to import demo courses");
+      toast.error("Failed to import demo courses");
     } finally {
       setIsImportingClassroom(false);
     }
@@ -324,7 +324,7 @@ export default function Library() {
               input.onchange = (e: any) => {
                 if (e.target.files && e.target.files[0]) {
                   const fileName = e.target.files[0].name;
-                  alert(
+                  toast.success(
                     `Started AI transcription for ${fileName}. A lecture summary will be added to your study notes when complete.`,
                   );
                   // Mock generation
@@ -354,7 +354,7 @@ export default function Library() {
               input.type = "file";
               input.accept = "image/*,video/*";
               input.onchange = () =>
-                alert(
+                toast.success(
                   "Media analysis using Gemini Multimodal Vision API requires a backend storage solution. For this demo, imagine the media being analyzed and a summary added to your notes!",
                 );
               input.click();
@@ -582,7 +582,7 @@ export default function Library() {
                         const mockUri = "https://docs.google.com/forms/d/demo-form-id/viewform";
                         window.open(mockUri, "_blank");
                       } catch (err) {
-                        alert("Failed to generate form.");
+                        toast.error("Failed to generate form.");
                       }
                     }}
                     className="w-7 h-7 flex items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition-colors"

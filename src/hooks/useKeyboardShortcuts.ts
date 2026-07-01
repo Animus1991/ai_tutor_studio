@@ -61,6 +61,10 @@ export function useKeyboardShortcuts() {
             e.preventDefault();
             setTimerIsActive(!timerIsActive);
             break;
+          case 'm': // Alt + M for Microphone toggle
+            e.preventDefault();
+            window.dispatchEvent(new CustomEvent('toggleMicrophone'));
+            break;
         }
       }
     };

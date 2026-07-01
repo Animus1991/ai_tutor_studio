@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import { useEffect, useState } from "react";
 import { useStore } from "../store/useStore";
 import { Play, Pause, Coffee, Focus, Maximize2, Minimize2, RotateCcw, Settings2 } from "lucide-react";
@@ -158,7 +159,7 @@ export default function TimerManager() {
                 <button
                   onClick={() => {
                     const history = useStore.getState().studySessionsHistory;
-                    if (history.length === 0) return alert('No history to export');
+                    if (history.length === 0) return toast.success('No history to export');
                     const csvContent = 'Date,Duration(min),Type\n' + history.map(h => `${new Date(h.date).toLocaleString()},${h.duration},${h.type}`).join('\n');
                     const blob = new Blob([csvContent], { type: 'text/csv' });
                     const url = window.URL.createObjectURL(blob);

@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import { useState, FormEvent } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Image, Loader2, Sparkles } from 'lucide-react';
@@ -21,7 +22,7 @@ export default function ImageGeneratorModal({ isOpen, onClose, onSave }: { isOpe
       }
     } catch (error) {
       console.error('Failed to generate image', error);
-      alert('Failed to generate image');
+      toast.error('Failed to generate image');
     } finally {
       setIsLoading(false);
     }

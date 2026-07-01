@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import { useState, useRef, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Send, Bot, User, Sparkles, BookOpen, ChevronDown, Activity, Mic, Square } from 'lucide-react';
@@ -164,7 +165,7 @@ export default function Agent() {
 
   const toggleRecording = () => {
     if (!recognition) {
-      alert("Speech recognition is not supported in your browser.");
+      toast.success("Speech recognition is not supported in your browser.");
       return;
     }
     if (isRecording) {

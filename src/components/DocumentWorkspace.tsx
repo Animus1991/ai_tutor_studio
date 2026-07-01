@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Document, Page, pdfjs } from "react-pdf";
@@ -203,7 +204,7 @@ export default function DocumentWorkspace({
       setAgentResponse(data.text);
     } catch (e) {
       console.error(e);
-      alert('Failed to ask agent');
+      toast.error('Failed to ask agent');
     } finally {
       setIsAskingAgent(false);
     }
@@ -231,7 +232,7 @@ export default function DocumentWorkspace({
       }
     } catch (e) {
       console.error(e);
-      alert('Failed to evaluate explanation.');
+      toast.error('Failed to evaluate explanation.');
     } finally {
       setIsCheckingFeynman(false);
     }
@@ -283,7 +284,7 @@ export default function DocumentWorkspace({
       }
     } catch (e) {
       console.error(e);
-      alert('Failed to generate flashcards');
+      toast.error('Failed to generate flashcards');
     } finally {
       setIsGeneratingFlashcards(false);
     }
@@ -318,7 +319,7 @@ export default function DocumentWorkspace({
               description: m.description
             }));
             localforage.default.setItem("memora-tasks", JSON.stringify([...existingTasks, ...newTasks]));
-            alert(`Generated ${newTasks.length} study tasks from blueprint!`);
+            toast.success(`Generated ${newTasks.length} study tasks from blueprint!`);
           });
         });
       }
@@ -331,7 +332,7 @@ export default function DocumentWorkspace({
       setSummary("Blueprint generated successfully. Core concepts added to Knowledge Graph and Study Tasks created.");
     } catch (e) {
       console.error(e);
-      alert('Failed to generate blueprint');
+      toast.error('Failed to generate blueprint');
     } finally {
       setIsSummarizing(false);
     }
@@ -495,11 +496,11 @@ export default function DocumentWorkspace({
         setFile(null); // Clear any pdf view
         setUrlInput("");
       } else {
-        alert(data.error || "Failed to extract from URL");
+        toast.success(data.error || "Failed to extract from URL");
       }
     } catch (err) {
       console.error(err);
-      alert("Error processing URL");
+      toast.error("Error processing URL");
     } finally {
       setIsIngestingUrl(false);
     }
@@ -970,10 +971,10 @@ export default function DocumentWorkspace({
                 onClick={async () => {
                   try {
                     await new Promise(r => setTimeout(r, 500));
-                    alert("Demo: Saved to virtual Google Drive!");
+                    toast.success("Demo: Saved to virtual Google Drive!");
                   } catch (e) {
                     console.error(e);
-                    alert("Failed to save to Drive");
+                    toast.error("Failed to save to Drive");
                   }
                 }}
                 className="text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white flex items-center gap-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3 py-1.5 rounded-lg shadow-sm hover:shadow transition-all"
@@ -996,7 +997,7 @@ export default function DocumentWorkspace({
                     );
                   } catch (e) {
                     console.error(e);
-                    alert("Failed to export to Google Docs");
+                    toast.error("Failed to export to Google Docs");
                   }
                 }}
                 className="text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white flex items-center gap-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3 py-1.5 rounded-lg shadow-sm hover:shadow transition-all"
@@ -1019,7 +1020,7 @@ export default function DocumentWorkspace({
                     );
                   } catch (e) {
                     console.error(e);
-                    alert("Failed to generate Google Slides");
+                    toast.error("Failed to generate Google Slides");
                   }
                 }}
                 className="text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white flex items-center gap-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3 py-1.5 rounded-lg shadow-sm hover:shadow transition-all"
@@ -1042,7 +1043,7 @@ export default function DocumentWorkspace({
                     );
                   } catch (e) {
                     console.error(e);
-                    alert("Failed to generate Google Form");
+                    toast.error("Failed to generate Google Form");
                   }
                 }}
                 className="text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white flex items-center gap-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3 py-1.5 rounded-lg shadow-sm hover:shadow transition-all"
@@ -1253,7 +1254,7 @@ export default function DocumentWorkspace({
                                 return (
                                   <button 
                                     key={i} 
-                                    onClick={() => alert(`This citation points to ${part.replace(/\[|\]/g, '')}. You could implement auto-scroll here.`)}
+                                    onClick={() => toast.success(`This citation points to ${part.replace(/\[|\]/g, '')}. You could implement auto-scroll here.`)}
                                     className="inline-block bg-indigo-100 dark:bg-indigo-800/50 text-indigo-700 dark:text-indigo-300 px-1.5 py-0.5 rounded text-xs font-mono ml-1 hover:bg-indigo-200 dark:hover:bg-indigo-700 transition-colors cursor-pointer"
                                   >
                                     {part}

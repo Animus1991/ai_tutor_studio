@@ -7,6 +7,7 @@ import { useAuthStore, Role } from '../../store/useAuthStore';
 import { auditLogger } from '../../lib/auditLogger';
 import { useState, useEffect } from 'react';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
+import { useStudyReminders } from '../../hooks/useStudyReminders';
 import CommandPalette from '../CommandPalette';
 import SyncIndicator from '../SyncIndicator';
 import ActivityDrawer from '../ActivityDrawer';
@@ -16,12 +17,18 @@ import { toast } from 'sonner';
 
 export default function Layout() {
   useKeyboardShortcuts();
+  useStudyReminders();
   const location = useLocation();
   const { isDarkMode, toggleDarkMode, isFocusMode, toggleFocusMode } = useStore();
   const { userRole, setUserRole } = useAuthStore();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isActivityDrawerOpen, setIsActivityDrawerOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+  // Track page navigation with auditLogger
+  useEffect(() => {
+    auditLogger.log('APP_ACCESSED', 'current_user', undefined, { path: location.pathname });
+  }, [location.pathname]);
 
   useEffect(() => {
     // Simulate upcoming task / streak notifications
@@ -44,6 +51,7 @@ export default function Layout() {
     setUserRole(newRole);
     auditLogger.log('ROLE_CHANGED', 'current_user', undefined, { newRole });
   };
+
 
   const navItems = [
     { name: 'Dashboard', path: '/', icon: LayoutDashboard },

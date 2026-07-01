@@ -131,10 +131,10 @@ export default function Tasks() {
       setIsSyncingTasks(true);
       // Mock the sync delay
       await new Promise((resolve) => setTimeout(resolve, 1000));
-      alert("Demo Tasks synced successfully!");
+      toast.success("Demo Tasks synced successfully!");
     } catch (err) {
       console.error(err);
-      alert("Failed to sync tasks to Google Tasks.");
+      toast.error("Failed to sync tasks to Google Tasks.");
     } finally {
       setIsSyncingTasks(false);
     }
@@ -181,7 +181,7 @@ export default function Tasks() {
       }
     } catch (e) {
       console.error(e);
-      alert("Failed to update task review.");
+      toast.error("Failed to update task review.");
     }
   };
 
@@ -202,7 +202,7 @@ export default function Tasks() {
       });
     } catch (e) {
       console.error(e);
-      alert("Failed to complete task.");
+      toast.error("Failed to complete task.");
     }
 
     // Track via xAPI
@@ -271,7 +271,7 @@ export default function Tasks() {
 
   const handleCreateTask = async (e: FormEvent) => {
     e.preventDefault();
-    if (!user) return alert("Please sign in to create a task.");
+    if (!user) return toast.info("Please sign in to create a task.");
 
     const formData = new FormData(e.target as HTMLFormElement);
     const title = formData.get("title") as string;
@@ -308,7 +308,7 @@ export default function Tasks() {
         setTaskNotes("");
       } catch (e) {
         console.error(e);
-        alert("Failed to create task");
+        toast.error("Failed to create task");
       }
     }
   };
