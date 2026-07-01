@@ -23,7 +23,6 @@ import StudyTipsWidget from "../components/StudyTipsWidget";
 import { useStore } from "../store/useStore";
 import { xapi } from "../lib/xapiTracker";
 import { auditLogger } from "../lib/auditLogger";
-import { getAccessToken } from "../lib/auth";
 import { cn } from "../lib/utils";
 import { auth, db } from "../lib/firebase";
 import {
@@ -130,44 +129,9 @@ export default function Tasks() {
   const handleSyncGoogleTasks = async () => {
     try {
       setIsSyncingTasks(true);
-      const token = await getAccessToken();
-      if (!token) {
-        alert("Please sign in to Google to sync tasks.");
-        return;
-      }
-
-      // Get the default task list
-      const listsRes = await fetch(
-        "https://tasks.googleapis.com/tasks/v1/users/@me/lists",
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      );
-      const listsData = await listsRes.json();
-      const defaultListId = listsData.items?.[0]?.id;
-
-      if (!defaultListId) {
-        throw new Error("No task list found");
-      }
-
-      // Sync incomplete tasks
-      for (const task of tasks.filter((t: any) => !t.completed)) {
-        await fetch(
-          `https://tasks.googleapis.com/tasks/v1/lists/${defaultListId}/tasks`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              title: `[Memora] ${task.title} - ${task.course}`,
-              notes: `Type: ${task.type}\nEstimated time: ${task.time}`,
-            }),
-          },
-        );
-      }
-      alert("Tasks synced successfully!");
+      // Mock the sync delay
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      alert("Demo Tasks synced successfully!");
     } catch (err) {
       console.error(err);
       alert("Failed to sync tasks to Google Tasks.");

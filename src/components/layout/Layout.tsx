@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { BookOpen, CheckSquare, MessageSquare, Settings, BrainCircuit, Bell, User as UserIcon, Sun, Moon, Menu, Users, Shield, LayoutDashboard } from 'lucide-react';
+import { BookOpen, CheckSquare, MessageSquare, Settings, BrainCircuit, Bell, User as UserIcon, Sun, Moon, Menu, Users, Shield, LayoutDashboard, Calendar as CalendarIcon } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../../store/useStore';
@@ -51,6 +51,7 @@ export default function Layout() {
     { name: 'Tasks', path: '/tasks', icon: CheckSquare },
     { name: 'Agent', path: '/agent', icon: MessageSquare },
     { name: 'Collab Space', path: '/collab', icon: Users },
+    { name: 'Workspace', path: '/workspace', icon: CalendarIcon },
   ];
 
   if (userRole === 'admin' || userRole === 'instructor') {

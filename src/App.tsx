@@ -12,6 +12,7 @@ import Tasks from "./pages/Tasks";
 import Agent from "./pages/Agent";
 import CollabRoom from "./pages/CollabRoom";
 import Admin from "./pages/Admin";
+import Workspace from "./pages/Workspace";
 import ThemeProvider from "./components/ThemeProvider";
 import TimerManager from "./components/TimerManager";
 import AudioController from "./components/AudioController";
@@ -123,6 +124,7 @@ export default function App() {
               <Route path="tasks" element={<Tasks />} />
               <Route path="agent" element={<Agent />} />
               <Route path="collab" element={<CollabRoom />} />
+              <Route path="workspace" element={<Workspace />} />
               <Route path="admin" element={<Admin />} />
             </Route>
           </Routes>

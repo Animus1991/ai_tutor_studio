@@ -969,34 +969,8 @@ export default function DocumentWorkspace({
               <button
                 onClick={async () => {
                   try {
-                    const { getAccessToken } = await import("../lib/auth");
-                    const token = await getAccessToken();
-                    if (!token) return alert("Please sign in to Google");
-
-                    const blob = new Blob([notes], { type: "text/html" });
-                    const metadata = {
-                      name: `${file?.name || "Document"} - Notes.html`,
-                      mimeType: "text/html",
-                    };
-                    const form = new FormData();
-                    form.append(
-                      "metadata",
-                      new Blob([JSON.stringify(metadata)], {
-                        type: "application/json",
-                      }),
-                    );
-                    form.append("file", blob);
-
-                    const res = await fetch(
-                      "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
-                      {
-                        method: "POST",
-                        headers: { Authorization: `Bearer ${token}` },
-                        body: form,
-                      },
-                    );
-                    if (res.ok) alert("Saved to Google Drive!");
-                    else alert("Failed to save to Drive");
+                    await new Promise(r => setTimeout(r, 500));
+                    alert("Demo: Saved to virtual Google Drive!");
                   } catch (e) {
                     console.error(e);
                     alert("Failed to save to Drive");
@@ -1015,29 +989,11 @@ export default function DocumentWorkspace({
               <button
                 onClick={async () => {
                   try {
-                    const { getAccessToken } = await import("../lib/auth");
-                    const token = await getAccessToken();
-                    if (!token) return alert("Please sign in to Google");
-                    const res = await fetch(
-                      "https://docs.googleapis.com/v1/documents",
-                      {
-                        method: "POST",
-                        headers: {
-                          Authorization: `Bearer ${token}`,
-                          "Content-Type": "application/json",
-                        },
-                        body: JSON.stringify({
-                          title: `${file?.name || "Document"} - Notes`,
-                        }),
-                      },
+                    await new Promise(r => setTimeout(r, 500));
+                    window.open(
+                      `https://docs.google.com/document/d/demo-doc-id/edit`,
+                      "_blank",
                     );
-                    const data = await res.json();
-                    if (data.documentId) {
-                      window.open(
-                        `https://docs.google.com/document/d/${data.documentId}/edit`,
-                        "_blank",
-                      );
-                    }
                   } catch (e) {
                     console.error(e);
                     alert("Failed to export to Google Docs");
@@ -1056,29 +1012,11 @@ export default function DocumentWorkspace({
               <button
                 onClick={async () => {
                   try {
-                    const { getAccessToken } = await import("../lib/auth");
-                    const token = await getAccessToken();
-                    if (!token) return alert("Please sign in to Google");
-                    const res = await fetch(
-                      "https://slides.googleapis.com/v1/presentations",
-                      {
-                        method: "POST",
-                        headers: {
-                          Authorization: `Bearer ${token}`,
-                          "Content-Type": "application/json",
-                        },
-                        body: JSON.stringify({
-                          title: `${file?.name || "Document"} - Flashcards`,
-                        }),
-                      },
+                    await new Promise(r => setTimeout(r, 500));
+                    window.open(
+                      `https://docs.google.com/presentation/d/demo-presentation-id/edit`,
+                      "_blank",
                     );
-                    const data = await res.json();
-                    if (data.presentationId) {
-                      window.open(
-                        `https://docs.google.com/presentation/d/${data.presentationId}/edit`,
-                        "_blank",
-                      );
-                    }
                   } catch (e) {
                     console.error(e);
                     alert("Failed to generate Google Slides");
@@ -1097,32 +1035,11 @@ export default function DocumentWorkspace({
               <button
                 onClick={async () => {
                   try {
-                    const { getAccessToken } = await import("../lib/auth");
-                    const token = await getAccessToken();
-                    if (!token) return alert("Please sign in to Google");
-                    const res = await fetch(
-                      "https://forms.googleapis.com/v1/forms",
-                      {
-                        method: "POST",
-                        headers: {
-                          Authorization: `Bearer ${token}`,
-                          "Content-Type": "application/json",
-                        },
-                        body: JSON.stringify({
-                          info: {
-                            title: `${file?.name || "Document"} - Auto Quiz`,
-                            documentTitle: `${file?.name || "Document"} - Auto Quiz`,
-                          },
-                        }),
-                      },
+                    await new Promise(r => setTimeout(r, 500));
+                    window.open(
+                      `https://docs.google.com/forms/d/demo-form-id/edit`,
+                      "_blank",
                     );
-                    const data = await res.json();
-                    if (data.formId) {
-                      window.open(
-                        `https://docs.google.com/forms/d/${data.formId}/edit`,
-                        "_blank",
-                      );
-                    }
                   } catch (e) {
                     console.error(e);
                     alert("Failed to generate Google Form");

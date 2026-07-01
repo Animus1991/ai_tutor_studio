@@ -12,20 +12,6 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 
 const provider = new GoogleAuthProvider();
-provider.addScope("https://www.googleapis.com/auth/meetings.space.created");
-provider.addScope("https://www.googleapis.com/auth/tasks");
-provider.addScope("https://www.googleapis.com/auth/chat.spaces.create");
-provider.addScope("https://www.googleapis.com/auth/chat.messages.create");
-provider.addScope("https://www.googleapis.com/auth/forms.body");
-provider.addScope("https://www.googleapis.com/auth/drive.file");
-provider.addScope("https://www.googleapis.com/auth/calendar.events");
-provider.addScope("https://www.googleapis.com/auth/documents");
-provider.addScope("https://www.googleapis.com/auth/presentations");
-provider.addScope("https://www.googleapis.com/auth/contacts.readonly");
-provider.addScope("https://www.googleapis.com/auth/classroom.courses.readonly");
-provider.addScope(
-  "https://www.googleapis.com/auth/classroom.coursework.me.readonly",
-);
 
 let isSigningIn = false;
 let cachedAccessToken: string | null = null;

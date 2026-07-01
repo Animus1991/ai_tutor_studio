@@ -35,7 +35,6 @@ import ImageGeneratorModal from "../components/ImageGeneratorModal";
 import DocumentWorkspace from "../components/DocumentWorkspace";
 import { UserAchievements } from "../components/UserAchievements";
 import PDFViewerModal from "../components/PDFViewerModal";
-import { getAccessToken } from "../lib/auth";
 import { auth, db } from "../lib/firebase";
 import {
   collection,
@@ -127,40 +126,34 @@ export default function Library() {
   const handleImportClassroom = async () => {
     try {
       setIsImportingClassroom(true);
-      const token = await getAccessToken();
-      if (!token) {
-        alert("Please sign in to Google to import from Classroom.");
-        return;
-      }
       if (!user) {
         alert("Please sign in to the platform first.");
         return;
       }
-      const res = await fetch("https://classroom.googleapis.com/v1/courses", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (data.courses && data.courses.length > 0) {
-        for (const c of data.courses) {
-          const courseId = c.id.toString();
-          await setDoc(doc(db, "users", user.uid, "courses", courseId), {
-            title: c.name,
-            progress: 0,
-            documents: 0,
-            lastActive: "Just now",
-            color: "from-green-500 to-emerald-600",
-            bg: "bg-green-50",
-            userId: user.uid,
-            createdAt: serverTimestamp(),
-          });
-        }
-        alert("Successfully imported courses from Google Classroom!");
-      } else {
-        alert("No active Google Classroom courses found.");
+      
+      await new Promise(r => setTimeout(r, 1000));
+      const demoCourses = [
+        { id: "demo-course-1", name: "Demo Course: Intro to Psychology" },
+        { id: "demo-course-2", name: "Demo Course: Linear Algebra" }
+      ];
+
+      for (const c of demoCourses) {
+        const courseId = c.id;
+        await setDoc(doc(db, "users", user.uid, "courses", courseId), {
+          title: c.name,
+          progress: 0,
+          documents: 0,
+          lastActive: "Just now",
+          color: "from-green-500 to-emerald-600",
+          bg: "bg-green-50",
+          userId: user.uid,
+          createdAt: serverTimestamp(),
+        });
       }
+      alert("Successfully imported demo courses!");
     } catch (e) {
       console.error(e);
-      alert("Failed to import from Google Classroom");
+      alert("Failed to import demo courses");
     } finally {
       setIsImportingClassroom(false);
     }
@@ -584,26 +577,10 @@ export default function Library() {
                   <button
                     onClick={async (e) => {
                       e.stopPropagation();
-                      const { getAccessToken } = await import("../lib/auth");
-                      const token = await getAccessToken();
-                      if (!token) return alert("Please sign in to Google");
                       try {
-                        const res = await fetch(
-                          "https://forms.googleapis.com/v1/forms",
-                          {
-                            method: "POST",
-                            headers: {
-                              Authorization: `Bearer ${token}`,
-                              "Content-Type": "application/json",
-                            },
-                            body: JSON.stringify({
-                              info: { title: `${course.title} - Quiz` },
-                            }),
-                          },
-                        );
-                        const data = await res.json();
-                        if (data.responderUri)
-                          window.open(data.responderUri, "_blank");
+                        await new Promise(r => setTimeout(r, 500));
+                        const mockUri = "https://docs.google.com/forms/d/demo-form-id/viewform";
+                        window.open(mockUri, "_blank");
                       } catch (err) {
                         alert("Failed to generate form.");
                       }

@@ -23,21 +23,46 @@ class AuditLogger {
     return events ? JSON.parse(events) : [];
   }
 
+  private sanitize(data: any): any {
+    if (!data) return data;
+    if (typeof data !== 'object') {
+      if (typeof data === 'string') {
+        return data.replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g, '[REDACTED_EMAIL]')
+                   .replace(/\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/g, '[REDACTED_PHONE]');
+      }
+      return data;
+    }
+    
+    if (Array.isArray(data)) {
+      return data.map(item => this.sanitize(item));
+    }
+
+    const sanitized: Record<string, any> = {};
+    for (const key in data) {
+      if (['email', 'password', 'phone', 'address', 'name', 'token', 'authorization'].includes(key.toLowerCase())) {
+        sanitized[key] = '[REDACTED]';
+      } else {
+        sanitized[key] = this.sanitize(data[key]);
+      }
+    }
+    return sanitized;
+  }
+
   log(action: AuditAction, userId: string, resourceId?: string, details?: Record<string, any>) {
+    const sanitizedDetails = this.sanitize(details);
     const event: AuditEvent = {
       id: crypto.randomUUID(),
       timestamp: new Date().toISOString(),
       userId,
       action,
       resourceId,
-      details
+      details: sanitizedDetails
     };
     
     const events = this.getEvents();
     events.push(event);
     localStorage.setItem('memora-audit-logs', JSON.stringify(events));
     
-    // In a real app, this would also send to a secure backend endpoint
     console.log('[Audit Log]', event);
   }
 

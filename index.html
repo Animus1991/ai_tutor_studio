@@ -4,17 +4,68 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>My Google AI Studio App</title>
+    <style>
+      #global-error-container {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 99999;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .global-error-toast {
+        background: #ef4444;
+        color: white;
+        padding: 12px 20px;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        font-family: system-ui, -apple-system, sans-serif;
+        font-size: 14px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        animation: slideIn 0.3s ease-out;
+      }
+      .global-error-toast button {
+        background: rgba(255,255,255,0.2);
+        border: none;
+        color: white;
+        cursor: pointer;
+        padding: 4px 8px;
+        border-radius: 4px;
+        margin-left: 12px;
+      }
+      @keyframes slideIn {
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
+    <div id="global-error-container"></div>
     <script>
+      function showGlobalError(message) {
+        if (typeof message === 'string' && message.includes('[vite]')) return;
+        const container = document.getElementById('global-error-container');
+        const toast = document.createElement('div');
+        toast.className = 'global-error-toast';
+        toast.innerHTML = `
+          <span>Error: ${message}</span>
+          <button onclick="this.parentElement.remove()">Dismiss</button>
+        `;
+        container.appendChild(toast);
+        setTimeout(() => toast.remove(), 5000);
+      }
+
       window.addEventListener('error', (event) => {
-        document.body.innerHTML += `<div style="color: red; padding: 20px; z-index: 9999; position: absolute; top: 0;">GLOBAL ERROR: ${event.error?.message || event.message}</div>`;
-        fetch('/api/health', { method: 'POST', body: JSON.stringify({ type: 'global', message: event.message }) });
+        showGlobalError(event.error?.message || event.message || "An unexpected error occurred.");
+        fetch('/api/health', { method: 'POST', body: JSON.stringify({ type: 'global', message: event.message }) }).catch(() => {});
       });
       window.addEventListener('unhandledrejection', (event) => {
-        document.body.innerHTML += `<div style="color: red; padding: 20px; z-index: 9999; position: absolute; top: 0;">PROMISE REJECTION: ${event.reason?.message || event.reason}</div>`;
-        fetch('/api/health', { method: 'POST', body: JSON.stringify({ type: 'promise', message: event.reason?.message }) });
+        showGlobalError(event.reason?.message || event.reason || "An unexpected promise rejection occurred.");
+        fetch('/api/health', { method: 'POST', body: JSON.stringify({ type: 'promise', message: event.reason?.message }) }).catch(() => {});
       });
     </script>
     <script type="module" src="/src/main.tsx"></script>

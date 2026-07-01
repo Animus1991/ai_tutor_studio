@@ -23,7 +23,6 @@ import {
 import { useStore } from "../store/useStore";
 import { cn } from "../lib/utils";
 import { chatWithAgent } from "../lib/api";
-import { getAccessToken } from "../lib/auth";
 import { auth, db } from "../lib/firebase";
 import {
   collection,
@@ -136,24 +135,9 @@ export default function CollabRoom() {
 
   const fetchGoogleContacts = async () => {
     try {
-      const token = await getAccessToken();
-      if (!token) return;
-      const res = await fetch(
-        "https://people.googleapis.com/v1/people/me/connections?personFields=names,emailAddresses",
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      );
-      const data = await res.json();
-      if (data.connections) {
-        const contacts = data.connections
-          .map((c: any) => ({
-            name: c.names?.[0]?.displayName || "",
-            email: c.emailAddresses?.[0]?.value || "",
-          }))
-          .filter((c: any) => c.email);
-        setGoogleContacts(contacts);
-      }
+      const { contactsService } = await import("../lib/services/DemoContactsService");
+      const fetchedContacts = await contactsService.getContacts();
+      setGoogleContacts(fetchedContacts.map(c => ({ name: c.name, email: c.email })));
     } catch (e) {
       console.error("Failed to fetch contacts", e);
     }
@@ -164,92 +148,17 @@ export default function CollabRoom() {
   const handleCreateGoogleForm = async () => {
     try {
       setIsCreatingQuiz(true);
-      const token = await getAccessToken();
-      if (!token) {
-        alert("Please sign in to Google to create a Quiz.");
-        return;
-      }
-
-      const res = await fetch("https://forms.googleapis.com/v1/forms", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          info: {
-            title: `Synapse Study Quiz - ${new Date().toLocaleDateString()}`,
-            documentTitle: `Synapse Study Quiz - ${new Date().toLocaleDateString()}`,
-          },
-        }),
-      });
-      const data = await res.json();
-      if (data.formId && user) {
-        // Add some default questions via batchUpdate
-        await fetch(
-          `https://forms.googleapis.com/v1/forms/${data.formId}:batchUpdate`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              requests: [
-                {
-                  createItem: {
-                    item: {
-                      title:
-                        "What is the primary topic of our current study session?",
-                      questionItem: {
-                        question: {
-                          required: true,
-                          choiceQuestion: {
-                            type: "RADIO",
-                            options: [
-                              { value: "Macroeconomics" },
-                              { value: "IS-LM Model" },
-                              { value: "Psychology 101" },
-                              { value: "Other" },
-                            ],
-                          },
-                        },
-                      },
-                    },
-                    location: { index: 0 },
-                  },
-                },
-                {
-                  createItem: {
-                    item: {
-                      title: "How well do you understand the material?",
-                      questionItem: {
-                        question: {
-                          required: true,
-                          scaleQuestion: {
-                            low: 1,
-                            high: 5,
-                            lowLabel: "Not at all",
-                            highLabel: "Perfectly",
-                          },
-                        },
-                      },
-                    },
-                    location: { index: 1 },
-                  },
-                },
-              ],
-            }),
-          },
-        );
-
+      await new Promise(r => setTimeout(r, 1000));
+      const mockFormId = Math.random().toString(36).substring(7);
+      
+      if (user) {
         // Save to Firebase
-        const formUrl = `https://docs.google.com/forms/d/${data.formId}/edit`;
-        await setDoc(doc(db, "rooms", roomId, "quizzes", data.formId), {
+        const formUrl = `https://docs.google.com/forms/d/${mockFormId}/edit`;
+        await setDoc(doc(db, "rooms", roomId, "quizzes", mockFormId), {
           roomId,
-          formId: data.formId,
+          formId: mockFormId,
           formUrl,
-          title: data.info.title,
+          title: `Demo Quiz - ${new Date().toLocaleDateString()}`,
           userId: user.uid,
           createdAt: serverTimestamp(),
         });
@@ -259,7 +168,7 @@ export default function CollabRoom() {
           {
             roomId,
             user: "System",
-            text: `A new Quiz has been created for the group: ${formUrl}`,
+            text: `A new Demo Quiz has been created for the group: ${formUrl}`,
             time: new Date().toLocaleTimeString([], {
               hour: "2-digit",
               minute: "2-digit",
@@ -268,12 +177,11 @@ export default function CollabRoom() {
             createdAt: serverTimestamp(),
           },
         );
-
         window.open(formUrl, "_blank");
       }
     } catch (e) {
       console.error(e);
-      alert("Failed to create Google Form");
+      alert("Failed to create Demo Form");
     } finally {
       setIsCreatingQuiz(false);
     }
@@ -282,43 +190,29 @@ export default function CollabRoom() {
   const handleCreateMeet = async () => {
     try {
       setIsCreatingMeet(true);
-      const token = await getAccessToken();
-      if (!token) {
-        alert("Please sign in to Google to create a Meet.");
-        return;
-      }
-
-      const res = await fetch("https://meet.googleapis.com/v2/spaces", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({}),
-      });
-      const data = await res.json();
-      if (data.meetingUri) {
-        setMeetUrl(data.meetingUri);
-        if (user) {
-          await setDoc(
-            doc(db, "rooms", roomId, "messages", Date.now().toString()),
-            {
-              roomId,
-              user: "System",
-              text: `A new Google Meet has been created for this room: ${data.meetingUri}`,
-              time: new Date().toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              }),
-              userId: user.uid,
-              createdAt: serverTimestamp(),
-            },
-          );
-        }
+      await new Promise(r => setTimeout(r, 500));
+      const demoUri = "https://meet.google.com/demo-meet-xyz";
+      setMeetUrl(demoUri);
+      
+      if (user) {
+        await setDoc(
+          doc(db, "rooms", roomId, "messages", Date.now().toString()),
+          {
+            roomId,
+            user: "System",
+            text: `A new Demo Meet has been created for this room: ${demoUri}`,
+            time: new Date().toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+            userId: user.uid,
+            createdAt: serverTimestamp(),
+          },
+        );
       }
     } catch (err) {
       console.error(err);
-      alert("Failed to create Google Meet space.");
+      alert("Failed to create Meet space.");
     } finally {
       setIsCreatingMeet(false);
     }
@@ -326,58 +220,25 @@ export default function CollabRoom() {
 
   const handleScheduleSession = async () => {
     try {
-      const token = await getAccessToken();
-      if (!token)
-        return alert("Please sign in to Google to schedule a session.");
-
-      const startDate = new Date();
-      startDate.setHours(startDate.getHours() + 1);
-      const endDate = new Date(startDate);
-      endDate.setHours(endDate.getHours() + 1);
-
-      const res = await fetch(
-        "https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1",
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
+      await new Promise(r => setTimeout(r, 500));
+      const demoLink = "https://calendar.google.com/calendar/r/eventedit";
+      if (user) {
+        await setDoc(
+          doc(db, "rooms", roomId, "messages", Date.now().toString()),
+          {
+            roomId,
+            user: "System",
+            text: `Study session scheduled! Demo event added.`,
+            time: new Date().toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+            userId: user.uid,
+            createdAt: serverTimestamp(),
           },
-          body: JSON.stringify({
-            summary: "Synapse Study Session",
-            description: "Collaborative study session scheduled from Synapse.",
-            start: { dateTime: startDate.toISOString() },
-            end: { dateTime: endDate.toISOString() },
-            conferenceData: {
-              createRequest: {
-                requestId: Math.random().toString(36).substring(7),
-                conferenceSolutionKey: { type: "hangoutsMeet" },
-              },
-            },
-          }),
-        },
-      );
-
-      const data = await res.json();
-      if (data.htmlLink) {
-        if (user) {
-          await setDoc(
-            doc(db, "rooms", roomId, "messages", Date.now().toString()),
-            {
-              roomId,
-              user: "System",
-              text: `Study session scheduled! Event added to your calendar.`,
-              time: new Date().toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              }),
-              userId: user.uid,
-              createdAt: serverTimestamp(),
-            },
-          );
-        }
-        window.open(data.htmlLink, "_blank");
+        );
       }
+      window.open(demoLink, "_blank");
     } catch (err) {
       console.error(err);
       alert("Failed to schedule session.");
@@ -530,36 +391,19 @@ export default function CollabRoom() {
             <button
               onClick={async () => {
                 try {
-                  const token = await getAccessToken();
-                  if (!token) return alert("Please sign in to Google");
-                  const res = await fetch(
-                    "https://chat.googleapis.com/v1/spaces",
+                  await new Promise(r => setTimeout(r, 500));
+                  const mockId = Math.random().toString(36).substring(7);
+                  setMessages((prev) => [
+                    ...prev,
                     {
-                      method: "POST",
-                      headers: {
-                        Authorization: `Bearer ${token}`,
-                        "Content-Type": "application/json",
-                      },
-                      body: JSON.stringify({
-                        displayName: "Memora Study Group",
-                        spaceType: "SPACE",
+                      user: "System",
+                      text: `Demo Chat space created! ID: ${mockId}`,
+                      time: new Date().toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
                       }),
                     },
-                  );
-                  const data = await res.json();
-                  if (data.name) {
-                    setMessages((prev) => [
-                      ...prev,
-                      {
-                        user: "System",
-                        text: `Google Chat space created! ID: ${data.name}`,
-                        time: new Date().toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        }),
-                      },
-                    ]);
-                  }
+                  ]);
                 } catch (e) {
                   console.error(e);
                   alert("Failed to create chat space.");
