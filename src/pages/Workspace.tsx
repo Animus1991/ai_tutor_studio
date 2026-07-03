@@ -1,11 +1,15 @@
 import { useState, useEffect } from "react";
 import { useAuthStore } from "../store/useAuthStore";
-import { Calendar, Users, GraduationCap, Clock, ExternalLink } from "lucide-react";
+import { Calendar, Users, GraduationCap, Clock, ExternalLink, Target } from "lucide-react";
 import { contactsService } from "../lib/services/DemoContactsService";
 import { calendarService } from "../lib/services/DemoCalendarService";
+import VoiceNotesWidget from "../components/VoiceNotesWidget";
+import FocusModeOverlay from "../components/FocusModeOverlay";
+import { useStore } from "../store/useStore";
 
 export default function Workspace() {
   const { accessToken } = useAuthStore();
+  const { toggleFocusMode } = useStore();
   const [events, setEvents] = useState<any[]>([]);
   const [courses, setCourses] = useState<any[]>([]);
   const [contacts, setContacts] = useState<any[]>([]);
@@ -41,7 +45,6 @@ export default function Workspace() {
 
         // Map contacts to the expected format
         setContacts(fetchedContacts.map(c => ({ names: [{ displayName: c.name }] })));
-
       } catch (err) {
         console.error("Failed to fetch workspace data:", err);
       } finally {
@@ -54,6 +57,7 @@ export default function Workspace() {
 
   return (
     <div className="flex-1 overflow-y-auto">
+      <FocusModeOverlay />
       <header className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-slate-200/60 dark:border-slate-800/60 sticky top-0 z-40 px-4 sm:px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-xl sm:text-2xl font-display font-bold text-slate-900 dark:text-white tracking-tight">
@@ -63,6 +67,13 @@ export default function Workspace() {
             Your connected Google services and autonomous scheduling.
           </p>
         </div>
+        <button 
+          onClick={toggleFocusMode}
+          className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 px-4 py-2 rounded-xl font-medium transition-colors shadow-sm"
+        >
+          <Target className="w-4 h-4" />
+          Enter Focus Mode
+        </button>
       </header>
 
       <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6">
@@ -73,6 +84,8 @@ export default function Workspace() {
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             
+            <VoiceNotesWidget />
+
             {/* Calendar Widget */}
             <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 rounded-xl p-5 shadow-sm col-span-1 lg:col-span-2">
               <div className="flex items-center gap-3 mb-6">

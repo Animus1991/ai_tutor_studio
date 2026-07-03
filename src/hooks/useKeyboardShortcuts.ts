@@ -1,17 +1,41 @@
 import { useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useStore } from '../store/useStore';
+import { useSearch } from './useSearch';
 
 export function useKeyboardShortcuts() {
   const navigate = useNavigate();
   const location = useLocation();
   const { timerIsActive, setTimerIsActive } = useStore();
+  const { openSearch, closeSearch, isOpen } = useSearch();
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Allow Escape to close search even if input is focused
+      if (e.key === 'Escape') {
+        if (isOpen) {
+          closeSearch();
+          return;
+        }
+      }
+
       // Don't trigger shortcuts if user is typing in an input or textarea
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+      if (
+        document.activeElement instanceof HTMLInputElement || 
+        document.activeElement instanceof HTMLTextAreaElement ||
+        document.activeElement?.getAttribute('contenteditable') === 'true'
+      ) {
         return;
+      }
+
+      // Ctrl/Cmd + K -> Command Palette
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        if (isOpen) {
+          closeSearch();
+        } else {
+          openSearch();
+        }
       }
 
       // Ctrl/Cmd + L -> Library
@@ -20,21 +44,37 @@ export function useKeyboardShortcuts() {
         navigate('/');
       }
 
-      // Ctrl/Cmd + T -> Tasks (Note: some browsers may intercept this)
+      // Ctrl/Cmd + T -> Toggle Timer Manager
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 't') {
-        // We'll also support Alt+T as a fallback below
         e.preventDefault();
-        navigate('/tasks');
+        window.dispatchEvent(new CustomEvent('toggleTimerVisibility'));
       }
 
-      // Ctrl/Cmd + S -> Save Notes
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+      // Ctrl/Cmd + M -> Toggle Audio Controller
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'm') {
         e.preventDefault();
-        const event = new CustomEvent('saveNotes');
-        window.dispatchEvent(event);
+        window.dispatchEvent(new CustomEvent('toggleAudioVisibility'));
       }
 
-      // Alt + Number/Letters for navigation and actions
+      // Single letter shortcuts (no modifiers)
+      if (!e.metaKey && !e.ctrlKey && !e.altKey) {
+        switch (e.key.toLowerCase()) {
+          case 'a':
+            if (e.shiftKey) {
+              window.dispatchEvent(new CustomEvent('toggleAudioVisibility'));
+            } else {
+              window.dispatchEvent(new CustomEvent('toggleAudioPlay'));
+            }
+            break;
+          case 't':
+            if (e.shiftKey) {
+              window.dispatchEvent(new CustomEvent('toggleTimerVisibility'));
+            } else {
+              setTimerIsActive(!timerIsActive);
+            }
+            break;
+        }
+      }
       if (e.altKey) {
         switch (e.key.toLowerCase()) {
           case '1':
@@ -71,5 +111,5 @@ export function useKeyboardShortcuts() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [navigate, location, timerIsActive, setTimerIsActive]);
+  }, [navigate, location, timerIsActive, setTimerIsActive, isOpen, openSearch, closeSearch]);
 }

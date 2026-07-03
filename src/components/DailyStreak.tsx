@@ -12,7 +12,7 @@ const streakDays = [
 
 export default function DailyStreak() {
   return (
-    <div className="bg-gradient-to-br from-orange-500 to-rose-500 rounded-2xl p-5 sm:p-6 shadow-sm text-white h-full flex flex-col justify-between relative overflow-hidden">
+    <div className="bg-gradient-to-br from-orange-500 to-rose-500 rounded-2xl p-5 sm:p-6 shadow-sm text-white h-full flex flex-col justify-between relative overflow-hidden print-break-inside-avoid">
       <div className="absolute top-0 right-0 p-4 opacity-20 pointer-events-none">
         <Flame className="w-24 h-24 rotate-12 transform scale-150" />
       </div>

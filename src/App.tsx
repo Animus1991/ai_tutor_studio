@@ -22,6 +22,8 @@ import { motion } from "framer-motion";
 import { OfflineIndicator } from "./components/OfflineIndicator";
 import { SearchProvider } from "./hooks/useSearch";
 import { Toaster } from "sonner";
+import QuickAddModal from "./components/QuickAddModal";
+import PostSessionModal from "./components/PostSessionModal";
 
 export default function App() {
   const { needsAuth, setNeedsAuth, setUser, setAccessToken } = useAuthStore();
@@ -114,8 +116,12 @@ export default function App() {
       <SearchProvider>
         <Toaster position="bottom-right" />
         <OfflineIndicator />
-        <TimerManager />
-        <AudioController />
+        <QuickAddModal />
+        <PostSessionModal />
+        <div className="md:contents fixed bottom-16 left-0 right-0 z-40 flex items-center justify-between px-4 py-2 bg-white/90 dark:bg-slate-900/90 backdrop-blur border-t border-slate-200 dark:border-slate-800 md:bg-transparent md:backdrop-blur-none md:border-none md:p-0 pointer-events-auto">
+          <div className="md:contents"><AudioController /></div>
+          <div className="md:contents"><TimerManager /></div>
+        </div>
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<Layout />}>

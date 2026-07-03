@@ -34,6 +34,12 @@ interface AppState {
   toggleFeynmanMode: () => void;
   isTTSActive: boolean;
   toggleTTS: () => void;
+  xp: number;
+  addXP: (amount: number) => void;
+  streak: number;
+  streakFreezes: number;
+  useStreakFreeze: () => boolean;
+  checkAndAwardFreeze: () => void;
 }
 
 export const useStore = create<AppState>()(
@@ -75,6 +81,28 @@ export const useStore = create<AppState>()(
       toggleFeynmanMode: () => set((state) => ({ isFeynmanMode: !state.isFeynmanMode })),
       isTTSActive: false,
       toggleTTS: () => set((state) => ({ isTTSActive: !state.isTTSActive })),
+      xp: 0,
+      addXP: (amount) => set((state) => ({ xp: state.xp + amount })),
+      streak: 0,
+      streakFreezes: 1, // Start with 1 freeze
+      useStreakFreeze: () => {
+        let success = false;
+        set((state) => {
+          if (state.streakFreezes > 0) {
+            success = true;
+            return { streakFreezes: state.streakFreezes - 1 };
+          }
+          return state;
+        });
+        return success;
+      },
+      checkAndAwardFreeze: () => set((state) => {
+        // Award a freeze for every 7 days of streak, max 3 freezes
+        if (state.streak > 0 && state.streak % 7 === 0 && state.streakFreezes < 3) {
+          return { streakFreezes: state.streakFreezes + 1 };
+        }
+        return state;
+      }),
     }),
     {
       name: 'app-storage',

@@ -20,6 +20,7 @@ import {
   BrainCircuit,
   ExternalLink,
   Calendar,
+  Network
 } from "lucide-react";
 import { useStore } from "../store/useStore";
 import { cn } from "../lib/utils";
@@ -31,15 +32,22 @@ import {
   query,
   setDoc,
   doc,
+  getDoc,
   serverTimestamp,
   orderBy,
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 
-import { Tldraw } from "tldraw";
-import "tldraw/tldraw.css";
+import * as Y from "yjs";
+import { WebsocketProvider } from "y-websocket";
+
 import Room from "../components/Room";
 import Whiteboard from "../components/Whiteboard";
+import KnowledgeGraph from "../components/KnowledgeGraph";
+import { FireProvider } from "y-fire";
+import { app } from "../lib/firebase";
+
+import PresenceIndicator from "../components/PresenceIndicator";
 
 export default function CollabRoom() {
   const [isVideoOn, setIsVideoOn] = useState(true);
@@ -47,7 +55,7 @@ export default function CollabRoom() {
   const [activeTab, setActiveTab] = useState<
     "chat" | "tasks" | "notes" | "ai" | "quizzes"
   >("chat");
-  const [mainView, setMainView] = useState<"video" | "whiteboard">("video");
+  const [mainView, setMainView] = useState<"video" | "whiteboard" | "graph">("video");
   const [chatMessage, setChatMessage] = useState("");
 
   const [user, setUser] = useState<any>(null);
@@ -56,11 +64,52 @@ export default function CollabRoom() {
   const [messages, setMessages] = useState<any[]>([]);
   const [invitedContacts, setInvitedContacts] = useState<any[]>([]);
   const [quizzes, setQuizzes] = useState<any[]>([]);
+  
+  // Yjs State
+  const [ydoc] = useState(() => new Y.Doc());
+  const [provider, setProvider] = useState<WebsocketProvider | null>(null);
+  const [awarenessUsers, setAwarenessUsers] = useState<any[]>([]);
 
   useEffect(() => {
-    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+    // Setup Yjs Websocket Provider
+    const wsProvider = new WebsocketProvider(
+      "wss://demos.yjs.dev",
+      `memora-collab-${roomId}`,
+      ydoc
+    );
+    setProvider(wsProvider);
+
+    // Awareness updates
+    const awareness = wsProvider.awareness;
+    
+    // Set local awareness state
+    const updateAwareness = (userObj: any) => {
+      awareness.setLocalStateField("user", {
+        name: userObj?.email?.split('@')[0] || "Guest",
+        color: "#" + Math.floor(Math.random() * 16777215).toString(16),
+        avatar: `https://ui-avatars.com/api/?name=${userObj?.email || 'G'}`
+      });
+    };
+
+    awareness.on('change', () => {
+      const users = Array.from(awareness.getStates().values())
+        .filter((state: any) => state.user)
+        .map((state: any) => state.user);
+      setAwarenessUsers(users);
+    });
+
+    const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
+      updateAwareness(currentUser);
+
       if (currentUser) {
+        // Initialize y-firestore for persistence
+        const fireProvider = new FireProvider({
+          firebaseApp: app,
+          ydoc,
+          path: `rooms/${roomId}/yjs_state`
+        });
+
         const qMessages = query(
           collection(db, "rooms", roomId, "messages"),
           orderBy("createdAt", "asc"),
@@ -97,10 +146,16 @@ export default function CollabRoom() {
           unsubMessages();
           unsubParticipants();
           unsubQuizzes();
+          fireProvider.destroy();
         };
       }
     });
-    return () => unsubscribeAuth();
+
+    return () => {
+      unsubscribeAuth();
+      wsProvider.disconnect();
+      ydoc.destroy();
+    };
   }, []);
 
   const [tasks, setTasks] = useState([
@@ -350,6 +405,9 @@ export default function CollabRoom() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            {/* Presence Indicator */}
+            <PresenceIndicator users={awarenessUsers} />
+            
             <button
               onClick={handleScheduleSession}
               className="px-2.5 py-1.5 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold hover:shadow-md transition-all flex items-center gap-1.5 shadow-sm"
@@ -593,15 +651,15 @@ export default function CollabRoom() {
           )}
         </AnimatePresence>
 
-        {/* Video Grid / Whiteboard */}
+        {/* Video Grid / Whiteboard / Graph */}
         <div className="flex-1 bg-slate-900 rounded-3xl overflow-hidden relative border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-center">
           {mainView === "video" ? (
             <div className="p-4 w-full h-full">
               <Room roomId="demo-room" isVideoOn={isVideoOn} isMicOn={isMicOn} />
             </div>
-          ) : (
+          ) : mainView === "whiteboard" ? (
             <div className="w-full h-full bg-white relative">
-              <Whiteboard />
+              <Whiteboard ydoc={ydoc} />
 
               {/* Overlay small videos */}
               <div className="absolute top-4 right-4 flex flex-col gap-2 z-50">
@@ -623,6 +681,10 @@ export default function CollabRoom() {
                 </div>
               </div>
             </div>
+          ) : (
+            <div className="w-full h-full bg-white dark:bg-slate-900 relative">
+              <KnowledgeGraph />
+            </div>
           )}
 
           {/* Meeting Controls */}
@@ -640,6 +702,20 @@ export default function CollabRoom() {
               )}
             >
               <FileImage className="w-4 h-4" aria-hidden="true" />
+            </button>
+            <button
+              onClick={() =>
+                setMainView(mainView === "graph" ? "video" : "graph")
+              }
+              aria-label="Toggle Knowledge Graph"
+              className={cn(
+                "w-10 h-10 rounded-xl flex items-center justify-center transition-colors",
+                mainView === "graph"
+                  ? "bg-indigo-500 text-white shadow-[0_0_15px_rgba(99,102,241,0.5)]"
+                  : "bg-white/20 text-white hover:bg-white/30",
+              )}
+            >
+              <Network className="w-4 h-4" aria-hidden="true" />
             </button>
             <div className="w-px h-6 bg-white/20 mx-0.5" />
             <button

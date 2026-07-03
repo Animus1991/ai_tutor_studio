@@ -1,11 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useMicrophone } from '../hooks/useMicrophone';
-import { Mic, Square, Play, Trash2, Save } from 'lucide-react';
+import { Mic, Square, Play, Trash2, Save, Sparkles, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { summarizeAudio } from '../lib/services/audioService';
 
 export default function AudioNoteRecorder() {
   const { isRecording, startRecording, stopRecording, audioBlob, audioUrl } = useMicrophone();
-  const [notes, setNotes] = useState<{ id: string; url: string; date: string }[]>([]);
+  const [notes, setNotes] = useState<{ id: string; url: string; date: string; summary?: string }[]>([]);
+  const [isSummarizing, setIsSummarizing] = useState(false);
+  const [currentSummary, setCurrentSummary] = useState<string | null>(null);
 
   useEffect(() => {
     const handleToggle = () => {
@@ -19,11 +22,33 @@ export default function AudioNoteRecorder() {
     return () => window.removeEventListener('toggleMicrophone', handleToggle);
   }, [isRecording, startRecording, stopRecording]);
 
+  useEffect(() => {
+    // Reset summary when starting a new recording
+    if (isRecording) {
+      setCurrentSummary(null);
+    }
+  }, [isRecording]);
+
   const handleSave = () => {
     if (audioUrl) {
-      setNotes(prev => [...prev, { id: Date.now().toString(), url: audioUrl, date: new Date().toLocaleString() }]);
+      setNotes(prev => [...prev, { id: Date.now().toString(), url: audioUrl, date: new Date().toLocaleString(), summary: currentSummary || undefined }]);
       toast.success('Audio note saved locally!');
-      // In a real app, upload audioBlob to server or Firebase Storage here.
+    }
+  };
+
+  const handleSummarize = async () => {
+    if (!audioBlob) return;
+    setIsSummarizing(true);
+    setCurrentSummary(null);
+    try {
+      const summary = await summarizeAudio(audioBlob);
+      setCurrentSummary(summary);
+      toast.success('Audio summarized successfully!');
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to summarize audio.');
+    } finally {
+      setIsSummarizing(false);
     }
   };
 
@@ -39,7 +64,7 @@ export default function AudioNoteRecorder() {
       </div>
 
       <div className="flex flex-col gap-4">
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           {!isRecording ? (
             <button
               onClick={startRecording}
@@ -57,28 +82,50 @@ export default function AudioNoteRecorder() {
           )}
 
           {audioUrl && !isRecording && (
-            <button
-              onClick={handleSave}
-              className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-            >
-              <Save className="w-4 h-4" /> Save Note
-            </button>
+            <>
+              <button
+                onClick={handleSummarize}
+                disabled={isSummarizing}
+                className="flex items-center gap-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+              >
+                {isSummarizing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                {isSummarizing ? 'Summarizing...' : 'Summarize'}
+              </button>
+              <button
+                onClick={handleSave}
+                className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+              >
+                <Save className="w-4 h-4" /> Save Note
+              </button>
+            </>
           )}
         </div>
 
         {audioUrl && (
           <div className="w-full">
             <audio src={audioUrl} controls className="w-full h-10" />
+            {currentSummary && (
+              <div className="mt-3 p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg border border-indigo-100 dark:border-indigo-800/30">
+                <p className="text-sm text-indigo-900 dark:text-indigo-200">{currentSummary}</p>
+              </div>
+            )}
           </div>
         )}
 
         {notes.length > 0 && (
-          <div className="mt-4 space-y-2">
+          <div className="mt-4 space-y-3">
             <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300">Saved Notes</h4>
             {notes.map(note => (
-              <div key={note.id} className="flex items-center justify-between bg-slate-50 dark:bg-slate-800 p-2 rounded-lg border border-slate-100 dark:border-slate-700">
-                <span className="text-xs text-slate-500 dark:text-slate-400">{note.date}</span>
-                <audio src={note.url} controls className="h-8 w-48" />
+              <div key={note.id} className="flex flex-col gap-2 bg-slate-50 dark:bg-slate-800 p-3 rounded-lg border border-slate-100 dark:border-slate-700">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-slate-500 dark:text-slate-400">{note.date}</span>
+                  <audio src={note.url} controls className="h-8 w-48" />
+                </div>
+                {note.summary && (
+                  <p className="text-xs text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-900/50 p-2 rounded border border-slate-100 dark:border-slate-700/50">
+                    {note.summary}
+                  </p>
+                )}
               </div>
             ))}
           </div>

@@ -1,27 +1,32 @@
 import { ResponsiveContainer, ComposedChart, Area, Line, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { useState, useEffect } from 'react';
-
-const mockData = [
-  { day: 'Mon', hours: 2, goal: 3, sessions: 3 },
-  { day: 'Tue', hours: 3.5, goal: 3, sessions: 5 },
-  { day: 'Wed', hours: 1.5, goal: 3, sessions: 2 },
-  { day: 'Thu', hours: 4, goal: 3.5, sessions: 6 },
-  { day: 'Fri', hours: 2.5, goal: 3.5, sessions: 4 },
-  { day: 'Sat', hours: 5, goal: 4, sessions: 7 },
-  { day: 'Sun', hours: 3, goal: 4, sessions: 4 },
-];
+import { useStore } from '../store/useStore';
+import { format, subDays, startOfDay, isSameDay } from 'date-fns';
 
 export default function StudyProgressChart() {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<any[]>([]);
+  const history = useStore(state => state.studySessionsHistory);
+  const dailyGoal = useStore(state => state.dailyGoal) / 60; // in hours
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setData(mockData);
-      setLoading(false);
-    }, 1500);
-    return () => clearTimeout(timer);
-  }, []);
+    // Generate real data for the last 7 days
+    const chartData = Array.from({ length: 7 }).map((_, i) => {
+      const date = subDays(new Date(), 6 - i);
+      const dayHistory = history.filter(h => isSameDay(new Date(h.date), date));
+      const focusMinutes = dayHistory.filter(h => h.type === 'focus').reduce((acc, h) => acc + h.duration, 0);
+      
+      return {
+        day: format(date, 'EEE'),
+        hours: Number((focusMinutes / 60).toFixed(1)),
+        goal: Number(dailyGoal.toFixed(1)),
+        sessions: dayHistory.filter(h => h.type === 'focus').length
+      };
+    });
+
+    setData(chartData);
+    setLoading(false);
+  }, [history, dailyGoal]);
 
   if (loading) {
     return (

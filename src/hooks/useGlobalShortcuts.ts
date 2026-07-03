@@ -1,12 +1,22 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMicrophone } from './useMicrophone';
+import { useSearch } from './useSearch';
 
 export function useGlobalShortcuts() {
   const navigate = useNavigate();
+  const { openSearch, closeSearch, isOpen } = useSearch();
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Allow Escape to close search even if input is focused
+      if (e.key === 'Escape') {
+        if (isOpen) {
+          closeSearch();
+          return;
+        }
+      }
+
       // Ignore if user is typing in an input or textarea
       if (
         document.activeElement instanceof HTMLInputElement ||
@@ -14,6 +24,28 @@ export function useGlobalShortcuts() {
         document.activeElement?.getAttribute('contenteditable') === 'true'
       ) {
         return;
+      }
+
+      // Global Command Palette toggle (Ctrl+K or Cmd+K)
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        if (isOpen) {
+          closeSearch();
+        } else {
+          openSearch();
+        }
+      }
+
+      // Toggle Timer Manager (Ctrl+T or Cmd+T)
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 't') {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent('toggleTimerVisibility'));
+      }
+
+      // Toggle Audio Controller visibility (Ctrl+M or Cmd+M)
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'm') {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent('toggleAudioVisibility'));
       }
 
       // Check for modifier keys (e.g., Alt/Option + Key)
@@ -45,5 +77,5 @@ export function useGlobalShortcuts() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [navigate]);
+  }, [navigate, isOpen, openSearch, closeSearch]);
 }

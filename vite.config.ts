@@ -35,7 +35,7 @@ export default defineConfig(() => {
     ],
     resolve: {
       alias: {
-        "@": path.resolve(__dirname, "."),
+        "@": path.resolve(__dirname, "."), "yjs": path.resolve(__dirname, "node_modules/yjs"),
       },
     },
     server: {

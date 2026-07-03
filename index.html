@@ -46,8 +46,14 @@
     <div id="root"></div>
     <div id="global-error-container"></div>
     <script>
+      const originalConsoleError = console.error;
+      console.error = function(...args) {
+        if (typeof args[0] === 'string' && args[0].includes('[vite]')) return;
+        originalConsoleError.apply(console, args);
+      };
+
       function showGlobalError(message) {
-        if (typeof message === 'string' && message.includes('[vite]')) return;
+        if (String(message).includes('[vite]')) return;
         const container = document.getElementById('global-error-container');
         const toast = document.createElement('div');
         toast.className = 'global-error-toast';
@@ -61,15 +67,15 @@
 
       window.addEventListener('error', (event) => {
         const msg = event.error?.message || event.message || "An unexpected error occurred.";
-        if (typeof msg === 'string' && msg.includes('[vite]')) return;
-        showGlobalError(msg);
-        fetch('/api/health', { method: 'POST', body: JSON.stringify({ type: 'global', message: msg }) }).catch(() => {});
+        if (String(msg).includes('[vite]')) return;
+        showGlobalError(String(msg));
+        fetch('/api/health', { method: 'POST', body: JSON.stringify({ type: 'global', message: String(msg) }) }).catch(() => {});
       });
       window.addEventListener('unhandledrejection', (event) => {
         const msg = event.reason?.message || event.reason || "An unexpected promise rejection occurred.";
-        if (typeof msg === 'string' && msg.includes('[vite]')) return;
-        showGlobalError(msg);
-        fetch('/api/health', { method: 'POST', body: JSON.stringify({ type: 'promise', message: msg }) }).catch(() => {});
+        if (String(msg).includes('[vite]')) return;
+        showGlobalError(String(msg));
+        fetch('/api/health', { method: 'POST', body: JSON.stringify({ type: 'promise', message: String(msg) }) }).catch(() => {});
       });
     </script>
     <script type="module" src="/src/main.tsx"></script>

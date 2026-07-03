@@ -42,8 +42,21 @@ export default function AudioController() {
     }
   }, [isPlaying]);
 
+  useEffect(() => {
+    const handleToggleVisibility = () => setIsExpanded(prev => !prev);
+    const handleTogglePlay = () => setIsPlaying(prev => !prev);
+    
+    window.addEventListener('toggleAudioVisibility', handleToggleVisibility);
+    window.addEventListener('toggleAudioPlay', handleTogglePlay);
+    
+    return () => {
+      window.removeEventListener('toggleAudioVisibility', handleToggleVisibility);
+      window.removeEventListener('toggleAudioPlay', handleTogglePlay);
+    };
+  }, []);
+
   return (
-    <div className="fixed bottom-6 left-6 z-50 flex flex-col items-start gap-3 pointer-events-none">
+    <div className="md:fixed md:bottom-6 md:left-6 md:z-50 flex flex-col items-start gap-3 pointer-events-none relative">
       <audio ref={audioRef} loop />
       
       <AnimatePresence>
@@ -52,7 +65,7 @@ export default function AudioController() {
             initial={{ opacity: 0, y: 20, scale: 0.9 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.9 }}
-            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-3xl shadow-2xl shadow-indigo-500/10 pointer-events-auto flex flex-col w-[240px]"
+            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-3xl shadow-2xl shadow-indigo-500/10 pointer-events-auto flex flex-col w-[240px] origin-bottom-left absolute md:static bottom-full mb-4 left-0"
           >
             <div className="flex items-center justify-between mb-3">
               <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
@@ -109,15 +122,15 @@ export default function AudioController() {
         }}
         onDoubleClick={() => setIsExpanded(!isExpanded)}
         className={cn(
-          "h-14 rounded-2xl flex items-center gap-3 px-4 font-bold shadow-xl border pointer-events-auto transition-all",
+          "h-10 w-10 md:w-auto md:h-14 rounded-full md:rounded-2xl flex items-center justify-center md:px-4 gap-2 md:gap-3 font-bold shadow-lg md:shadow-xl border pointer-events-auto transition-all",
           isPlaying 
             ? "bg-indigo-600 border-indigo-500 text-white shadow-indigo-500/20" 
             : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400"
         )}
       >
-        <Music className={cn("w-5 h-5", isPlaying ? "animate-pulse" : "")} />
+        <Music className={cn("w-4 h-4 md:w-5 md:h-5", isPlaying ? "animate-pulse" : "")} />
         {isExpanded && (
-          <span onClick={(e) => { e.stopPropagation(); setIsExpanded(false); }} className="ml-1 opacity-60 hover:opacity-100 p-1">
+          <span onClick={(e) => { e.stopPropagation(); setIsExpanded(false); }} className="hidden md:block ml-1 opacity-60 hover:opacity-100 p-1">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
           </span>
         )}

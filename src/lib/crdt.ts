@@ -1,11 +1,11 @@
 import * as Y from 'yjs';
 import { IndexeddbPersistence } from 'y-indexeddb';
-import { WebrtcProvider } from 'y-webrtc';
+import { WebsocketProvider } from 'y-websocket';
 import { useState, useEffect } from 'react';
 
 export class CrdtStore {
   public doc: Y.Doc;
-  public provider: WebrtcProvider | null = null;
+  public provider: WebsocketProvider | null = null;
   public persistence: IndexeddbPersistence | null = null;
   private roomName: string;
 
@@ -23,11 +23,13 @@ export class CrdtStore {
     // Real-time syncing (disabled during server build, safe to run in browser)
     if (typeof window !== 'undefined') {
       try {
-        this.provider = new WebrtcProvider(this.roomName, this.doc, {
-          signaling: ['wss://signaling.yjs.dev', 'wss://y-webrtc-signaling-eu.herokuapp.com']
-        });
+        this.provider = new WebsocketProvider(
+          'wss://demos.yjs.dev',
+          this.roomName,
+          this.doc
+        );
       } catch (e) {
-        console.warn('Failed to initialize WebRTC Provider for CRDT', e);
+        console.warn('Failed to initialize Websocket Provider for CRDT', e);
       }
     }
   }

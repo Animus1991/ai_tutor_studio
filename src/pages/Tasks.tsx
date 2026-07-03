@@ -50,18 +50,23 @@ const mockAnalyticsData = Array.from({ length: 7 }).map((_, i) => ({
 
 import ActivityFeed from "../components/ActivityFeed";
 
-import { calculateSM2 } from '../lib/sm2';
-import { useDictation } from '../hooks/useDictation';
+import { useMicrophone } from '../hooks/useMicrophone';
+import { summarizeAudio } from '../lib/services/audioService';
 import confetti from 'canvas-confetti';
+import { Sparkles, Loader2 } from 'lucide-react';
+import { FSRS, Card, Rating } from 'fsrs.js';
 
 import DashboardStats from "../components/DashboardStats";
+
+const fsrs = new FSRS();
 
 export default function Tasks() {
   const { pomodoroSessions } = useStore();
   const [isSyncingTasks, setIsSyncingTasks] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [tasks, setTasks] = useState<any[]>([]);
-  const { isDictating, transcript, toggleDictation } = useDictation();
+  const { isRecording, startRecording, stopRecording, audioBlob } = useMicrophone();
+  const [isSummarizing, setIsSummarizing] = useState(false);
   const [taskNotes, setTaskNotes] = useState("");
   const [selectedTasks, setSelectedTasks] = useState<string[]>([]);
   const [isSelectionMode, setIsSelectionMode] = useState(false);
@@ -89,14 +94,20 @@ export default function Tasks() {
     }
   };
 
-  useEffect(() => {
-    if (transcript) {
-      setTaskNotes((prev) => {
-        const separator = prev && !prev.endsWith(' ') ? ' ' : '';
-        return prev + separator + transcript;
-      });
+  const handleSummarizeAudio = async () => {
+    if (!audioBlob) return;
+    setIsSummarizing(true);
+    try {
+      const summary = await summarizeAudio(audioBlob);
+      setTaskNotes(prev => prev + (prev ? '\n\n' : '') + summary);
+      toast.success('Audio summarized and added to notes!');
+    } catch (e) {
+      console.error(e);
+      toast.error('Failed to summarize audio.');
+    } finally {
+      setIsSummarizing(false);
     }
-  }, [transcript]);
+  };
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
@@ -145,21 +156,27 @@ export default function Tasks() {
   const handleReviewTask = async (task: any, quality: number) => {
     if (!user) return;
     try {
-      const prevData = {
-        repetition: task.repetition || 0,
-        interval: task.interval || 1,
-        easinessFactor: task.easeFactor || 2.5,
-      };
+      let cardObj = new Card();
+      if (task.fsrsCard) {
+        Object.assign(cardObj, task.fsrsCard);
+        if (typeof cardObj.due === 'string') cardObj.due = new Date(cardObj.due);
+        if (typeof cardObj.last_review === 'string') cardObj.last_review = new Date(cardObj.last_review);
+      }
 
-      const newData = calculateSM2(quality, prevData);
+      const now = new Date();
+      const scheduling_cards = fsrs.repeat(cardObj, now);
+      
+      let ratingValue = Rating.Good;
+      if (quality <= 1) ratingValue = Rating.Again;
+      else if (quality === 2) ratingValue = Rating.Hard;
+      else if (quality === 3 || quality === 4) ratingValue = Rating.Good;
+      else if (quality >= 5) ratingValue = Rating.Easy;
 
-      const nextReview = new Date();
-      nextReview.setDate(nextReview.getDate() + newData.interval);
+      const newFsrsCard = scheduling_cards[ratingValue].card;
+      const nextReview = newFsrsCard.due;
 
       await updateDoc(doc(db, "users", user.uid, "tasks", task.id.toString()), {
-        repetition: newData.repetition,
-        interval: newData.interval,
-        easeFactor: newData.easinessFactor,
+        fsrsCard: Object.assign({}, newFsrsCard),
         nextReviewDate: nextReview.toISOString(),
         completed: quality >= 3 ? true : false,
       });
@@ -847,33 +864,46 @@ export default function Tasks() {
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
                       Notes / Description
                     </label>
-                    <button
-                      type="button"
-                      onClick={toggleDictation}
-                      className={cn(
-                        "p-1.5 rounded-lg transition-colors flex items-center gap-1.5 text-xs font-semibold",
-                        isDictating 
-                          ? "bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400" 
-                          : "bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700"
+                    <div className="flex gap-2">
+                      {audioBlob && !isRecording && (
+                        <button
+                          type="button"
+                          onClick={handleSummarizeAudio}
+                          disabled={isSummarizing}
+                          className="p-1.5 rounded-lg transition-colors flex items-center gap-1.5 text-xs font-semibold bg-indigo-50 text-indigo-600 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400 dark:hover:bg-indigo-900/50 disabled:opacity-50"
+                        >
+                          {isSummarizing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                          {isSummarizing ? 'Summarizing...' : 'Summarize Audio'}
+                        </button>
                       )}
-                    >
-                      {isDictating ? (
-                        <>
-                          <Square className="w-3.5 h-3.5 fill-current" /> Stop Dictating
-                        </>
-                      ) : (
-                        <>
-                          <Mic className="w-3.5 h-3.5" /> Dictate
-                        </>
-                      )}
-                    </button>
+                      <button
+                        type="button"
+                        onClick={isRecording ? stopRecording : startRecording}
+                        className={cn(
+                          "p-1.5 rounded-lg transition-colors flex items-center gap-1.5 text-xs font-semibold",
+                          isRecording 
+                            ? "bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400" 
+                            : "bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700"
+                        )}
+                      >
+                        {isRecording ? (
+                          <>
+                            <Square className="w-3.5 h-3.5 fill-current" /> Stop Recording
+                          </>
+                        ) : (
+                          <>
+                            <Mic className="w-3.5 h-3.5" /> Record Note
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
                   <textarea
                     name="notes"
                     value={taskNotes}
                     onChange={(e) => setTaskNotes(e.target.value)}
                     className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors min-h-[100px] resize-y"
-                    placeholder="Add details, or use dictation..."
+                    placeholder="Add details, or use record note to summarize audio with Gemini..."
                   />
                 </div>
                 <div>

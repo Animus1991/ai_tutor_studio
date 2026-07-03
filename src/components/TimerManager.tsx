@@ -44,6 +44,7 @@ export default function TimerManager() {
         addPomodoroSession(focusDuration);
         setTimerMode("break");
         setTimerTimeLeft(breakDuration * 60);
+        window.dispatchEvent(new CustomEvent('showPostSessionModal'));
         if ("Notification" in window && Notification.permission === "granted") {
           new Notification("Focus Session Complete!", {
             body: `Time for a ${breakDuration}-minute break. Great job!`,
@@ -107,15 +108,25 @@ export default function TimerManager() {
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
+  useEffect(() => {
+    const handleToggleVisibility = () => setIsExpanded(prev => !prev);
+    
+    window.addEventListener('toggleTimerVisibility', handleToggleVisibility);
+    
+    return () => {
+      window.removeEventListener('toggleTimerVisibility', handleToggleVisibility);
+    };
+  }, []);
+
   return (
-    <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3 pointer-events-none">
+    <div className="md:fixed md:bottom-6 md:right-6 md:z-50 flex flex-col items-end gap-3 pointer-events-none relative">
       <AnimatePresence>
         {isExpanded && (
           <motion.div
             initial={{ opacity: 0, y: 20, scale: 0.9 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.9 }}
-            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 rounded-3xl shadow-2xl shadow-indigo-500/10 pointer-events-auto flex flex-col w-[260px]"
+            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 rounded-3xl shadow-2xl shadow-indigo-500/10 pointer-events-auto flex flex-col w-[260px] origin-bottom-right absolute md:static bottom-full mb-4 right-0"
           >
             <div className="flex items-center justify-between mb-4">
               <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-2">
@@ -207,15 +218,15 @@ export default function TimerManager() {
       <button
         onClick={() => setIsExpanded(!isExpanded)}
         className={cn(
-          "h-14 rounded-2xl flex items-center gap-3 px-4 font-mono font-bold shadow-xl border pointer-events-auto transition-all",
+          "h-10 md:h-14 rounded-full md:rounded-2xl flex items-center gap-2 md:gap-3 px-3 md:px-4 font-mono font-bold shadow-lg md:shadow-xl border pointer-events-auto transition-all",
           timerIsActive 
             ? "bg-white dark:bg-slate-900 border-indigo-200 dark:border-indigo-500/30 text-indigo-600 dark:text-indigo-400 shadow-indigo-500/20" 
             : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400"
         )}
       >
-        <span className="text-lg w-[60px]">{formatTime(timerTimeLeft)}</span>
-        <div className="w-px h-5 bg-slate-200 dark:bg-slate-700" />
-        {timerMode === 'focus' ? <Focus className="w-5 h-5" /> : <Coffee className="w-5 h-5 text-amber-500" />}
+        <span className="text-sm md:text-lg w-[45px] md:w-[60px]">{formatTime(timerTimeLeft)}</span>
+        <div className="w-px h-4 md:h-5 bg-slate-200 dark:bg-slate-700" />
+        {timerMode === 'focus' ? <Focus className="w-4 h-4 md:w-5 md:h-5" /> : <Coffee className="w-4 h-4 md:w-5 md:h-5 text-amber-500" />}
       </button>
     </div>
   );

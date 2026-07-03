@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { BookOpen, CheckSquare, MessageSquare, Settings, BrainCircuit, Bell, User as UserIcon, Sun, Moon, Menu, Users, Shield, LayoutDashboard, Calendar as CalendarIcon } from 'lucide-react';
+import { BookOpen, CheckSquare, MessageSquare, Settings, BrainCircuit, Bell, User as UserIcon, Sun, Moon, Menu, Users, Shield, LayoutDashboard, Calendar as CalendarIcon, HelpCircle, Type } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../../store/useStore';
@@ -13,17 +13,20 @@ import SyncIndicator from '../SyncIndicator';
 import ActivityDrawer from '../ActivityDrawer';
 import FeedbackModal from '../FeedbackModal';
 import SettingsModal from '../SettingsModal';
+import ShortcutsModal from '../ShortcutsModal';
+import BatteryIndicator from '../BatteryIndicator';
 import { toast } from 'sonner';
 
 export default function Layout() {
   useKeyboardShortcuts();
   useStudyReminders();
   const location = useLocation();
-  const { isDarkMode, toggleDarkMode, isFocusMode, toggleFocusMode } = useStore();
+  const { isDarkMode, toggleDarkMode, isFocusMode, toggleFocusMode, isDyslexiaFont, toggleDyslexiaFont } = useStore();
   const { userRole, setUserRole } = useAuthStore();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isActivityDrawerOpen, setIsActivityDrawerOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
 
   // Track page navigation with auditLogger
   useEffect(() => {
@@ -70,7 +73,7 @@ export default function Layout() {
     <div className="flex h-screen bg-[#FAFAFA] dark:bg-[#020617] text-slate-900 dark:text-slate-50 font-sans selection:bg-indigo-100 dark:selection:bg-indigo-900/50 selection:text-indigo-900 dark:selection:text-indigo-100 transition-colors duration-300">
       {/* Sidebar (Desktop) */}
       {!isFocusMode && (
-        <aside className="hidden md:flex w-16 lg:w-56 bg-white dark:bg-slate-900 border-r border-slate-200/60 dark:border-slate-800/60 flex-col transition-all duration-300 relative z-20">
+        <aside className="hidden md:flex w-16 lg:w-56 bg-white dark:bg-slate-900 border-r border-slate-200/60 dark:border-slate-800/60 flex-col transition-all duration-300 relative z-20 no-print">
           <div className="h-16 flex items-center justify-center lg:justify-start lg:px-5 border-b border-slate-100/50 dark:border-slate-800/50">
           <div className="relative group flex items-center gap-2 cursor-pointer">
             <div className="bg-slate-900 dark:bg-slate-800 p-1.5 rounded-xl shadow-sm group-hover:shadow-indigo-500/20 transition-all">
@@ -146,13 +149,13 @@ export default function Layout() {
       )}
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative mb-16 md:mb-0">
+      <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative mb-[120px] md:mb-0">
         {/* Subtle background glow */}
         <div className="absolute top-0 left-0 right-0 h-96 bg-gradient-to-b from-indigo-50/50 dark:from-indigo-900/10 to-transparent pointer-events-none -z-10" />
         
         {/* Top Navbar */}
         {!isFocusMode && (
-        <header className="h-14 flex items-center justify-between px-4 border-b border-slate-100/50 dark:border-slate-800/50 bg-white/50 dark:bg-slate-900/50 backdrop-blur-md sticky top-0 z-10 transition-colors duration-300">
+        <header className="h-14 flex items-center justify-between px-4 border-b border-slate-100/50 dark:border-slate-800/50 bg-white/50 dark:bg-slate-900/50 backdrop-blur-md sticky top-0 z-10 transition-colors duration-300 no-print">
           <div className="md:hidden flex items-center gap-2">
             <div className="bg-slate-900 dark:bg-slate-800 p-1.5 rounded-lg shadow-md">
               <BrainCircuit className="w-5 h-5 text-white" strokeWidth={1.5} />
@@ -160,6 +163,9 @@ export default function Layout() {
             <h1 className="text-lg font-display font-bold tracking-tight text-slate-900 dark:text-white">
               Memora
             </h1>
+            <div className="ml-2">
+              <BatteryIndicator />
+            </div>
           </div>
           
           <div className="hidden md:block flex-1 mr-4">
@@ -170,6 +176,15 @@ export default function Layout() {
             <div className="md:hidden">
               <CommandPalette />
             </div>
+            
+            <div className="hidden sm:flex items-center gap-2 bg-amber-50 dark:bg-amber-900/30 px-2.5 py-1 rounded-lg border border-amber-200 dark:border-amber-800">
+              <span className="text-xs font-bold text-amber-600 dark:text-amber-400">{useStore().xp} XP</span>
+            </div>
+            
+            <div className="hidden sm:flex items-center gap-1.5 bg-sky-50 dark:bg-sky-900/30 px-2.5 py-1 rounded-lg border border-sky-200 dark:border-sky-800" title="Streak Freezes">
+              <span className="text-xs font-bold text-sky-600 dark:text-sky-400">🧊 {useStore().streakFreezes}</span>
+            </div>
+
             <SyncIndicator />
             <div className="hidden sm:flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700">
               <Shield className="w-3.5 h-3.5 text-indigo-500" />
@@ -185,21 +200,40 @@ export default function Layout() {
               </select>
             </div>
             <button 
+              onClick={() => setIsShortcutsOpen(true)}
+              aria-label="Keyboard Shortcuts"
+              className="w-8 h-8 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:hover:border-slate-600 transition-all shadow-sm no-print"
+            >
+              <HelpCircle className="w-4 h-4" strokeWidth={1.5} aria-hidden="true" />
+            </button>
+            <button 
+              onClick={toggleDyslexiaFont}
+              aria-label={isDyslexiaFont ? "Switch to default font" : "Switch to dyslexic-friendly font"}
+              className={cn("w-8 h-8 rounded-full border flex items-center justify-center transition-all shadow-sm no-print", 
+                isDyslexiaFont 
+                  ? "bg-indigo-50 dark:bg-indigo-900/30 border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300"
+                  : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:hover:border-slate-600"
+              )}
+              title="Toggle Dyslexic Font"
+            >
+              <Type className="w-4 h-4" strokeWidth={1.5} aria-hidden="true" />
+            </button>
+            <button 
               onClick={toggleDarkMode}
               aria-label={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}
-              className="w-8 h-8 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:hover:border-slate-600 transition-all shadow-sm"
+              className="w-8 h-8 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:hover:border-slate-600 transition-all shadow-sm no-print"
             >
               {isDarkMode ? <Sun className="w-4 h-4" strokeWidth={1.5} aria-hidden="true" /> : <Moon className="w-4 h-4" strokeWidth={1.5} aria-hidden="true" />}
             </button>
             <button 
               onClick={() => setIsActivityDrawerOpen(true)}
               aria-label="Activity and notifications"
-              className="w-8 h-8 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:hover:border-slate-600 transition-all shadow-sm"
+              className="w-8 h-8 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:hover:border-slate-600 transition-all shadow-sm no-print"
             >
               <Bell className="w-4 h-4" strokeWidth={1.5} aria-hidden="true" />
             </button>
             <button 
-              className="md:hidden w-8 h-8 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-500 dark:text-slate-400 shadow-sm" 
+              className="md:hidden w-8 h-8 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-500 dark:text-slate-400 shadow-sm no-print" 
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
               aria-label="Open mobile menu"
               aria-expanded={isMobileMenuOpen}
@@ -209,7 +243,7 @@ export default function Layout() {
             <button 
               onClick={toggleFocusMode}
               aria-label="Enter Focus Mode"
-              className="w-8 h-8 rounded-full bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-800 flex items-center justify-center text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-all shadow-sm"
+              className="w-8 h-8 rounded-full bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-800 flex items-center justify-center text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-all shadow-sm no-print"
               title="Enter Focus Mode"
             >
               <BrainCircuit className="w-4 h-4" strokeWidth={1.5} aria-hidden="true" />
@@ -220,24 +254,32 @@ export default function Layout() {
         
         <div className="flex-1 overflow-y-auto">
           <div className="max-w-7xl mx-auto p-4 md:p-8 h-full relative">
-            {isFocusMode && (
-              <button 
-                onClick={toggleFocusMode}
-                className="fixed top-4 right-4 z-50 bg-slate-900 dark:bg-slate-800 text-white px-4 py-2 rounded-full shadow-xl hover:shadow-2xl transition-all flex items-center gap-2"
-              >
-                Exit Focus Mode
-              </button>
+            {isFocusMode ? (
+              <div className="flex flex-col items-center justify-center h-full w-full">
+                <button 
+                  onClick={toggleFocusMode}
+                  className="fixed top-4 right-4 z-50 bg-slate-900 dark:bg-slate-800 text-white px-4 py-2 rounded-full shadow-xl hover:shadow-2xl transition-all flex items-center gap-2"
+                >
+                  Exit Focus Mode
+                </button>
+              </div>
+            ) : (
+              <Outlet />
             )}
-            <Outlet />
           </div>
         </div>
       </main>
 
       {/* Mobile Bottom Navigation */}
       {!isFocusMode && (
-      <nav aria-label="Mobile Navigation" className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-900 border-t border-slate-200/60 dark:border-slate-800/60 z-30 pb-safe">
+      <nav aria-label="Mobile Navigation" className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-900 border-t border-slate-200/60 dark:border-slate-800/60 z-30 pb-safe no-print">
         <div className="flex items-center justify-around h-16 px-4">
-          {navItems.map((item) => {
+          {[
+            { name: 'Dashboard', path: '/', icon: LayoutDashboard },
+            { name: 'Library', path: '/library', icon: BookOpen },
+            { name: 'Tasks', path: '/tasks', icon: CheckSquare },
+            { name: 'Agent', path: '/agent', icon: MessageSquare },
+          ].map((item) => {
             const isActive = location.pathname === item.path;
             const Icon = item.icon;
             
@@ -308,6 +350,7 @@ export default function Layout() {
       <ActivityDrawer isOpen={isActivityDrawerOpen} onClose={() => setIsActivityDrawerOpen(false)} />
       <FeedbackModal />
       <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+      <ShortcutsModal isOpen={isShortcutsOpen} onClose={() => setIsShortcutsOpen(false)} />
     </div>
   );
 }

@@ -16,6 +16,8 @@ import {
   MicOff,
   CheckSquare,
   BookOpen,
+  Globe,
+  Target
 } from "lucide-react";
 import { format } from "date-fns";
 import { useDictation } from "../hooks/useDictation";
@@ -35,6 +37,10 @@ import ImageGeneratorModal from "../components/ImageGeneratorModal";
 import DocumentWorkspace from "../components/DocumentWorkspace";
 import { UserAchievements } from "../components/UserAchievements";
 import PDFViewerModal from "../components/PDFViewerModal";
+import Flashcards from "../components/Flashcards";
+import WebClipperModal from "../components/WebClipperModal";
+import ImageOcclusionModal from "../components/ImageOcclusionModal";
+import FlashcardGeneratorModal from "../components/FlashcardGeneratorModal";
 import { auth, db } from "../lib/firebase";
 import {
   collection,
@@ -53,6 +59,9 @@ export default function Library() {
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
   const [isWorkspaceOpen, setIsWorkspaceOpen] = useState(false);
   const [isPdfViewerOpen, setIsPdfViewerOpen] = useState(false);
+  const [isWebClipperOpen, setIsWebClipperOpen] = useState(false);
+  const [isImageOcclusionOpen, setIsImageOcclusionOpen] = useState(false);
+  const [isFlashcardModalOpen, setIsFlashcardModalOpen] = useState(false);
   const [selectedDocument, setSelectedDocument] = useState<any>(null);
   const [isImportingClassroom, setIsImportingClassroom] = useState(false);
   const [user, setUser] = useState<any>(null);
@@ -383,6 +392,27 @@ export default function Library() {
             <ImageIcon className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Generate Diagram</span>
           </button>
+          <button
+            onClick={() => setIsWebClipperOpen(true)}
+            className="px-3 py-2 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800/50 rounded-lg font-medium text-xs hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors flex items-center gap-1.5"
+          >
+            <Globe className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Web Clipper</span>
+          </button>
+          <button
+            onClick={() => setIsFlashcardModalOpen(true)}
+            className="px-3 py-2 bg-fuchsia-50 dark:bg-fuchsia-900/20 text-fuchsia-700 dark:text-fuchsia-400 border border-fuchsia-200 dark:border-fuchsia-800/50 rounded-lg font-medium text-xs hover:bg-fuchsia-100 dark:hover:bg-fuchsia-900/40 transition-colors flex items-center gap-1.5"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">AI Flashcards</span>
+          </button>
+          <button
+            onClick={() => setIsImageOcclusionOpen(true)}
+            className="px-3 py-2 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50 rounded-lg font-medium text-xs hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors flex items-center gap-1.5"
+          >
+            <Target className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Image Occlusion</span>
+          </button>
           <div className="relative group">
             <button className="px-3 py-2 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-lg font-medium text-xs hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-1.5">
               <Download className="w-3.5 h-3.5" />
@@ -652,25 +682,40 @@ export default function Library() {
         </h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {[
-            { id: 1, title: 'Calculus Notes Chapter 4', type: 'PDF', size: '2.4 MB', url: '/sample.pdf' },
-            { id: 2, title: 'Biology Study Guide', type: 'PDF', size: '1.1 MB', url: '/sample.pdf' },
-            { id: 3, title: 'Physics Formula Sheet', type: 'PDF', size: '500 KB', url: '/sample.pdf' },
-            { id: 4, title: 'History Essay Draft', type: 'PDF', size: '3.2 MB', url: '/sample.pdf' },
+            { id: 1, title: 'Calculus Notes Chapter 4', type: 'PDF', size: '2.4 MB', url: '/sample.pdf', summary: 'Limits, derivatives, and introduction to integrals. Focus on chain rule and related rates.' },
+            { id: 2, title: 'Biology Study Guide', type: 'PDF', size: '1.1 MB', url: '/sample.pdf', summary: 'Cell structure, mitosis vs meiosis, and basic genetic inheritance patterns.' },
+            { id: 3, title: 'Physics Formula Sheet', type: 'PDF', size: '500 KB', url: '/sample.pdf', summary: 'Kinematics, Newton\'s laws, work, energy, and momentum formulas.' },
+            { id: 4, title: 'History Essay Draft', type: 'PDF', size: '3.2 MB', url: '/sample.pdf', summary: 'Draft on the causes of the Industrial Revolution in Britain and its social impacts.' },
           ].map(doc => (
-            <div 
-              key={doc.id}
-              onClick={() => {
-                setSelectedDocument(doc);
-                setIsPdfViewerOpen(true);
-              }}
-              className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 rounded-xl p-3 flex items-center gap-3 cursor-pointer hover:shadow-sm hover:border-indigo-300 dark:hover:border-indigo-500/50 transition-all group"
-            >
-              <div className="w-10 h-10 bg-rose-50 dark:bg-rose-900/30 rounded-lg flex items-center justify-center text-rose-500 shrink-0 group-hover:scale-105 transition-transform">
-                <FileText className="w-5 h-5" />
-              </div>
-              <div className="overflow-hidden">
-                <h4 className="font-medium text-slate-900 dark:text-white text-sm truncate">{doc.title}</h4>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{doc.type} • {doc.size}</p>
+            <div key={doc.id} className="relative h-24 group perspective-1000">
+              <div className="w-full h-full absolute transition-all duration-500 transform-style-3d group-hover:rotate-y-180">
+                {/* Front */}
+                <div 
+                  className="absolute inset-0 bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 rounded-xl p-3 flex items-center gap-3 backface-hidden cursor-pointer shadow-sm hover:border-indigo-300 dark:hover:border-indigo-500/50"
+                  onClick={() => {
+                    setSelectedDocument(doc);
+                    setIsPdfViewerOpen(true);
+                  }}
+                >
+                  <div className="w-10 h-10 bg-rose-50 dark:bg-rose-900/30 rounded-lg flex items-center justify-center text-rose-500 shrink-0">
+                    <FileText className="w-5 h-5" />
+                  </div>
+                  <div className="overflow-hidden">
+                    <h4 className="font-medium text-slate-900 dark:text-white text-sm truncate">{doc.title}</h4>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{doc.type} • {doc.size}</p>
+                  </div>
+                </div>
+                {/* Back */}
+                <div 
+                  className="absolute inset-0 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-800/60 rounded-xl p-3 flex flex-col justify-center backface-hidden rotate-y-180 cursor-pointer shadow-sm"
+                  onClick={() => {
+                    setSelectedDocument(doc);
+                    setIsPdfViewerOpen(true);
+                  }}
+                >
+                  <h4 className="font-medium text-indigo-900 dark:text-indigo-100 text-xs mb-1 truncate flex items-center gap-1"><Sparkles className="w-3 h-3" /> AI Summary</h4>
+                  <p className="text-[10px] text-indigo-700 dark:text-indigo-300 line-clamp-3 leading-tight">{doc.summary}</p>
+                </div>
               </div>
             </div>
           ))}
@@ -684,18 +729,22 @@ export default function Library() {
         <DailyGoalProgress />
       </div>
 
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
+        <div className="lg:col-span-1 h-[420px] md:h-[380px]">
+          <Flashcards />
+        </div>
+        <div className="lg:col-span-2">
+          <D3ActivityChart />
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
         <div className="md:col-span-1">
           <GoalTracker />
         </div>
         <div className="md:col-span-2">
-          <D3ActivityChart />
+          <TaskCompletionChart />
         </div>
-      </div>
-
-      <div className="mt-12 grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <TaskCompletionChart />
-        <TopicCompletionChart />
       </div>
 
       <div className="mt-12 grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -706,6 +755,20 @@ export default function Library() {
       <ImageGeneratorModal
         isOpen={isImageModalOpen}
         onClose={() => setIsImageModalOpen(false)}
+      />
+
+      <WebClipperModal
+        isOpen={isWebClipperOpen}
+        onClose={() => setIsWebClipperOpen(false)}
+      />
+
+            <FlashcardGeneratorModal
+        isOpen={isFlashcardModalOpen}
+        onClose={() => setIsFlashcardModalOpen(false)}
+      />
+      <ImageOcclusionModal
+        isOpen={isImageOcclusionOpen}
+        onClose={() => setIsImageOcclusionOpen(false)}
       />
       
       {selectedDocument && (

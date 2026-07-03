@@ -1,12 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
 import * as d3 from 'd3';
 import { useOntologyStore, OntologyNode, OntologyLink } from '../store/useOntologyStore';
+import { BrainCircuit, X, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 export default function KnowledgeGraph() {
   const { nodes, links } = useOntologyStore();
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
+  
+  const [selectedNode, setSelectedNode] = useState<OntologyNode | null>(null);
+  const [nodeDefinition, setNodeDefinition] = useState<string>('');
+  const [isFetchingDefinition, setIsFetchingDefinition] = useState(false);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -75,6 +81,11 @@ export default function KnowledgeGraph() {
       .selectAll('g')
       .data(simNodes)
       .join('g')
+      .attr('class', 'cursor-pointer')
+      .on('click', (event, d: any) => {
+        setSelectedNode(d);
+        fetchDefinition(d.label);
+      })
       .call(d3.drag<any, any>()
         .on('start', dragstarted)
         .on('drag', dragged)
@@ -84,7 +95,8 @@ export default function KnowledgeGraph() {
       .attr('r', (d: any) => d.radius)
       .attr('fill', (d: any) => colorScale(d.group.toString()))
       .attr('stroke', isDark ? '#1e293b' : '#ffffff')
-      .attr('stroke-width', 2);
+      .attr('stroke-width', 2)
+      .attr('class', 'transition-transform hover:scale-110');
 
     nodeGroup.append('text')
       .text((d: any) => d.label)
@@ -94,7 +106,8 @@ export default function KnowledgeGraph() {
       .style('font-family', 'Inter, sans-serif')
       .style('font-size', '12px')
       .style('font-weight', '500')
-      .style('pointer-events', 'none');
+      .style('pointer-events', 'none')
+      .style('text-shadow', isDark ? '0 1px 3px rgba(0,0,0,0.8)' : '0 1px 3px rgba(255,255,255,0.8)');
 
     simulation.on('tick', () => {
       link
@@ -127,7 +140,29 @@ export default function KnowledgeGraph() {
     return () => {
       simulation.stop();
     };
-  }, [dimensions]);
+  }, [dimensions, nodes, links]);
+
+  const fetchDefinition = async (concept: string) => {
+    setIsFetchingDefinition(true);
+    setNodeDefinition('');
+    try {
+      const res = await fetch('/api/agent/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [{ role: 'user', content: `Provide a concise, 2-sentence definition for the concept: "${concept}" in the context of my studies.` }],
+          systemPrompt: 'You are an AI study assistant providing quick concept definitions.'
+        })
+      });
+      const data = await res.json();
+      setNodeDefinition(data.text);
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to load concept definition.");
+    } finally {
+      setIsFetchingDefinition(false);
+    }
+  };
 
   return (
     <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800 rounded-3xl p-6 shadow-sm w-full h-[400px] lg:h-[600px] flex flex-col relative overflow-hidden">
@@ -137,9 +172,34 @@ export default function KnowledgeGraph() {
           <p className="text-sm text-slate-500 dark:text-slate-400">Interactive map of your concepts</p>
         </div>
       </div>
+      
       <div ref={containerRef} className="flex-1 w-full h-full cursor-grab active:cursor-grabbing pt-16">
         <svg ref={svgRef} className="w-full h-full" />
       </div>
+
+      {selectedNode && (
+        <div className="absolute bottom-6 left-6 right-6 lg:left-auto lg:right-6 lg:w-80 bg-white/90 dark:bg-slate-800/90 backdrop-blur-md border border-slate-200 dark:border-slate-700 rounded-2xl p-4 shadow-xl z-20">
+          <div className="flex items-start justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <BrainCircuit className="w-5 h-5 text-indigo-500" />
+              <h4 className="font-bold text-slate-900 dark:text-white">{selectedNode.label}</h4>
+            </div>
+            <button onClick={() => setSelectedNode(null)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="text-sm text-slate-600 dark:text-slate-300 min-h-[60px]">
+            {isFetchingDefinition ? (
+              <div className="flex items-center gap-2 text-indigo-500">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span className="text-xs font-medium">Analyzing concept...</span>
+              </div>
+            ) : (
+              <p className="leading-relaxed">{nodeDefinition}</p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

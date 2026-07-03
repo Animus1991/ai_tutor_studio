@@ -123,7 +123,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     </div>
                     <div>
                       <p className="font-medium text-slate-900 dark:text-white">Dyslexic Font</p>
-                      <p className="text-sm text-slate-500 dark:text-slate-400">Use OpenDyslexic font globally</p>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">Use dyslexic-friendly font globally</p>
                     </div>
                   </div>
                   <button
