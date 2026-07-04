@@ -107,7 +107,7 @@ export default function CollabRoom() {
         const fireProvider = new FireProvider({
           firebaseApp: app,
           ydoc,
-          path: `rooms/${roomId}/yjs_state`
+          path: `yjs_state/${roomId}`
         });
 
         const qMessages = query(

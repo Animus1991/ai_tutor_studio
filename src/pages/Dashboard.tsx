@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Play, Calendar, Clock, ArrowRight, CheckCircle2, Download, GripHorizontal, Loader2 } from "lucide-react";
+import { Play, Brain, Users, Upload, Calendar, Clock, ArrowRight, CheckCircle2, Download, GripHorizontal, Loader2 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import MasteryDashboard from "../components/MasteryDashboard";
 import DailyStreak from "../components/DailyStreak";
@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
+import { getRecentActivity } from "../lib/activity";
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -63,12 +64,12 @@ export default function Dashboard() {
       setCompletionRate(tasksData.length > 0 ? Math.round((completed / tasksData.length) * 100) : 0);
 
       // Fetch AI logs as recent activity
-      const logs = await localforage.getItem<any[]>("memora-ai-logs") || [];
-      const recentLogs = logs.slice(-5).reverse().map(log => ({
+      const logs = await getRecentActivity(10);
+      const recentLogs = logs.map(log => ({
         id: log.id,
         title: log.title || "Activity logged",
-        time: log.time || "Recently",
-        icon: log.icon || "Bot",
+        time: log.timestamp ? format(log.timestamp.toDate(), "MMM d, h:mm a") : "Recently",
+        icon: log.type === "study" ? "Brain" : log.type === "collab" ? "Users" : log.type === "upload" ? "Upload" : "CheckCircle2",
       }));
       setRecentActivity(recentLogs);
       
@@ -256,7 +257,12 @@ export default function Dashboard() {
                 {recentActivity.map((activity, i) => (
                   <div key={i} className="flex items-center justify-between p-3 rounded-lg border border-slate-100 dark:border-slate-800 hover:border-slate-200 dark:hover:border-slate-700 transition-colors">
                     <div className="flex items-center gap-3">
-                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                      <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500 dark:text-slate-400">
+                        {activity.icon === 'Brain' && <Brain className="w-4 h-4" />}
+                        {activity.icon === 'Users' && <Users className="w-4 h-4" />}
+                        {activity.icon === 'Upload' && <Upload className="w-4 h-4" />}
+                        {activity.icon === 'CheckCircle2' && <CheckCircle2 className="w-4 h-4" />}
+                      </div>
                       <div>
                         <h4 className="text-xs font-medium text-slate-900 dark:text-white">{activity.title}</h4>
                         <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">{activity.time}</p>
@@ -293,7 +299,7 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto relative">
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: "easeOut" }} className="flex-1 overflow-y-auto relative">
       <header className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-slate-200/60 dark:border-slate-800/60 sticky top-0 z-40 px-4 sm:px-6 py-3 sm:py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-xl sm:text-2xl font-display font-bold text-slate-900 dark:text-white tracking-tight">
@@ -357,6 +363,6 @@ export default function Dashboard() {
           </Droppable>
         </DragDropContext>
       </div>
-    </div>
+    </motion.div>
   );
 }

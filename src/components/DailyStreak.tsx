@@ -1,16 +1,48 @@
+import { useState, useEffect } from 'react';
 import { Flame } from 'lucide-react';
-
-const streakDays = [
-  { day: 'Mon', active: true },
-  { day: 'Tue', active: true },
-  { day: 'Wed', active: true },
-  { day: 'Thu', active: false },
-  { day: 'Fri', active: true },
-  { day: 'Sat', active: true },
-  { day: 'Sun', active: false },
-];
+import { calculateStreak, getRecentActivity } from '../lib/activity';
+import { Timestamp } from 'firebase/firestore';
 
 export default function DailyStreak() {
+  const [streakCount, setStreakCount] = useState(0);
+  const [streakDays, setStreakDays] = useState<{day: string, active: boolean}[]>([]);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      const streak = await calculateStreak();
+      setStreakCount(streak);
+
+      const recentActivities = await getRecentActivity(100);
+      
+      const last7Days = Array.from({ length: 7 }).map((_, i) => {
+        const d = new Date();
+        d.setDate(d.getDate() - (6 - i));
+        d.setHours(0,0,0,0);
+        return d;
+      });
+
+      const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      
+      const newStreakDays = last7Days.map(date => {
+        const isActive = recentActivities.some(activity => {
+          if (!activity.timestamp) return false;
+          const activityDate = activity.timestamp.toDate();
+          activityDate.setHours(0,0,0,0);
+          return activityDate.getTime() === date.getTime();
+        });
+
+        return {
+          day: dayNames[date.getDay()],
+          active: isActive
+        };
+      });
+
+      setStreakDays(newStreakDays);
+    };
+
+    fetchData();
+  }, []);
+
   return (
     <div className="bg-gradient-to-br from-orange-500 to-rose-500 rounded-2xl p-5 sm:p-6 shadow-sm text-white h-full flex flex-col justify-between relative overflow-hidden print-break-inside-avoid">
       <div className="absolute top-0 right-0 p-4 opacity-20 pointer-events-none">
@@ -24,11 +56,12 @@ export default function DailyStreak() {
           <h3 className="text-lg font-display font-bold tracking-tight">Daily Streak</h3>
         </div>
         <div className="text-3xl font-display font-bold tracking-tight mt-4">
-          5 <span className="text-xl font-medium opacity-80">Days</span>
+          {streakCount} <span className="text-xl font-medium opacity-80">{streakCount === 1 ? 'Day' : 'Days'}</span>
         </div>
-        <p className="text-orange-100 mt-1 text-xs">You are on fire! Keep it up to build strong retention.</p>
+        <p className="text-orange-100 mt-1 text-xs">
+          {streakCount > 0 ? "You are on fire! Keep it up to build strong retention." : "Start studying today to build your streak!"}
+        </p>
       </div>
-
       <div className="relative z-10 flex items-center justify-between mt-6 gap-1">
         {streakDays.map((d, i) => (
           <div key={i} className="flex flex-col items-center gap-1.5">

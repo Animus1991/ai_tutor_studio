@@ -4,6 +4,7 @@ import { Award, X, CheckCircle2 } from 'lucide-react';
 import { auth, db } from '../lib/firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import localforage from 'localforage';
+import { logActivity } from '../lib/activity';
 import { toast } from 'sonner';
 
 export default function PostSessionModal() {
@@ -22,6 +23,7 @@ export default function PostSessionModal() {
     if (!accomplishment.trim()) return;
 
     setIsSubmitting(true);
+    await logActivity(`Completed focus session: ${accomplishment.trim()}`, 'study');
     const newLog = {
       title: accomplishment.trim(),
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
