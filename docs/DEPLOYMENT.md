@@ -21,6 +21,12 @@ npm start
 
 Open `http://localhost:3010/?demo=1`. Production uses `tsx server.ts` (serves built `dist/` SPA).
 
+If `EADDRINUSE` on port 3010, stop the dev server (`Ctrl+C` on `npm run dev`) or use another port:
+
+```bash
+cross-env PORT=3011 npm start
+```
+
 ## Docker
 
 ```bash
@@ -32,6 +38,8 @@ docker run -p 3010:3010 \
   -e PORT=3010 \
   memora-ai-tutor
 ```
+
+The Dockerfile runs `npm ci` once for the build and a lighter `npm ci --omit=dev` for runtime (with `tsx`). If the build fails with `rpc error: code = Unavailable` after a long `npm ci`, restart Docker Desktop and retry — that usually indicates the daemon ran out of memory or timed out, not an app bug.
 
 ## Cloud platforms
 

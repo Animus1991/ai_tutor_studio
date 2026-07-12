@@ -742,6 +742,16 @@ Question: ${query}`
     console.warn('[Memora] Yjs websocket unavailable (collab uses IndexedDB offline):', err);
   }
 
+  httpServer.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(
+        `[Memora] Port ${PORT} is already in use. Stop the other process (e.g. npm run dev) or set PORT to another value.`,
+      );
+      process.exit(1);
+    }
+    throw err;
+  });
+
   httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
