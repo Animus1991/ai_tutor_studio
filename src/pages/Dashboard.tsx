@@ -22,6 +22,7 @@ import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import { getRecentActivity } from "../lib/activity";
+import { isDemoModeActive, loadDemoTasks } from "../lib/demoStorage";
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -37,8 +38,9 @@ export default function Dashboard() {
   useEffect(() => {
     const fetchData = async () => {
       let tasksData: any[] = [];
-      // Fetch tasks from Firebase if logged in
-      if (auth.currentUser) {
+      if (isDemoModeActive()) {
+        tasksData = await loadDemoTasks();
+      } else if (auth.currentUser) {
         try {
           const tasksQ = query(collection(db, "users", auth.currentUser.uid, "tasks"));
           const tasksSnap = await getDocs(tasksQ);

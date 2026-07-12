@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { User } from 'firebase/auth';
+import { clearDemoData, setDemoModeFlag } from '../lib/demoStorage';
 
 export type Role = 'student' | 'instructor' | 'admin';
 
@@ -26,6 +27,9 @@ interface AuthState {
   setAccessToken: (token: string | null) => void;
   needsAuth: boolean;
   setNeedsAuth: (needsAuth: boolean) => void;
+  isDemoMode: boolean;
+  enterDemoMode: () => void;
+  exitDemoMode: () => void;
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -40,5 +44,26 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   accessToken: null,
   setAccessToken: (token) => set({ accessToken: token }),
   needsAuth: true,
-  setNeedsAuth: (needsAuth) => set({ needsAuth })
+  setNeedsAuth: (needsAuth) => set({ needsAuth }),
+  isDemoMode: false,
+  enterDemoMode: () => {
+    setDemoModeFlag(true);
+    set({
+      isDemoMode: true,
+      needsAuth: false,
+      user: null,
+      accessToken: 'demo-token',
+      userRole: 'student',
+    });
+  },
+  exitDemoMode: () => {
+    setDemoModeFlag(false);
+    void clearDemoData();
+    set({
+      isDemoMode: false,
+      needsAuth: true,
+      user: null,
+      accessToken: null,
+    });
+  },
 }));

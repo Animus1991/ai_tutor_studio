@@ -4,7 +4,7 @@
  */
 
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import Layout from "./components/layout/Layout";
 import Dashboard from "./pages/Dashboard";
 import Library from "./pages/Library";
@@ -20,24 +20,45 @@ import AudioController from "./components/AudioController";
 import { initAuth, googleSignIn } from "./lib/auth";
 import { useAuthStore } from "./store/useAuthStore";
 import { motion } from "framer-motion";
+import { Sparkles } from "lucide-react";
 import { OfflineIndicator } from "./components/OfflineIndicator";
 import { SearchProvider } from "./hooks/useSearch";
 import { Toaster } from "sonner";
 import QuickAddModal from "./components/QuickAddModal";
 import PostSessionModal from "./components/PostSessionModal";
+import DemoSandboxBanner from "./components/DemoSandboxBanner";
+import { seedDemoSandbox, isDemoModeActive } from "./lib/demoMode";
+import { useLibraryStore } from "./store/useLibraryStore";
+import { toast } from "sonner";
 
 export default function App() {
-  const { needsAuth, setNeedsAuth, setUser, setAccessToken } = useAuthStore();
+  const { needsAuth, setNeedsAuth, setUser, setAccessToken, enterDemoMode } = useAuthStore();
+  const hydrateLibrary = useLibraryStore((s) => s.hydrate);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [isEnteringDemo, setIsEnteringDemo] = useState(false);
+
+  useLayoutEffect(() => {
+    if (isDemoModeActive() && useAuthStore.getState().needsAuth) {
+      enterDemoMode();
+    }
+  }, [enterDemoMode]);
+
+  useEffect(() => {
+    if (isDemoModeActive()) {
+      void hydrateLibrary();
+    }
+  }, [hydrateLibrary]);
 
   useEffect(() => {
     const unsubscribe = initAuth(
       (user, token) => {
+        if (useAuthStore.getState().isDemoMode) return;
         setUser(user);
         setAccessToken(token);
         setNeedsAuth(false);
       },
       () => {
+        if (useAuthStore.getState().isDemoMode) return;
         setUser(null);
         setAccessToken(null);
         setNeedsAuth(true);
@@ -55,12 +76,41 @@ export default function App() {
         setAccessToken(result.accessToken);
         setNeedsAuth(false);
       }
-    } catch (err) {
+    } catch (err: unknown) {
       console.error("Login failed:", err);
+      const code = (err as { code?: string })?.code;
+      if (code === 'auth/unauthorized-domain') {
+        toast.error('Firebase: localhost is not authorized. Use "Try Demo" or add localhost in Firebase Console → Authentication → Settings → Authorized domains.');
+      } else {
+        toast.error('Google sign-in failed. Try Demo mode for local development.');
+      }
     } finally {
       setIsLoggingIn(false);
     }
   };
+
+  const handleEnterDemo = async () => {
+    setIsEnteringDemo(true);
+    try {
+      enterDemoMode();
+      await seedDemoSandbox();
+      await hydrateLibrary();
+      toast.success('Demo sandbox loaded — explore without signing in');
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to load demo content');
+    } finally {
+      setIsEnteringDemo(false);
+    }
+  };
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('demo') === '1' && useAuthStore.getState().needsAuth) {
+      void handleEnterDemo();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot deep link
+  }, []);
 
   if (needsAuth) {
     return (
@@ -73,9 +123,18 @@ export default function App() {
           <h1 className="text-2xl md:text-3xl font-display font-bold text-slate-900 dark:text-white mb-2">
             Memora
           </h1>
-          <p className="text-slate-500 dark:text-slate-400 mb-8">
-            Sign in to access your AI tutoring workspace.
+          <p className="text-slate-500 dark:text-slate-400 mb-6">
+            Sign in to access your AI tutoring workspace, or try the demo locally without Firebase.
           </p>
+          <button
+            onClick={handleEnterDemo}
+            disabled={isEnteringDemo}
+            className="w-full mb-3 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl px-4 py-3 font-semibold transition-colors shadow-sm disabled:opacity-50"
+          >
+            <Sparkles className="w-5 h-5" />
+            {isEnteringDemo ? 'Loading demo…' : 'Try Demo Sandbox'}
+          </button>
+          <p className="text-xs text-slate-400 mb-4">No Google account required · full local experience</p>
           <button
             onClick={handleLogin}
             disabled={isLoggingIn}
@@ -124,6 +183,7 @@ export default function App() {
           <div className="md:contents"><TimerManager /></div>
         </div>
         <BrowserRouter>
+          <DemoSandboxBanner />
           <Routes>
             <Route path="/" element={<Layout />}>
               <Route index element={<Dashboard />} />

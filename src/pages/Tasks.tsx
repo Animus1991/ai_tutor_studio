@@ -57,11 +57,20 @@ import { Sparkles, Loader2 } from 'lucide-react';
 import { FSRS, Card, Rating } from 'fsrs.js';
 
 import DashboardStats from "../components/DashboardStats";
+import { useAuthStore } from "../store/useAuthStore";
+import {
+  DEMO_USER,
+  loadDemoTasks,
+  saveDemoTasks,
+  type DemoTask,
+} from "../lib/demoStorage";
+import { logActivity } from "../lib/activity";
 
 const fsrs = new FSRS();
 
 export default function Tasks() {
   const { pomodoroSessions } = useStore();
+  const isDemoMode = useAuthStore((s) => s.isDemoMode);
   const [isSyncingTasks, setIsSyncingTasks] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [tasks, setTasks] = useState<any[]>([]);
@@ -78,7 +87,17 @@ export default function Tasks() {
   };
 
   const handleBulkDelete = async () => {
-    if (!user || selectedTasks.length === 0) return;
+    if (selectedTasks.length === 0) return;
+    if (isDemoMode) {
+      const remaining = tasks.filter((t) => !selectedTasks.includes(t.id));
+      await saveDemoTasks(remaining as DemoTask[]);
+      setTasks(remaining);
+      toast.success(`${selectedTasks.length} tasks deleted`);
+      setSelectedTasks([]);
+      setIsSelectionMode(false);
+      return;
+    }
+    if (!user) return;
     try {
       const batch = writeBatch(db);
       selectedTasks.forEach(taskId => {
@@ -110,6 +129,15 @@ export default function Tasks() {
   };
 
   useEffect(() => {
+    if (isDemoMode) {
+      setUser(DEMO_USER);
+      void loadDemoTasks().then((demoTasks) => {
+        demoTasks.sort((a, b) => (a.order || 0) - (b.order || 0));
+        setTasks(demoTasks);
+      });
+      return;
+    }
+
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
@@ -135,7 +163,12 @@ export default function Tasks() {
       }
     });
     return () => unsubscribeAuth();
-  }, []);
+  }, [isDemoMode]);
+
+  const persistDemoTasks = async (nextTasks: DemoTask[]) => {
+    await saveDemoTasks(nextTasks);
+    setTasks(nextTasks);
+  };
 
   const handleSyncGoogleTasks = async () => {
     try {
@@ -154,6 +187,43 @@ export default function Tasks() {
   const [reviewTask, setReviewTask] = useState<any>(null);
 
   const handleReviewTask = async (task: any, quality: number) => {
+    if (isDemoMode) {
+      try {
+        let cardObj = new Card();
+        if (task.fsrsCard) {
+          Object.assign(cardObj, task.fsrsCard);
+          if (typeof cardObj.due === 'string') cardObj.due = new Date(cardObj.due);
+          if (typeof cardObj.last_review === 'string') cardObj.last_review = new Date(cardObj.last_review);
+        }
+        const now = new Date();
+        const scheduling_cards = fsrs.repeat(cardObj, now);
+        let ratingValue = Rating.Good;
+        if (quality <= 1) ratingValue = Rating.Again;
+        else if (quality === 2) ratingValue = Rating.Hard;
+        else if (quality === 3 || quality === 4) ratingValue = Rating.Good;
+        else if (quality >= 5) ratingValue = Rating.Easy;
+        const newFsrsCard = scheduling_cards[ratingValue].card;
+        const nextTasks = tasks.map((t) =>
+          t.id === task.id
+            ? {
+                ...t,
+                fsrsCard: Object.assign({}, newFsrsCard),
+                nextReviewDate: newFsrsCard.due.toISOString(),
+                completed: quality >= 3,
+              }
+            : t,
+        );
+        await persistDemoTasks(nextTasks as DemoTask[]);
+        setReviewTask(null);
+        if (quality >= 3) {
+          confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+        }
+      } catch (e) {
+        console.error(e);
+        toast.error("Failed to update task review.");
+      }
+      return;
+    }
     if (!user) return;
     try {
       let cardObj = new Card();
@@ -205,6 +275,15 @@ export default function Tasks() {
   const handleCompleteTask = async (task: any) => {
     if (task.type === "Review") {
       setReviewTask(task);
+      return;
+    }
+    if (isDemoMode) {
+      const nextTasks = tasks.map((t) =>
+        t.id === task.id ? { ...t, completed: true } : t,
+      );
+      await persistDemoTasks(nextTasks as DemoTask[]);
+      await logActivity(`Completed "${task.title}"`, 'task');
+      confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
       return;
     }
     if (!user) return;
@@ -288,7 +367,7 @@ export default function Tasks() {
 
   const handleCreateTask = async (e: FormEvent) => {
     e.preventDefault();
-    if (!user) return toast.info("Please sign in to create a task.");
+    if (!isDemoMode && !user) return toast.info("Please sign in to create a task.");
 
     const formData = new FormData(e.target as HTMLFormElement);
     const title = formData.get("title") as string;
@@ -302,7 +381,7 @@ export default function Tasks() {
         const nextReviewDate = new Date();
         nextReviewDate.setDate(nextReviewDate.getDate() + 1);
 
-        await setDoc(doc(db, "users", user.uid, "tasks", taskId), {
+        const newTask = {
           title,
           notes: taskNotes,
           course: "New Course",
@@ -314,12 +393,25 @@ export default function Tasks() {
           color: "text-indigo-500",
           bg: "bg-indigo-50",
           completed: false,
-          userId: user.uid,
-          createdAt: serverTimestamp(),
+          userId: isDemoMode ? DEMO_USER.uid : user.uid,
+          createdAt: new Date().toISOString(),
           repetition: 0,
           interval: 1,
           easeFactor: 2.5,
           nextReviewDate: nextReviewDate.toISOString(),
+          order: tasks.length,
+        };
+
+        if (isDemoMode) {
+          await persistDemoTasks([...tasks, { id: taskId, ...newTask }] as DemoTask[]);
+          setIsNewTaskModalOpen(false);
+          setTaskNotes("");
+          return;
+        }
+
+        await setDoc(doc(db, "users", user.uid, "tasks", taskId), {
+          ...newTask,
+          createdAt: serverTimestamp(),
         });
         setIsNewTaskModalOpen(false);
         setTaskNotes("");
@@ -588,7 +680,9 @@ export default function Tasks() {
               
               setTasks(newTasks.sort((a, b) => (a.order || 0) - (b.order || 0)));
 
-              if (user) {
+              if (isDemoMode) {
+                await saveDemoTasks(newTasks.sort((a, b) => (a.order || 0) - (b.order || 0)) as DemoTask[]);
+              } else if (user) {
                 const batch = writeBatch(db);
                 newOrder.forEach((task, index) => {
                   batch.update(doc(db, "users", user.uid, "tasks", task.id.toString()), {
