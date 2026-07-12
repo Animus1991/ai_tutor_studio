@@ -2,7 +2,7 @@ import { Shield, Users, Database, Download, Activity, Search } from 'lucide-reac
 import { useAuthStore } from '../store/useAuthStore';
 import { auditLogger, type AuditAction, type AuditEvent } from '../lib/auditLogger';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { buildAdminMetrics, fetchServerAdminMetrics, type AdminMetrics, type ServerAdminMetrics } from '../lib/adminMetrics';
+import { buildAdminMetrics, fetchServerAdminMetrics, fetchTenantMetrics, type AdminMetrics, type ServerAdminMetrics, type TenantMetrics } from '../lib/adminMetrics';
 
 const ALL_ACTIONS: AuditAction[] = [
   'USER_LOGIN',
@@ -20,6 +20,7 @@ export default function Admin() {
   const { hasPermission } = useAuthStore();
   const [metrics, setMetrics] = useState<AdminMetrics | null>(null);
   const [serverMetrics, setServerMetrics] = useState<ServerAdminMetrics | null>(null);
+  const [tenantMetrics, setTenantMetrics] = useState<TenantMetrics | null>(null);
   const [logs, setLogs] = useState<AuditEvent[]>([]);
   const [actionFilter, setActionFilter] = useState('all');
   const [search, setSearch] = useState('');
@@ -28,14 +29,16 @@ export default function Admin() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [m, serverLogs, serverM] = await Promise.all([
+      const [m, serverLogs, serverM, tenantM] = await Promise.all([
         buildAdminMetrics(),
         auditLogger.fetchServerLogs(100),
         fetchServerAdminMetrics(),
+        fetchTenantMetrics(),
       ]);
       if (cancelled) return;
       setMetrics(m);
       setServerMetrics(serverM);
+      setTenantMetrics(tenantM);
       setLogs(auditLogger.mergeLogs(auditLogger.getRecentLogs(200), serverLogs));
     })();
     return () => {
@@ -176,6 +179,40 @@ export default function Admin() {
           value={serverMetrics?.serverAuditTotal ?? '—'}
         />
       </div>
+
+      {tenantMetrics && (
+        <div className="mb-8">
+          <h3 className="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-3 uppercase tracking-wide">
+            Firestore platform (multi-tenant)
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <MetricCard
+              icon={<Database className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />}
+              iconBg="bg-indigo-50 dark:bg-indigo-900/30"
+              label="Platform audit events"
+              value={tenantMetrics.platformAuditTotal}
+            />
+            <MetricCard
+              icon={<Users className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />}
+              iconBg="bg-emerald-50 dark:bg-emerald-900/30"
+              label="Platform users (7d)"
+              value={tenantMetrics.platformUsers7d}
+            />
+            <MetricCard
+              icon={<Activity className="w-5 h-5 text-sky-600 dark:text-sky-400" />}
+              iconBg="bg-sky-50 dark:bg-sky-900/30"
+              label="Total tasks (all tenants)"
+              value={tenantMetrics.totalTasks}
+            />
+            <MetricCard
+              icon={<Shield className="w-5 h-5 text-purple-600 dark:text-purple-400" />}
+              iconBg="bg-purple-50 dark:bg-purple-900/30"
+              label="Total courses (all tenants)"
+              value={tenantMetrics.totalCourses}
+            />
+          </div>
+        </div>
+      )}
 
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">

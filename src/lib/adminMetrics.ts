@@ -20,6 +20,14 @@ export interface ServerAdminMetrics {
   uniqueUsers7d: number;
 }
 
+export interface TenantMetrics {
+  platformAuditTotal: number;
+  platformUsers7d: number;
+  totalTasks: number;
+  totalCourses: number;
+  firestoreEnabled: boolean;
+}
+
 function countAuditLast24h(events: AuditEvent[]): number {
   const cutoff = Date.now() - 24 * 60 * 60 * 1000;
   return events.filter((e) => new Date(e.timestamp).getTime() >= cutoff).length;
@@ -45,6 +53,17 @@ export async function fetchServerAdminMetrics(): Promise<ServerAdminMetrics | nu
     const res = await fetch('/api/admin/metrics');
     if (!res.ok) return null;
     return (await res.json()) as ServerAdminMetrics;
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchTenantMetrics(): Promise<TenantMetrics | null> {
+  try {
+    const res = await fetch('/api/admin/tenant-metrics');
+    if (!res.ok) return null;
+    const data = (await res.json()) as TenantMetrics;
+    return data.firestoreEnabled ? data : null;
   } catch {
     return null;
   }

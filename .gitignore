@@ -8,3 +8,5 @@ coverage/
 !.env.example
 !.env.local.example
 dev-dist/
+data/
+test-results/

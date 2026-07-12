@@ -266,5 +266,10 @@ service cloud.firestore {
     match /yjs_state/{document=**} {
       allow read, write: if isSignedIn() && isVerified();
     }
+
+    // Platform audit — written only via Firebase Admin SDK on the server
+    match /platform_audit/{eventId} {
+      allow read, write: if false;
+    }
   }
 }

@@ -16,21 +16,47 @@ cp .env.local.example .env.local
 
 npm ci
 npm run build
-NODE_ENV=production npm start
+npm start
 ```
 
-Open `http://localhost:3010/?demo=1`.
+Open `http://localhost:3010/?demo=1`. Production uses `tsx server.ts` (serves built `dist/` SPA).
 
 ## Docker
 
 ```bash
 docker build -t memora-ai-tutor .
 docker run -p 3010:3010 \
+  -v memora-data:/app/data \
   -e GEMINI_API_KEY=your_key \
   -e NODE_ENV=production \
   -e PORT=3010 \
   memora-ai-tutor
 ```
+
+## Cloud platforms
+
+### Railway
+
+Connect repo → Railway reads `railway.toml` and builds via Dockerfile. Set secrets: `GEMINI_API_KEY`, optional `FIREBASE_SERVICE_ACCOUNT_JSON`.
+
+### Fly.io
+
+```bash
+fly launch --no-deploy
+fly secrets set GEMINI_API_KEY=...
+fly volumes create memora_data --size 1
+fly deploy
+```
+
+Uses `fly.toml` with `/app/data` volume for persistent audit logs.
+
+### Google Cloud Run
+
+```bash
+gcloud builds submit --config cloudbuild.yaml
+```
+
+Configure Secret Manager for `GEMINI_API_KEY` and `FIREBASE_SERVICE_ACCOUNT_JSON`.
 
 ## Environment variables
 
@@ -39,6 +65,8 @@ docker run -p 3010:3010 \
 | `GEMINI_API_KEY` | Yes (AI) | Agent, OCR, embeddings |
 | `PORT` | No | Default `3010` |
 | `NODE_ENV` | Prod | Set to `production` for static SPA |
+| `AUDIT_STORE_PATH` | No | Default `data/audit-log.jsonl` |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | No | Platform audit + tenant admin metrics |
 | `XAPI_LRS_ENDPOINT` | No | xAPI forwarding |
 | `XAPI_LRS_KEY` | No | LRS basic auth key |
 | `VITE_YJS_WS_URL` | No | Override collab WebSocket URL |
@@ -47,9 +75,10 @@ docker run -p 3010:3010 \
 
 1. `npm run lint`
 2. `npm run test`
-3. `npm run test:e2e` (optional, needs dev server)
-4. `npm run build`
-5. Deploy container or run `node dist/server.cjs` behind HTTPS reverse proxy
+3. `npm run test:e2e` (dev server)
+4. `npm run test:e2e:prod` (production build + server)
+5. `npm run build`
+6. Deploy container or run `node dist/server.cjs` behind HTTPS reverse proxy
 
 ## Firebase
 
@@ -61,4 +90,4 @@ docker run -p 3010:3010 \
 
 - PWA service worker registers in production builds only
 - Yjs collab uses `ws(s)://your-host/yjs` — ensure your proxy supports WebSocket upgrade
-- Audit logs on the server are in-memory (ring buffer); restart clears them. Client localStorage retains a copy.
+- Audit logs persist to `AUDIT_STORE_PATH` (JSONL). Optional Firestore sync to `platform_audit` when `FIREBASE_SERVICE_ACCOUNT_JSON` is set.

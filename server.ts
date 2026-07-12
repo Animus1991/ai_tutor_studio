@@ -5,11 +5,16 @@ import http from 'http';
 import path from 'path';
 import cors from 'cors';
 import { createServer as createViteServer } from 'vite';
-import { attachYjsWebSocketServer } from './yjsServer.js';
 import { GoogleGenAI } from '@google/genai';
 import multer from 'multer';
 import { YoutubeTranscript } from 'youtube-transcript';
 import { createRequire } from 'module';
+import { appendPersistedAudit, loadPersistedAudit } from './auditStore.js';
+import {
+  fetchPlatformAuditFromFirestore,
+  fetchTenantMetricsFromFirestore,
+  persistAuditToFirestore,
+} from './firebaseAdmin.js';
 const _require = createRequire(typeof import.meta !== 'undefined' && import.meta.url ? import.meta.url : 'file://' + process.cwd() + '/server.ts');
 const pdfParse = _require('pdf-parse');
 
@@ -42,15 +47,18 @@ function createRateLimiter(maxRequests: number, windowMs: number) {
 
 const aiRateLimit = createRateLimiter(30, 60_000);
 
-/** Ring buffer for audit events forwarded from clients. */
-const serverAuditLogs: Array<Record<string, unknown>> = [];
-const MAX_SERVER_AUDIT = 1000;
+/** Audit events: hydrated from disk, appended on each client POST. */
+let serverAuditLogs: Array<Record<string, unknown>> = loadPersistedAudit();
 
 function pushServerAudit(event: Record<string, unknown>) {
   serverAuditLogs.push(event);
-  if (serverAuditLogs.length > MAX_SERVER_AUDIT) {
-    serverAuditLogs.splice(0, serverAuditLogs.length - MAX_SERVER_AUDIT);
+  if (serverAuditLogs.length > 5000) {
+    serverAuditLogs = serverAuditLogs.slice(-5000);
   }
+  appendPersistedAudit(event);
+  void persistAuditToFirestore(event).catch(() => {
+    /* Firestore optional when service account not configured */
+  });
 }
 
 async function extractArticleText(url: string): Promise<string> {
@@ -653,10 +661,20 @@ Question: ${query}`
     res.status(204).end();
   });
 
-  app.get('/api/admin/audit', (req, res) => {
+  app.get('/api/admin/audit', async (req, res) => {
     const limit = Math.min(Number(req.query.limit) || 50, 200);
-    const logs = serverAuditLogs.slice(-limit).reverse();
-    res.json({ logs });
+    const firestoreLogs = await fetchPlatformAuditFromFirestore(limit);
+    const merged = [...serverAuditLogs];
+    for (const e of firestoreLogs) {
+      if (e.id && !merged.some((m) => m.id === e.id)) merged.push(e);
+    }
+    const logs = merged.slice(-limit).reverse();
+    res.json({ logs, persistedPath: process.env.AUDIT_STORE_PATH ?? 'data/audit-log.jsonl' });
+  });
+
+  app.get('/api/admin/tenant-metrics', async (_req, res) => {
+    const tenant = await fetchTenantMetricsFromFirestore();
+    res.json(tenant ?? { firestoreEnabled: false });
   });
 
   app.get('/api/admin/metrics', (_req, res) => {
@@ -715,11 +733,17 @@ Question: ${query}`
   }
 
   const httpServer = http.createServer(app);
-  attachYjsWebSocketServer(httpServer);
+
+  try {
+    const { attachYjsWebSocketServer } = await import('./yjsServer.js');
+    attachYjsWebSocketServer(httpServer);
+    console.log(`Yjs websocket on ws://localhost:${PORT}/yjs`);
+  } catch (err) {
+    console.warn('[Memora] Yjs websocket unavailable (collab uses IndexedDB offline):', err);
+  }
 
   httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);
-    console.log(`Yjs websocket on ws://localhost:${PORT}/yjs`);
   });
 }
 

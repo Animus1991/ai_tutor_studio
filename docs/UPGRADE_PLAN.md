@@ -128,6 +128,12 @@ Memora is a full-stack AI tutoring workspace (React 19 + Vite + Express + Gemini
 - [x] Docker production image — `Dockerfile`, `.dockerignore`
 - [x] Deployment guide — `docs/DEPLOYMENT.md`
 
+### Phase 9 — Cloud & platform admin
+- [x] Persistent audit store on disk (`auditStore.ts`, `AUDIT_STORE_PATH`, Fly volume)
+- [x] Firestore platform audit + tenant metrics (`firebaseAdmin.ts`, `platform_audit`, `/api/admin/tenant-metrics`)
+- [x] Cloud deploy configs — `railway.toml`, `fly.toml`, `cloudbuild.yaml`
+- [x] Production E2E — `npm run test:e2e:prod` (build + Playwright against prod server)
+
 ---
 
 ## 7. Quality Gates
@@ -155,4 +161,4 @@ See `.env.local.example` for template.
 
 ---
 
-*Last updated: Phase 8 launch readiness — real roadmap, multi-user admin signals, Docker deploy.*
+*Last updated: Phase 9 cloud deploy, persistent audit, Firestore tenant admin.*
