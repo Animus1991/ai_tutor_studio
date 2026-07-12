@@ -153,6 +153,42 @@ async function startServer() {
     }
   });
 
+  app.post('/api/analyze-media', upload.single('media'), async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: 'Media file is required' });
+      const mime = req.file.mimetype;
+      if (!mime.startsWith('image/') && !mime.startsWith('video/') && !mime.startsWith('audio/')) {
+        return res.status(400).json({ error: 'Only image, video, or audio files are supported' });
+      }
+
+      const base64 = req.file.buffer.toString('base64');
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.5-flash',
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              { inlineData: { mimeType: mime, data: base64 } },
+              {
+                text: 'Analyze this study media. Return a concise summary for study notes (key concepts, definitions, examples). If there is readable text, include it.',
+              },
+            ],
+          },
+        ],
+      });
+
+      const summary = response.text ?? '';
+      res.json({
+        summary,
+        text: mime.startsWith('image/') ? summary : undefined,
+        filename: req.file.originalname,
+      });
+    } catch (error) {
+      console.error('Analyze Media Error:', error);
+      res.status(500).json({ error: 'Failed to analyze media' });
+    }
+  });
+
   app.post('/api/xapi/statements', async (req, res) => {
     try {
       const statement = req.body;
@@ -250,6 +286,79 @@ async function startServer() {
     } catch (error) {
       console.error('Gemini API Error:', error);
       res.status(500).json({ error: 'Failed to generate response' });
+    }
+  });
+
+  // AI Agent streaming (SSE)
+  app.post('/api/agent/chat/stream', async (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders?.();
+
+    try {
+      const { messages, systemInstruction, model } = req.body;
+      const stream = await ai.models.generateContentStream({
+        model: model || 'gemini-3.5-flash',
+        contents: messages,
+        config: { systemInstruction },
+      });
+
+      for await (const chunk of stream) {
+        const text = chunk.text ?? '';
+        if (text) {
+          res.write(`data: ${JSON.stringify({ text })}\n\n`);
+        }
+      }
+      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+      res.end();
+    } catch (error) {
+      console.error('Gemini Stream Error:', error);
+      res.write(`data: ${JSON.stringify({ error: 'Failed to stream response' })}\n\n`);
+      res.end();
+    }
+  });
+
+  // YouTube batch lecture ingest
+  app.post('/api/ingest/youtube/batch', async (req, res) => {
+    try {
+      const { urls } = req.body;
+      if (!Array.isArray(urls) || urls.length === 0) {
+        return res.status(400).json({ error: 'urls array is required' });
+      }
+      if (urls.length > 20) {
+        return res.status(400).json({ error: 'Maximum 20 URLs per batch' });
+      }
+
+      const results = await Promise.all(
+        urls.map(async (url: string) => {
+          try {
+            if (!url.includes('youtube.com') && !url.includes('youtu.be')) {
+              return { url, error: 'Not a YouTube URL' };
+            }
+            const transcript = await YoutubeTranscript.fetchTranscript(url);
+            const text = transcript.map((t) => t.text).join(' ');
+            const videoIdMatch = url.match(/(?:v=|youtu\.be\/|shorts\/)([\w-]{11})/);
+            const videoId = videoIdMatch?.[1];
+            return {
+              url,
+              videoId,
+              title: videoId ? `YouTube ${videoId}` : 'YouTube Lecture',
+              text,
+            };
+          } catch (err) {
+            return {
+              url,
+              error: err instanceof Error ? err.message : 'Transcript fetch failed',
+            };
+          }
+        }),
+      );
+
+      res.json({ results });
+    } catch (error) {
+      console.error('YouTube Batch Error:', error);
+      res.status(500).json({ error: 'Batch ingest failed' });
     }
   });
 

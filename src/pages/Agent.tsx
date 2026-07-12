@@ -3,7 +3,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Send, Bot, User, Sparkles, BookOpen, ChevronDown, Activity, Mic, Square, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { chatWithAgent, ApiError, checkHealth } from '../lib/api';
+import { chatWithAgent, streamChatWithAgent, ApiError, checkHealth } from '../lib/api';
 import { retrieveForQueryHybrid, offlineAnswerFromExcerpt } from '../lib/sourceContext';
 import { formatCitation, type Citation } from '../lib/rag';
 import { logActivity } from '../lib/activity';
@@ -223,24 +223,51 @@ Do not hallucinate external facts if not confident. Focus on educational outcome
 Format responses nicely using markdown structure if helpful.${ragContext}`;
 
       const serverUp = await checkHealth();
-      let responseText: string;
+      const assistantId = (Date.now() + 1).toString();
+      let responseText = '';
       let responseUrls: string[] | undefined;
 
       if (serverUp) {
-        const response = await chatWithAgent(geminiMessages, systemInstruction);
-        responseText = response.text;
-        responseUrls = response.urls;
+        setMessages((prev) => [...prev, { id: assistantId, role: 'model', content: '' }]);
+        setIsLoading(false);
+
+        try {
+          await streamChatWithAgent(geminiMessages, systemInstruction, (chunk) => {
+            responseText += chunk;
+            setMessages((prev) =>
+              prev.map((m) => (m.id === assistantId ? { ...m, content: responseText } : m)),
+            );
+          });
+        } catch {
+          const response = await chatWithAgent(geminiMessages, systemInstruction);
+          responseText = response.text;
+          responseUrls = response.urls;
+        }
+
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId
+              ? {
+                  ...m,
+                  content: responseText,
+                  urls: responseUrls,
+                  citations: citations.length > 0 ? citations : undefined,
+                }
+              : m,
+          ),
+        );
       } else {
         responseText = offlineAnswerFromExcerpt(userMessage, retrievalResult);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: assistantId,
+            role: 'model',
+            content: responseText,
+            citations: citations.length > 0 ? citations : undefined,
+          },
+        ]);
       }
-      
-      setMessages(prev => [...prev, { 
-        id: (Date.now() + 1).toString(), 
-        role: 'model', 
-        content: responseText,
-        urls: responseUrls,
-        citations: citations.length > 0 ? citations : undefined,
-      }]);
 
       if (shouldSpeak) {
         const utterance = new SpeechSynthesisUtterance(responseText);
@@ -288,6 +315,9 @@ Format responses nicely using markdown structure if helpful.${ragContext}`;
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="absolute inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-6"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="agent-mode-title"
           >
             <motion.div 
               initial={{ scale: 0.95, opacity: 0 }}
@@ -299,7 +329,7 @@ Format responses nicely using markdown structure if helpful.${ragContext}`;
                 <div className="w-12 h-12 bg-indigo-100 dark:bg-indigo-900/30 rounded-xl flex items-center justify-center mx-auto mb-3">
                   <Bot className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
                 </div>
-                <h2 className="text-xl font-display font-bold text-slate-900 dark:text-white mb-1.5">Select Study Mode</h2>
+                <h2 id="agent-mode-title" className="text-xl font-display font-bold text-slate-900 dark:text-white mb-1.5">Select Study Mode</h2>
                 <p className="text-sm text-slate-500 dark:text-slate-400">Choose how Memora should guide your session.</p>
               </div>
               
@@ -505,6 +535,7 @@ Format responses nicely using markdown structure if helpful.${ragContext}`;
                 handleSend();
               }
             }}
+            aria-label="Ask Memora a question"
             placeholder="Type a question, paste a theory, or ask for an exercise..."
             className="w-full text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 text-slate-900 dark:text-white rounded-2xl pl-4 pr-24 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 resize-none transition-colors placeholder:text-slate-400 dark:placeholder:text-slate-500"
             rows={1}

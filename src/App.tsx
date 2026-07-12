@@ -4,16 +4,18 @@
  */
 
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { useEffect, useLayoutEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useState } from "react";
 import Layout from "./components/layout/Layout";
 import Dashboard from "./pages/Dashboard";
-import Library from "./pages/Library";
 import Tasks from "./pages/Tasks";
 import Agent from "./pages/Agent";
-import CollabRoom from "./pages/CollabRoom";
-import Admin from "./pages/Admin";
-import Workspace from "./pages/Workspace";
-import StudyWorkspacePage from "./pages/StudyWorkspacePage";
+import RouteFallback from "./components/RouteFallback";
+
+const Library = lazy(() => import("./pages/Library"));
+const CollabRoom = lazy(() => import("./pages/CollabRoom"));
+const Admin = lazy(() => import("./pages/Admin"));
+const Workspace = lazy(() => import("./pages/Workspace"));
+const StudyWorkspacePage = lazy(() => import("./pages/StudyWorkspacePage"));
 import ThemeProvider from "./components/ThemeProvider";
 import TimerManager from "./components/TimerManager";
 import AudioController from "./components/AudioController";
@@ -189,13 +191,48 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Layout />}>
               <Route index element={<Dashboard />} />
-              <Route path="library" element={<Library />} />
               <Route path="tasks" element={<Tasks />} />
               <Route path="agent" element={<Agent />} />
-              <Route path="collab" element={<CollabRoom />} />
-              <Route path="workspace" element={<Workspace />} />
-              <Route path="study/:courseId" element={<StudyWorkspacePage />} />
-              <Route path="admin" element={<Admin />} />
+              <Route
+                path="library"
+                element={
+                  <Suspense fallback={<RouteFallback />}>
+                    <Library />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="collab"
+                element={
+                  <Suspense fallback={<RouteFallback />}>
+                    <CollabRoom />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="workspace"
+                element={
+                  <Suspense fallback={<RouteFallback />}>
+                    <Workspace />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="study/:courseId"
+                element={
+                  <Suspense fallback={<RouteFallback />}>
+                    <StudyWorkspacePage />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="admin"
+                element={
+                  <Suspense fallback={<RouteFallback />}>
+                    <Admin />
+                  </Suspense>
+                }
+              />
             </Route>
           </Routes>
         </BrowserRouter>

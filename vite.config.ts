@@ -6,6 +6,21 @@ import { defineConfig } from "vite";
 
 export default defineConfig(() => {
   return {
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes('node_modules/cytoscape')) return 'cytoscape';
+            if (id.includes('node_modules/tldraw') || id.includes('@tldraw')) return 'tldraw';
+            if (id.includes('node_modules/katex')) return 'katex';
+            if (id.includes('node_modules/firebase')) return 'firebase';
+            if (id.includes('node_modules/recharts') || id.includes('node_modules/d3')) return 'charts';
+            if (id.includes('node_modules/mermaid') || id.includes('cynefin')) return 'diagrams';
+          },
+        },
+      },
+      chunkSizeWarningLimit: 800,
+    },
     plugins: [
       react(),
       tailwindcss(),

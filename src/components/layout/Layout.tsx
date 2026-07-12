@@ -17,6 +17,7 @@ import ShortcutsModal from '../ShortcutsModal';
 import BatteryIndicator from '../BatteryIndicator';
 import { toast } from 'sonner';
 import { isFullBleedRoute, CONTENT_GUTTER } from './pageLayout';
+import SkipLink from '../SkipLink';
 
 export default function Layout() {
   useKeyboardShortcuts();
@@ -72,6 +73,7 @@ export default function Layout() {
 
   return (
     <div className="flex h-screen w-full min-w-0 bg-[#FAFAFA] dark:bg-[#020617] text-slate-900 dark:text-slate-50 font-sans selection:bg-indigo-100 dark:selection:bg-indigo-900/50 selection:text-indigo-900 dark:selection:text-indigo-100 transition-colors duration-300">
+      <SkipLink />
       {/* Sidebar (Desktop) */}
       {!isFocusMode && (
         <aside className="hidden md:flex w-16 lg:w-56 bg-white dark:bg-slate-900 border-r border-slate-200/60 dark:border-slate-800/60 flex-col transition-all duration-300 relative z-20 no-print">
@@ -130,6 +132,7 @@ export default function Layout() {
         <div className="p-2 border-t border-slate-100/50 dark:border-slate-800/50 space-y-1">
           <button 
             onClick={() => setIsSettingsOpen(true)}
+            aria-label="Open settings"
             className="flex justify-center lg:justify-start items-center gap-2 px-3 py-2 w-full rounded-xl font-medium text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group text-sm"
           >
             <Settings className="w-4 h-4" strokeWidth={1.5} />
@@ -150,7 +153,7 @@ export default function Layout() {
       )}
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col min-w-0 w-full max-w-none overflow-hidden relative mb-[120px] md:mb-0">
+      <main id="main-content" className="flex-1 flex flex-col min-w-0 w-full max-w-none overflow-hidden relative mb-[120px] md:mb-0">
         {/* Subtle background glow */}
         <div className="absolute top-0 left-0 right-0 h-96 bg-gradient-to-b from-indigo-50/50 dark:from-indigo-900/10 to-transparent pointer-events-none -z-10" />
         

@@ -134,6 +134,33 @@ Memora is a full-stack AI tutoring workspace (React 19 + Vite + Express + Gemini
 - [x] Cloud deploy configs — `railway.toml`, `fly.toml`, `cloudbuild.yaml`
 - [x] Production E2E — `npm run test:e2e:prod` (build + Playwright against prod server)
 
+### Phase 10 — Intelligence & demo fidelity
+- [x] Smart Schedule from real `studySessionsHistory` (`predictOptimalStudyTime`, `OptimalStudyTimes.tsx`)
+- [x] Library transcribe/analyze media via `/api/summarize-audio` + `/api/analyze-media` (`mediaPipeline.ts`)
+- [x] Collab demo mode: local messages/quizzes (`collabDemoStorage.ts`, `CollabRoom.tsx`)
+- [x] Library course quiz → Study Workspace navigation (replaces mock Google Form URL)
+- [x] Vite `manualChunks` for cytoscape, tldraw, katex, firebase, charts, diagrams
+- [x] `@y/y` dependency + Docker build hardening (commit `571fb83`)
+
+### Phase 11 — Performance, streaming & accessibility
+- [x] Lazy-load heavy routes: Library, Study Workspace, Collab, Workspace, Admin (`App.tsx`, `RouteFallback.tsx`)
+- [x] Agent SSE streaming via `/api/agent/chat/stream` + `streamChatWithAgent` (fallback to non-stream)
+- [x] YouTube batch lecture ingest: `/api/ingest/youtube/batch` + Upload modal tab + `processYoutubeBatch`
+- [x] WCAG baseline: skip link, `#main-content` landmark, dialog `role`/`aria-*` on upload modal
+
+---
+
+## 9. Remaining gaps (Phase 12+ backlog)
+
+| Area | Gap | Priority |
+|------|-----|----------|
+| **Performance** | Lazy-load tldraw/cytoscape inside Study Workspace tools | Medium |
+| **Collab** | Real Google Forms/Meet API | Low |
+| **i18n** | UI strings English-only | Low |
+| **Accessibility** | Keyboard trap in all modals; chart alt text | Medium |
+| **Agent** | Stream citations/grounding over SSE | Low |
+| **Ingest** | YouTube playlist auto-expand | Low |
+
 ---
 
 ## 7. Quality Gates
@@ -161,4 +188,4 @@ See `.env.local.example` for template.
 
 ---
 
-*Last updated: Phase 9 cloud deploy, persistent audit, Firestore tenant admin.*
+*Last updated: Phase 11 lazy routes, agent SSE, YouTube batch, WCAG baseline.*

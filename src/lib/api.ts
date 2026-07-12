@@ -36,6 +36,59 @@ export async function chatWithAgent(
   return parseResponse<{ text: string; urls?: string[] }>(response);
 }
 
+/** Stream agent tokens via SSE; calls onChunk for each text delta. */
+export async function streamChatWithAgent(
+  messages: { role: string; parts: { text: string }[] }[],
+  systemInstruction: string,
+  onChunk: (text: string) => void,
+  model = 'gemini-3.5-flash',
+): Promise<void> {
+  const response = await fetch('/api/agent/chat/stream', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messages, systemInstruction, model }),
+  });
+
+  if (!response.ok) {
+    await parseResponse<never>(response);
+    return;
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) throw new ApiError('No response body', response.status);
+
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      try {
+        const payload = JSON.parse(line.slice(6)) as { text?: string; error?: string; done?: boolean };
+        if (payload.error) throw new ApiError(payload.error, 500);
+        if (payload.text) onChunk(payload.text);
+      } catch (e) {
+        if (e instanceof ApiError) throw e;
+      }
+    }
+  }
+}
+
+export async function batchIngestYoutube(urls: string[]) {
+  const response = await fetch('/api/ingest/youtube/batch', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ urls }),
+  });
+  return parseResponse<{ results: Array<{ url: string; videoId?: string; title?: string; text?: string; error?: string }> }>(response);
+}
+
 export async function generateImage(prompt: string) {
   const response = await fetch('/api/generate-image', {
     method: 'POST',

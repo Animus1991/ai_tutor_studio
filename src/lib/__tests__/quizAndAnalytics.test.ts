@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildStudyActivityData, averageFocusMinutes } from '../studySessionAnalytics';
+import { buildStudyActivityData, averageFocusMinutes, predictOptimalStudyTime } from '../studySessionAnalytics';
 import { buildQuizSetFromNotes, shuffleQuizQuestion } from '../groundedLesson';
 import type { WorkspaceNoteBundle } from '../workspaceNoteContent';
 
@@ -14,6 +14,20 @@ describe('studySessionAnalytics', () => {
     expect(data[6].studyTime).toBe(45);
     expect(data[6].goalTime).toBe(60);
     expect(averageFocusMinutes(data)).toBeGreaterThan(0);
+  });
+
+  it('predicts optimal study window from focus history', () => {
+    const at2pm = new Date();
+    at2pm.setHours(14, 0, 0, 0);
+    const result = predictOptimalStudyTime(
+      [
+        { date: at2pm.toISOString(), duration: 60, type: 'focus' },
+        { date: at2pm.toISOString(), duration: 30, type: 'focus' },
+      ],
+      { now: new Date(at2pm.getFullYear(), at2pm.getMonth(), at2pm.getDate(), 10, 0, 0) },
+    );
+    expect(result.label).toMatch(/2:00 PM/);
+    expect(result.confidence).toBe('medium');
   });
 });
 

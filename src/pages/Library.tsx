@@ -75,6 +75,12 @@ import { persistLibraryCourse } from "../lib/libraryStorage";
 import { PIPELINE_VERSION } from "../lib/uploadPipeline";
 import { downloadOfflineStudyPackFile, saveOfflineStudyPack } from "../lib/offlineStudyPack";
 import type { UploadedFile } from "../lib/courseTypes";
+import {
+  transcribeMediaFile,
+  analyzeMediaFile,
+  appendToDocNotes,
+  buildMediaSummaryHtml,
+} from "../lib/mediaPipeline";
 
 type DisplayCourse = {
   id: string;
@@ -440,24 +446,24 @@ export default function Library() {
               const input = document.createElement("input");
               input.type = "file";
               input.accept = "audio/*,video/*";
-              input.onchange = (e: any) => {
-                if (e.target.files && e.target.files[0]) {
-                  const fileName = e.target.files[0].name;
-                  toast.success(
-                    `Started AI transcription for ${fileName}. A lecture summary will be added to your study notes when complete.`,
+              input.onchange = async (e: any) => {
+                const file = e.target.files?.[0] as File | undefined;
+                if (!file) return;
+                toast.loading(`Transcribing ${file.name}…`, { id: 'transcribe' });
+                try {
+                  const summary = await transcribeMediaFile(file);
+                  await appendToDocNotes(
+                    buildMediaSummaryHtml(`AI Transcription: ${file.name}`, summary),
                   );
-                  // Mock generation
-                  setTimeout(() => {
-                    localforage.getItem<string>("memora-doc-notes").then(notesStr => {
-                      const newSummary = `<p><strong>[AI Transcription Summary: ${fileName}]</strong><br/>The lecture covered the fundamentals of the topic, outlining key definitions and providing real-world examples. It emphasized the importance of understanding the core concepts before moving to advanced topics.</p>`;
-                      localforage.setItem(
-                        "memora-doc-notes",
-                        JSON.stringify(
-                          (notesStr || "").replace(/^"|"$/g, "") + newSummary,
-                        ),
-                      );
-                    });
-                  }, 2000);
+                  toast.success('Transcription added to study notes', { id: 'transcribe' });
+                } catch {
+                  await appendToDocNotes(
+                    buildMediaSummaryHtml(
+                      `Transcription: ${file.name}`,
+                      'Audio received. Configure GEMINI_API_KEY for live Gemini transcription, or use Dictate Note for speech-to-text.',
+                    ),
+                  );
+                  toast.success('Placeholder summary saved to notes', { id: 'transcribe' });
                 }
               };
               input.click();
@@ -472,10 +478,23 @@ export default function Library() {
               const input = document.createElement("input");
               input.type = "file";
               input.accept = "image/*,video/*";
-              input.onchange = () =>
-                toast.success(
-                  "Media analysis using Gemini Multimodal Vision API requires a backend storage solution. For this demo, imagine the media being analyzed and a summary added to your notes!",
-                );
+              input.onchange = async (e: any) => {
+                const file = (e.target as HTMLInputElement).files?.[0];
+                if (!file) return;
+                toast.loading(`Analyzing ${file.name}…`, { id: 'analyze-media' });
+                try {
+                  const { summary } = await analyzeMediaFile(file);
+                  await appendToDocNotes(
+                    buildMediaSummaryHtml(`Media Analysis: ${file.name}`, summary),
+                  );
+                  toast.success('Analysis added to study notes', { id: 'analyze-media' });
+                } catch {
+                  toast.error(
+                    'Live analysis needs GEMINI_API_KEY. Try Upload Course for images (OCR) or Analyze with API key set.',
+                    { id: 'analyze-media' },
+                  );
+                }
+              };
               input.click();
             }}
             className="px-3 py-2 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-lg font-medium text-xs hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-1.5"
@@ -789,13 +808,8 @@ export default function Library() {
                   <button
                     onClick={async (e) => {
                       e.stopPropagation();
-                      try {
-                        await new Promise(r => setTimeout(r, 500));
-                        const mockUri = "https://docs.google.com/forms/d/demo-form-id/viewform";
-                        window.open(mockUri, "_blank");
-                      } catch (err) {
-                        toast.error("Failed to generate form.");
-                      }
+                      navigate(`/study/${course.id}`);
+                      toast.success(`Open quiz tools in Study Workspace for "${course.title}"`);
                     }}
                     className="w-7 h-7 flex items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition-colors"
                     title="Generate Google Form Quiz"

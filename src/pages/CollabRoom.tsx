@@ -48,7 +48,14 @@ import KnowledgeGraph from "../components/KnowledgeGraph";
 import { FireProvider } from "y-fire";
 import { app } from "../lib/firebase";
 import { getCollabWebSocketUrl } from "../lib/collabProvider";
-import { isDemoModeActive } from "../lib/demoStorage";
+import { isDemoModeActive, DEMO_USER } from "../lib/demoStorage";
+import {
+  loadCollabMessages,
+  loadCollabQuizzes,
+  saveCollabMessage,
+  saveCollabQuiz,
+  type CollabMessage,
+} from "../lib/collabDemoStorage";
 
 import PresenceIndicator from "../components/PresenceIndicator";
 
@@ -103,6 +110,18 @@ export default function CollabRoom() {
     });
 
     const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
+      if (isDemoModeActive()) {
+        setUser(DEMO_USER);
+        updateAwareness(DEMO_USER);
+        const [msgs, qzs] = await Promise.all([
+          loadCollabMessages(roomId),
+          loadCollabQuizzes(roomId),
+        ]);
+        setMessages(msgs);
+        setQuizzes(qzs);
+        return;
+      }
+
       setUser(currentUser);
       updateAwareness(currentUser);
 
@@ -205,20 +224,50 @@ export default function CollabRoom() {
 
   const [isCreatingQuiz, setIsCreatingQuiz] = useState(false);
 
+  const appendLocalMessage = async (msg: Omit<CollabMessage, 'id'>) => {
+    const full: CollabMessage = { ...msg, id: Date.now().toString() };
+    await saveCollabMessage(full);
+    setMessages((prev) => [...prev, full]);
+  };
+
   const handleCreateGoogleForm = async () => {
     try {
       setIsCreatingQuiz(true);
-      await new Promise(r => setTimeout(r, 1000));
-      const mockFormId = Math.random().toString(36).substring(7);
-      
-      if (user) {
-        // Save to Firebase
-        const formUrl = `https://docs.google.com/forms/d/${mockFormId}/edit`;
-        await setDoc(doc(db, "rooms", roomId, "quizzes", mockFormId), {
+      const quizId = crypto.randomUUID();
+      const title = `Study Quiz - ${new Date().toLocaleDateString()}`;
+      const studyUrl = `/study/demo-course-1`;
+
+      if (isDemoModeActive()) {
+        const quiz = {
+          id: quizId,
           roomId,
-          formId: mockFormId,
+          formId: quizId,
+          formUrl: studyUrl,
+          title,
+          userId: DEMO_USER.uid,
+          createdAt: new Date().toISOString(),
+        };
+        await saveCollabQuiz(quiz);
+        setQuizzes((prev) => [...prev, quiz]);
+        await appendLocalMessage({
+          roomId,
+          user: 'System',
+          text: `A new study quiz is ready: open Study Workspace to practice.`,
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          userId: DEMO_USER.uid,
+        });
+        window.open(studyUrl, '_blank');
+        toast.success('Demo quiz created — opening Study Workspace');
+        return;
+      }
+
+      if (user) {
+        const formUrl = `https://docs.google.com/forms/d/${quizId}/edit`;
+        await setDoc(doc(db, "rooms", roomId, "quizzes", quizId), {
+          roomId,
+          formId: quizId,
           formUrl,
-          title: `Demo Quiz - ${new Date().toLocaleDateString()}`,
+          title,
           userId: user.uid,
           createdAt: serverTimestamp(),
         });
@@ -250,9 +299,19 @@ export default function CollabRoom() {
   const handleCreateMeet = async () => {
     try {
       setIsCreatingMeet(true);
-      await new Promise(r => setTimeout(r, 500));
       const demoUri = "https://meet.google.com/demo-meet-xyz";
       setMeetUrl(demoUri);
+
+      if (isDemoModeActive()) {
+        await appendLocalMessage({
+          roomId,
+          user: 'System',
+          text: `Demo Meet link: ${demoUri}`,
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          userId: DEMO_USER.uid,
+        });
+        return;
+      }
       
       if (user) {
         await setDoc(
@@ -280,8 +339,18 @@ export default function CollabRoom() {
 
   const handleScheduleSession = async () => {
     try {
-      await new Promise(r => setTimeout(r, 500));
       const demoLink = "https://calendar.google.com/calendar/r/eventedit";
+      if (isDemoModeActive()) {
+        await appendLocalMessage({
+          roomId,
+          user: 'System',
+          text: 'Study session scheduled! Demo calendar event added.',
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          userId: DEMO_USER.uid,
+        });
+        window.open(demoLink, '_blank');
+        return;
+      }
       if (user) {
         await setDoc(
           doc(db, "rooms", roomId, "messages", Date.now().toString()),
@@ -341,7 +410,15 @@ export default function CollabRoom() {
     const messageText = chatMessage;
     setChatMessage("");
 
-    if (user) {
+    if (isDemoModeActive()) {
+      await appendLocalMessage({
+        roomId,
+        user: DEMO_USER.email?.split('@')[0] || 'Demo',
+        text: messageText,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        userId: DEMO_USER.uid,
+      });
+    } else if (user) {
       try {
         await setDoc(
           doc(db, "rooms", roomId, "messages", Date.now().toString()),
@@ -369,7 +446,15 @@ export default function CollabRoom() {
           [{ role: "user", parts: [{ text: messageText }] }],
           "You are a highly intelligent tutor in a collaborative study room. Provide concise, grounded answers.",
         );
-        if (user) {
+        if (isDemoModeActive()) {
+          await appendLocalMessage({
+            roomId,
+            user: 'Synapse AI',
+            text: res.text,
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            userId: DEMO_USER.uid,
+          });
+        } else if (user) {
           await setDoc(
             doc(db, "rooms", roomId, "messages", Date.now().toString()),
             {
