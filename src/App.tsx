@@ -22,6 +22,7 @@ import { useAuthStore } from "./store/useAuthStore";
 import { motion } from "framer-motion";
 import { Sparkles } from "lucide-react";
 import { OfflineIndicator } from "./components/OfflineIndicator";
+import { PwaInstallBanner } from "./components/PwaInstallBanner";
 import { SearchProvider } from "./hooks/useSearch";
 import { Toaster } from "sonner";
 import QuickAddModal from "./components/QuickAddModal";
@@ -176,6 +177,7 @@ export default function App() {
       <SearchProvider>
         <Toaster position="bottom-right" />
         <OfflineIndicator />
+        <PwaInstallBanner />
         <QuickAddModal />
         <PostSessionModal />
         <div className="md:contents fixed bottom-16 left-0 right-0 z-40 flex items-center justify-between px-4 py-2 bg-white/90 dark:bg-slate-900/90 backdrop-blur border-t border-slate-200 dark:border-slate-800 md:bg-transparent md:backdrop-blur-none md:border-none md:p-0 pointer-events-auto">

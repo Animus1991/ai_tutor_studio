@@ -1,9 +1,11 @@
 import * as cheerio from "cheerio";
 import 'dotenv/config';
 import express from 'express';
+import http from 'http';
 import path from 'path';
 import cors from 'cors';
 import { createServer as createViteServer } from 'vite';
+import { attachYjsWebSocketServer } from './yjsServer.js';
 import { GoogleGenAI } from '@google/genai';
 import multer from 'multer';
 import { YoutubeTranscript } from 'youtube-transcript';
@@ -40,6 +42,34 @@ function createRateLimiter(maxRequests: number, windowMs: number) {
 
 const aiRateLimit = createRateLimiter(30, 60_000);
 
+/** Ring buffer for audit events forwarded from clients. */
+const serverAuditLogs: Array<Record<string, unknown>> = [];
+const MAX_SERVER_AUDIT = 1000;
+
+function pushServerAudit(event: Record<string, unknown>) {
+  serverAuditLogs.push(event);
+  if (serverAuditLogs.length > MAX_SERVER_AUDIT) {
+    serverAuditLogs.splice(0, serverAuditLogs.length - MAX_SERVER_AUDIT);
+  }
+}
+
+async function extractArticleText(url: string): Promise<string> {
+  const res = await fetch(url, {
+    headers: { 'User-Agent': 'MemoraStudyBot/1.0 (+https://memora.app)' },
+    redirect: 'follow',
+  });
+  if (!res.ok) throw new Error(`Failed to fetch URL (${res.status})`);
+  const html = await res.text();
+  const $ = cheerio.load(html);
+  $('script, style, nav, footer, aside, noscript, iframe').remove();
+  const article =
+    $('article').text().trim() ||
+    $('main').text().trim() ||
+    $('[role="main"]').text().trim() ||
+    $('body').text().trim();
+  return article.replace(/\s+/g, ' ').slice(0, 120_000);
+}
+
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3010;
@@ -68,12 +98,80 @@ async function startServer() {
         const text = transcript.map(t => t.text).join(' ');
         res.json({ text, type: 'youtube' });
       } else {
-        // Fallback for generic URLs - just fetching the page with Gemini or raw
-        res.status(400).json({ error: 'Only YouTube URLs are supported currently for transcript extraction' });
+        const text = await extractArticleText(url);
+        if (text.length < 80) {
+          return res.status(400).json({ error: 'Could not extract enough text from this page.' });
+        }
+        res.json({ text, type: 'article', url });
       }
     } catch (error) {
       console.error('Ingest URL Error:', error);
       res.status(500).json({ error: 'Failed to extract content from URL' });
+    }
+  });
+
+  app.post('/api/ocr', upload.single('image'), async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: 'Image file is required' });
+      if (!req.file.mimetype.startsWith('image/')) {
+        return res.status(400).json({ error: 'Only image files are supported for OCR' });
+      }
+
+      const base64Image = req.file.buffer.toString('base64');
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.5-flash',
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                inlineData: {
+                  mimeType: req.file.mimetype,
+                  data: base64Image,
+                },
+              },
+              {
+                text: 'Extract all readable text from this image for study notes. Preserve headings and lists. Return plain text only.',
+              },
+            ],
+          },
+        ],
+      });
+
+      res.json({ text: response.text ?? '', filename: req.file.originalname });
+    } catch (error) {
+      console.error('OCR Error:', error);
+      res.status(500).json({ error: 'Failed to extract text from image' });
+    }
+  });
+
+  app.post('/api/xapi/statements', async (req, res) => {
+    try {
+      const statement = req.body;
+      const lrsUrl = process.env.XAPI_LRS_ENDPOINT;
+      const lrsKey = process.env.XAPI_LRS_KEY;
+
+      if (lrsUrl && lrsKey) {
+        const auth = Buffer.from(`${lrsKey}:`).toString('base64');
+        const forward = await fetch(`${lrsUrl.replace(/\/$/, '')}/statements`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Basic ${auth}`,
+            'X-Experience-API-Version': '1.0.3',
+          },
+          body: JSON.stringify(statement),
+        });
+        if (!forward.ok) {
+          const detail = await forward.text();
+          return res.status(502).json({ error: 'LRS rejected statement', detail });
+        }
+      }
+
+      res.status(204).end();
+    } catch (error) {
+      console.error('xAPI Error:', error);
+      res.status(500).json({ error: 'Failed to record xAPI statement' });
     }
   });
 
@@ -547,6 +645,50 @@ Question: ${query}`
     }
   });
 
+  // Client logging (used by src/utils/logger.ts)
+  app.post('/api/audit', express.json(), (req, res) => {
+    if (req.body?.id && req.body?.action) {
+      pushServerAudit(req.body);
+    }
+    res.status(204).end();
+  });
+
+  app.get('/api/admin/audit', (req, res) => {
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const logs = serverAuditLogs.slice(-limit).reverse();
+    res.json({ logs });
+  });
+
+  app.get('/api/admin/metrics', (_req, res) => {
+    const last24h = Date.now() - 24 * 60 * 60 * 1000;
+    const last7d = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const recent = serverAuditLogs.filter(
+      (e) => new Date(String(e.timestamp)).getTime() >= last24h,
+    );
+    const users7d = new Set(
+      serverAuditLogs
+        .filter((e) => new Date(String(e.timestamp)).getTime() >= last7d)
+        .map((e) => String(e.userId ?? 'unknown')),
+    );
+    res.json({
+      serverAuditTotal: serverAuditLogs.length,
+      serverAudit24h: recent.length,
+      uniqueActions: new Set(serverAuditLogs.map((e) => e.action)).size,
+      uniqueUsers7d: users7d.size,
+    });
+  });
+
+  app.post('/api/logs', express.json(), (req, res) => {
+    console.error('[Client Log]', JSON.stringify(req.body));
+    res.json({ status: 'ok' });
+  });
+
+  app.post('/api/logs/batch', express.json(), (req, res) => {
+    const errors = req.body?.errors ?? [];
+    console.error('[Client Log Batch]', errors.length, 'entries');
+    res.json({ status: 'ok', received: errors.length });
+  });
+
   // Health route
   app.post('/api/health', express.json({type: '*/*'}), (req, res) => {
     _require('fs').writeFileSync('client-error.log', JSON.stringify(req.body));
@@ -572,8 +714,12 @@ Question: ${query}`
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  const httpServer = http.createServer(app);
+  attachYjsWebSocketServer(httpServer);
+
+  httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`Yjs websocket on ws://localhost:${PORT}/yjs`);
   });
 }
 

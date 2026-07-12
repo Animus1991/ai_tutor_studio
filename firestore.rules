@@ -25,33 +25,49 @@ service cloud.firestore {
       return resource.data;
     }
 
+    function optionalString(data, field, max) {
+      return !(field in data) || (data[field] is string && data[field].size() <= max);
+    }
+
+    function optionalNumber(data, field) {
+      return !(field in data) || data[field] is number;
+    }
+
+    function optionalBool(data, field) {
+      return !(field in data) || data[field] is bool;
+    }
+
+    function optionalUid(data, field, uid) {
+      return !(field in data) || data[field] == uid;
+    }
+
     function isValidTask(data, uid) {
       return data.keys().hasAll(['title', 'course', 'completed', 'userId', 'createdAt']) &&
              data.title is string && data.title.size() <= 200 &&
              data.course is string && data.course.size() <= 100 &&
              data.completed is bool &&
              data.userId == uid &&
-             (data.type == null || (data.type is string && data.type.size() <= 50)) &&
-             (data.time == null || (data.time is string && data.time.size() <= 50)) &&
-             (data.urgent == null || data.urgent is bool) &&
-             (data.icon == null || (data.icon is string && data.icon.size() <= 50)) &&
-             (data.color == null || (data.color is string && data.color.size() <= 50)) &&
-             (data.bg == null || (data.bg is string && data.bg.size() <= 50)) &&
-             (data.repetition == null || data.repetition is number) &&
-             (data.interval == null || data.interval is number) &&
-             (data.easeFactor == null || data.easeFactor is number) &&
-             (data.nextReviewDate == null || data.nextReviewDate is string);
+             optionalString(data, 'type', 50) &&
+             optionalString(data, 'time', 50) &&
+             optionalBool(data, 'urgent') &&
+             optionalString(data, 'icon', 50) &&
+             optionalString(data, 'color', 50) &&
+             optionalString(data, 'bg', 50) &&
+             optionalNumber(data, 'repetition') &&
+             optionalNumber(data, 'interval') &&
+             optionalNumber(data, 'easeFactor') &&
+             optionalString(data, 'nextReviewDate', 64);
     }
 
     function isValidCourse(data, uid) {
       return data.keys().hasAll(['title', 'userId', 'createdAt']) &&
              data.title is string && data.title.size() <= 200 &&
              data.userId == uid &&
-             (data.progress == null || data.progress is number) &&
-             (data.documents == null || data.documents is number) &&
-             (data.lastActive == null || (data.lastActive is string && data.lastActive.size() <= 50)) &&
-             (data.color == null || (data.color is string && data.color.size() <= 50)) &&
-             (data.bg == null || (data.bg is string && data.bg.size() <= 50));
+             optionalNumber(data, 'progress') &&
+             optionalNumber(data, 'documents') &&
+             optionalString(data, 'lastActive', 50) &&
+             optionalString(data, 'color', 50) &&
+             optionalString(data, 'bg', 50);
     }
 
     function isValidMessage(data, uid, rId) {
@@ -60,7 +76,7 @@ service cloud.firestore {
              data.user is string && data.user.size() <= 100 &&
              data.text is string && data.text.size() <= 1000 &&
              data.userId == uid &&
-             (data.time == null || (data.time is string && data.time.size() <= 50));
+             optionalString(data, 'time', 50);
     }
     
     function isValidParticipant(data, uid, rId) {
@@ -87,6 +103,29 @@ service cloud.firestore {
              data.userId == uid &&
              data.userEmail is string && data.userEmail.size() <= 100 &&
              data.status is string && data.status == 'new';
+    }
+
+    function isValidDocument(data, uid) {
+      return data.keys().hasAll(['title', 'createdAt']) &&
+             data.title is string && data.title.size() <= 300 &&
+             optionalString(data, 'content', 50000) &&
+             optionalString(data, 'sourceUrl', 500) &&
+             optionalUid(data, 'userId', uid);
+    }
+
+    function isValidDeck(data, uid) {
+      return data.keys().hasAll(['title', 'createdAt']) &&
+             data.title is string && data.title.size() <= 200 &&
+             optionalUid(data, 'userId', uid);
+    }
+
+    function isValidFlashcard(data, uid) {
+      return data.keys().hasAll(['deckId', 'front', 'back', 'createdAt']) &&
+             data.deckId is string && data.deckId.size() <= 128 &&
+             data.front is string && data.front.size() <= 2000 &&
+             data.back is string && data.back.size() <= 2000 &&
+             optionalUid(data, 'userId', uid) &&
+             optionalString(data, 'type', 50);
     }
 
     match /users/{userId}/tasks/{taskId} {
@@ -180,6 +219,52 @@ service cloud.firestore {
                        isValidActivityLog(incoming()) &&
                        incoming().timestamp == request.time;
       allow update, delete: if false;
+    }
+
+    match /users/{userId}/documents/{documentId} {
+      allow read, list: if isSignedIn() && isVerified() && isValidId(userId) && request.auth.uid == userId;
+      allow create: if isSignedIn() && isVerified() && isValidId(userId) && isValidId(documentId) &&
+                       request.auth.uid == userId &&
+                       isValidDocument(incoming(), userId) &&
+                       incoming().createdAt == request.time;
+      allow update: if isSignedIn() && isVerified() && isValidId(userId) && isValidId(documentId) &&
+                       request.auth.uid == userId &&
+                       isValidDocument(incoming(), userId) &&
+                       incoming().createdAt == existing().createdAt;
+      allow delete: if isSignedIn() && isVerified() && isValidId(userId) && isValidId(documentId) &&
+                       request.auth.uid == userId;
+    }
+
+    match /users/{userId}/decks/{deckId} {
+      allow read, list: if isSignedIn() && isVerified() && isValidId(userId) && request.auth.uid == userId;
+      allow create: if isSignedIn() && isVerified() && isValidId(userId) && isValidId(deckId) &&
+                       request.auth.uid == userId &&
+                       isValidDeck(incoming(), userId) &&
+                       incoming().createdAt == request.time;
+      allow update: if isSignedIn() && isVerified() && isValidId(userId) && isValidId(deckId) &&
+                       request.auth.uid == userId &&
+                       isValidDeck(incoming(), userId) &&
+                       incoming().createdAt == existing().createdAt;
+      allow delete: if isSignedIn() && isVerified() && isValidId(userId) && isValidId(deckId) &&
+                       request.auth.uid == userId;
+    }
+
+    match /users/{userId}/flashcards/{cardId} {
+      allow read, list: if isSignedIn() && isVerified() && isValidId(userId) && request.auth.uid == userId;
+      allow create: if isSignedIn() && isVerified() && isValidId(userId) && isValidId(cardId) &&
+                       request.auth.uid == userId &&
+                       isValidFlashcard(incoming(), userId) &&
+                       incoming().createdAt == request.time;
+      allow update: if isSignedIn() && isVerified() && isValidId(userId) && isValidId(cardId) &&
+                       request.auth.uid == userId &&
+                       isValidFlashcard(incoming(), userId) &&
+                       incoming().createdAt == existing().createdAt;
+      allow delete: if isSignedIn() && isVerified() && isValidId(userId) && isValidId(cardId) &&
+                       request.auth.uid == userId;
+    }
+
+    match /yjs_state/{document=**} {
+      allow read, write: if isSignedIn() && isVerified();
     }
   }
 }

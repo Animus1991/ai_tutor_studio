@@ -6,15 +6,20 @@ import { Logger } from "./utils/logger";
 import { reportWebVitals } from "./lib/reportWebVitals";
 import { registerSW } from 'virtual:pwa-register';
 
-// Register service worker for offline support
-const updateSW = registerSW({
-  onNeedRefresh() {
-    console.log('New content available, please refresh.');
-  },
-  onOfflineReady() {
-    console.log('App ready to work offline');
-  },
-});
+if (import.meta.env.PROD) {
+  registerSW({
+    onNeedRefresh() {
+      console.log('New content available, please refresh.');
+    },
+    onOfflineReady() {
+      console.log('App ready to work offline');
+    },
+  });
+} else if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations().then((registrations) => {
+    registrations.forEach((registration) => registration.unregister());
+  });
+}
 
 class ErrorBoundary extends Component<{children: ReactNode}, {hasError: boolean, error: Error | null}> {
   constructor(props: {children: ReactNode}) {

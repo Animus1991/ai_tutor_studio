@@ -63,8 +63,57 @@ class AuditLogger {
     const events = this.getEvents();
     events.push(event);
     localStorage.setItem('memora-audit-logs', JSON.stringify(events));
-    
-    console.log('[Audit Log]', event);
+
+    void fetch('/api/audit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(event),
+    }).catch(() => {
+      /* server audit optional */
+    });
+
+    if (import.meta.env.DEV) {
+      console.log('[Audit Log]', event);
+    }
+  }
+
+  async fetchServerLogs(limit = 50): Promise<AuditEvent[]> {
+    try {
+      const res = await fetch(`/api/admin/audit?limit=${limit}`);
+      if (!res.ok) return [];
+      const data = (await res.json()) as { logs?: AuditEvent[] };
+      return data.logs ?? [];
+    } catch {
+      return [];
+    }
+  }
+
+  mergeLogs(local: AuditEvent[], server: AuditEvent[]): AuditEvent[] {
+    const byId = new Map<string, AuditEvent>();
+    for (const e of [...local, ...server]) byId.set(e.id, e);
+    return [...byId.values()].sort(
+      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+    );
+  }
+
+  filterLogs(
+    logs: AuditEvent[],
+    opts: { action?: string; query?: string; limit?: number },
+  ): AuditEvent[] {
+    const q = opts.query?.trim().toLowerCase();
+    let filtered = logs;
+    if (opts.action && opts.action !== 'all') {
+      filtered = filtered.filter((l) => l.action === opts.action);
+    }
+    if (q) {
+      filtered = filtered.filter(
+        (l) =>
+          l.action.toLowerCase().includes(q) ||
+          l.userId.toLowerCase().includes(q) ||
+          (l.resourceId ?? '').toLowerCase().includes(q),
+      );
+    }
+    return filtered.slice(0, opts.limit ?? 100);
   }
 
   getRecentLogs(limit: number = 50): AuditEvent[] {

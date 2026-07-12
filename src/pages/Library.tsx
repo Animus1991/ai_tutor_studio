@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import localforage from 'localforage';
 import {
   Upload,
@@ -56,11 +56,55 @@ import { onAuthStateChanged } from "firebase/auth";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { useLibraryStore } from "../store/useLibraryStore";
+import PageShell from "../components/layout/PageShell";
 import UploadCourseModal from "../components/UploadCourseModal";
+import { useAuthStore } from "../store/useAuthStore";
+import type { Course } from "../lib/courseTypes";
+import { useStore } from "../store/useStore";
+import { isDemoModeActive, loadDemoTasks } from "../lib/demoStorage";
+import {
+  buildLibraryExportStats,
+  formatExportStatsCsvRows,
+  formatExportStatsMarkdown,
+} from "../lib/libraryExportStats";
+import {
+  classroomCourseToLocalCourse,
+  fetchClassroomCourses,
+} from "../lib/classroomService";
+import { persistLibraryCourse } from "../lib/libraryStorage";
+import { PIPELINE_VERSION } from "../lib/uploadPipeline";
+import { downloadOfflineStudyPackFile, saveOfflineStudyPack } from "../lib/offlineStudyPack";
+import type { UploadedFile } from "../lib/courseTypes";
+
+type DisplayCourse = {
+  id: string;
+  title: string;
+  documents: number;
+  lastActive: string;
+  progress: number;
+  color: string;
+  bg: string;
+  isMemoraCourse?: boolean;
+};
+
+function mapMemoraCourseToDisplay(mc: Course): DisplayCourse {
+  return {
+    id: mc.id,
+    title: mc.title,
+    documents: mc.uploadedFileIds?.length ?? 1,
+    lastActive: "Recently",
+    progress: mc.sourceQuality?.score ?? 42,
+    color: "from-indigo-500 to-violet-600",
+    bg: "bg-indigo-50",
+    isMemoraCourse: true,
+  };
+}
 
 export default function Library() {
   const navigate = useNavigate();
-  const { courses: memoraCourses, lastUploadQuality } = useLibraryStore();
+  const isDemoMode = useAuthStore((s) => s.isDemoMode);
+  const accessToken = useAuthStore((s) => s.accessToken);
+  const { courses: memoraCourses, lastUploadQuality, hydrate: hydrateLibrary } = useLibraryStore();
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
   const [isWorkspaceOpen, setIsWorkspaceOpen] = useState(false);
@@ -74,6 +118,39 @@ export default function Library() {
   const [courses, setCourses] = useState<any[]>([]);
   const [selectedCourses, setSelectedCourses] = useState<string[]>([]);
   const [isSelectionMode, setIsSelectionMode] = useState(false);
+
+  const memoraCourseIds = useMemo(
+    () => new Set(memoraCourses.map((c) => c.id)),
+    [memoraCourses],
+  );
+
+  const displayCourses = useMemo((): DisplayCourse[] => {
+    const fromLibrary = memoraCourses.map(mapMemoraCourseToDisplay);
+    const firebaseCourses = courses
+      .filter((c) => !memoraCourseIds.has(c.id))
+      .map((c) => ({
+        id: c.id,
+        title: c.title ?? c.name ?? "Untitled",
+        documents: c.documents ?? 0,
+        lastActive: c.lastActive ?? "—",
+        progress: c.progress ?? 0,
+        color: c.color ?? "from-slate-500 to-slate-600",
+        bg: c.bg ?? "bg-slate-50",
+        isMemoraCourse: false,
+      }));
+    if (isDemoMode || fromLibrary.length > 0) {
+      return [...fromLibrary, ...firebaseCourses];
+    }
+    return firebaseCourses.length > 0 ? firebaseCourses : fromLibrary;
+  }, [memoraCourses, courses, memoraCourseIds, isDemoMode]);
+
+  const openCourse = (course: DisplayCourse) => {
+    if (course.isMemoraCourse || memoraCourseIds.has(course.id)) {
+      navigate(`/study/${course.id}`);
+    } else {
+      setIsWorkspaceOpen(true);
+    }
+  };
 
   const toggleCourseSelection = (courseId: string) => {
     setSelectedCourses(prev => 
@@ -141,64 +218,102 @@ export default function Library() {
   const handleImportClassroom = async () => {
     try {
       setIsImportingClassroom(true);
-      if (!user) {
-        toast.info("Please sign in to the platform first.");
+      if (!isDemoMode && !user) {
+        toast.info("Please sign in to import from Google Classroom.");
         return;
       }
-      
-      await new Promise(r => setTimeout(r, 1000));
-      const demoCourses = [
-        { id: "demo-course-1", name: "Demo Course: Intro to Psychology" },
-        { id: "demo-course-2", name: "Demo Course: Linear Algebra" }
-      ];
 
-      for (const c of demoCourses) {
-        const courseId = c.id;
+      const imported = await fetchClassroomCourses(accessToken, isDemoMode);
+
+      if (isDemoMode) {
+        for (const c of imported) {
+          const course = classroomCourseToLocalCourse(c);
+          const stubFile: UploadedFile = {
+            id: `${course.id}-import`,
+            name: `${c.name}.txt`,
+            extractedText: course.topics[0]?.description ?? c.name,
+            pipelineVersion: PIPELINE_VERSION,
+            createdAt: new Date().toISOString(),
+            courseId: course.id,
+          };
+          await persistLibraryCourse(course, stubFile);
+        }
+        await hydrateLibrary();
+        toast.success(`Imported ${imported.length} Classroom course${imported.length === 1 ? '' : 's'} (demo).`);
+        return;
+      }
+
+      for (const c of imported) {
+        const courseId = `classroom-${c.id}`;
         await setDoc(doc(db, "users", user.uid, "courses", courseId), {
-          title: c.name,
+          title: c.section ? `${c.name} (${c.section})` : c.name,
           progress: 0,
           documents: 0,
           lastActive: "Just now",
           color: "from-green-500 to-emerald-600",
           bg: "bg-green-50",
           userId: user.uid,
+          classroomId: c.id,
           createdAt: serverTimestamp(),
         });
       }
-      toast.success("Successfully imported demo courses!");
+      toast.success(`Imported ${imported.length} course${imported.length === 1 ? '' : 's'} from Google Classroom.`);
     } catch (e) {
       console.error(e);
-      toast.error("Failed to import demo courses");
+      toast.error(e instanceof Error ? e.message : "Failed to import Classroom courses");
     } finally {
       setIsImportingClassroom(false);
     }
   };
 
-  const getExportData = async () => {
-    // Collect courses
-    const courseData = courses;
+  const handleOfflinePack = async () => {
+    try {
+      const pack = await saveOfflineStudyPack();
+      toast.success(`Offline pack cached (${pack.stats.courseCount} courses).`);
+    } catch {
+      toast.error("Failed to build offline study pack");
+    }
+  };
 
-    // Collect tasks from local storage or Firestore
-    let tasksData = [];
-    if (user) {
+  const getExportData = async () => {
+    const courseData = displayCourses.map((c) => ({
+      id: c.id,
+      title: c.title,
+      progress: c.progress,
+      documents: c.documents,
+    }));
+
+    let tasksData: Array<{ completed?: boolean; createdAt?: string; completedAt?: string; title?: string; course?: string; type?: string; time?: string }> = [];
+    if (isDemoModeActive()) {
+      tasksData = await loadDemoTasks();
+    } else if (user) {
       const q = query(collection(db, "users", user.uid, "tasks"));
-      const snapshot = await import("firebase/firestore").then(m => m.getDocs(q));
-      tasksData = snapshot.docs.map(doc => doc.data());
+      const snapshot = await import("firebase/firestore").then((m) => m.getDocs(q));
+      tasksData = snapshot.docs.map((doc) => doc.data());
     } else {
       const storedTasksStr = await localforage.getItem<string>("memora-tasks");
       tasksData = storedTasksStr ? JSON.parse(storedTasksStr) : [];
     }
 
-    // Attempt to get global notes if stored somewhere, but we'll export what we have (courses/tasks)
+    const {
+      streak,
+      streakFreezes,
+      pomodoroSessions,
+      studySessionsHistory,
+      xp,
+      dailyGoal,
+    } = useStore.getState();
+
+    const stats = buildLibraryExportStats(
+      { streak, streakFreezes, pomodoroSessions, studySessionsHistory, xp, dailyGoal },
+      tasksData,
+    );
+
     return {
       courses: courseData,
       tasks: tasksData,
-      stats: {
-        currentStreak: 12,
-        totalPomodoroSessions: 45,
-        averageDailyStudyTime: 120,
-        tasksCompletedThisWeek: 18
-      }
+      stats,
+      exportedAt: new Date().toISOString(),
     };
   };
 
@@ -227,10 +342,7 @@ export default function Library() {
       "\n## Tasks",
       data.tasks.map((t: any) => `- [${t.completed ? 'x' : ' '}] **${t.title}** (${t.course}) - ${t.type} - ${t.time}`).join("\n"),
       "\n## Statistics",
-      `- **Current Streak**: ${data.stats.currentStreak} days`,
-      `- **Total Pomodoro Sessions**: ${data.stats.totalPomodoroSessions}`,
-      `- **Average Daily Study Time**: ${data.stats.averageDailyStudyTime} mins`,
-      `- **Tasks Completed this Week**: ${data.stats.tasksCompletedThisWeek}`,
+      ...formatExportStatsMarkdown(data.stats),
       "\n## Captured Notes",
       cleanNotes.trim() ? cleanNotes : "No recent notes captured."
     ].join("\n");
@@ -247,28 +359,20 @@ export default function Library() {
   };
 
   const handleExportCSV = async () => {
-    // Collect courses
+    const data = await getExportData();
+
     const courseHeaders = ["Course Title", "Mastery Progress (%)", "Documents"];
-    const courseRows = courses.map(
+    const courseRows = data.courses.map(
       (row) => `"${row.title}",${row.progress},${row.documents}`,
     );
 
-    // Collect tasks from local storage
-    const storedTasksStr = await localforage.getItem<string>("memora-tasks");
-    const storedTasks = storedTasksStr ? JSON.parse(storedTasksStr) : [];
-    const taskHeaders = ["Task Title", "Course", "Type", "Time"];
-    const taskRows = storedTasks.map(
-      (t: any) => `"${t.title}","${t.course}","${t.type}","${t.time}"`,
+    const taskHeaders = ["Task Title", "Course", "Type", "Time", "Completed"];
+    const taskRows = data.tasks.map(
+      (t) => `"${t.title ?? ''}","${t.course ?? ''}","${t.type ?? ''}","${t.time ?? ''}",${t.completed ? 'Yes' : 'No'}`,
     );
 
-    // Mock streak and study stats
     const statsHeaders = ["Metric", "Value"];
-    const statsRows = [
-      '"Current Streak (Days)",12',
-      '"Total Pomodoro Sessions",45',
-      '"Average Daily Study Time (mins)",120',
-      '"Tasks Completed this Week",18',
-    ];
+    const statsRows = formatExportStatsCsvRows(data.stats);
 
     const csvContent = [
       "--- COURSE PROGRESS ---",
@@ -296,7 +400,7 @@ export default function Library() {
   };
 
   return (
-    <div className="pb-16">
+    <PageShell className="pb-16 w-full">
       <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl p-3 mb-6 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-800 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
@@ -439,9 +543,21 @@ export default function Library() {
               </button>
               <button
                 onClick={handleExportJSON}
-                className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs last:rounded-b-lg"
+                className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs"
               >
                 Export as JSON
+              </button>
+              <button
+                onClick={handleOfflinePack}
+                className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs"
+              >
+                Cache offline study pack
+              </button>
+              <button
+                onClick={() => void downloadOfflineStudyPackFile()}
+                className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs last:rounded-b-lg"
+              >
+                Download offline pack (JSON)
               </button>
             </div>
           </div>
@@ -457,7 +573,7 @@ export default function Library() {
       </header>
 
       {/* Bento Grid Layout */}
-      <div className="grid grid-cols-1 xl:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-1 lg:grid-cols-6 xl:grid-cols-12 gap-4 mb-8">
         {/* Main Upload / Hero Card */}
         <div
           onClick={() => setIsUploadModalOpen(true)}
@@ -470,7 +586,7 @@ export default function Library() {
           role="button"
           tabIndex={0}
           aria-label="Open document workspace"
-          className="xl:col-span-2 relative overflow-hidden bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 rounded-2xl p-6 shadow-sm group hover:border-indigo-300 dark:hover:border-indigo-500/50 transition-colors cursor-pointer"
+          className="lg:col-span-3 xl:col-span-5 relative overflow-hidden bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 rounded-2xl p-6 shadow-sm group hover:border-indigo-300 dark:hover:border-indigo-500/50 transition-colors cursor-pointer"
         >
           <div className="absolute top-0 right-0 p-6 opacity-10 dark:opacity-5 pointer-events-none">
             <Brain className="w-40 h-40 text-indigo-600 dark:text-white rotate-12 transform scale-[1.1]" />
@@ -498,7 +614,7 @@ export default function Library() {
         </div>
 
         {/* Stats Card */}
-        <div className="bg-slate-900 dark:bg-slate-800 rounded-2xl p-6 text-white shadow-lg relative overflow-hidden flex flex-col justify-between">
+        <div className="lg:col-span-2 xl:col-span-4 bg-slate-900 dark:bg-slate-800 rounded-2xl p-6 text-white shadow-lg relative overflow-hidden flex flex-col justify-between">
           <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/20 to-transparent pointer-events-none" />
           <div>
             <h3 className="text-slate-400 font-medium mb-1 text-sm">Total Mastery</h3>
@@ -529,7 +645,7 @@ export default function Library() {
         </div>
         
         {/* Achievements Card */}
-        <div className="xl:col-span-1">
+        <div className="lg:col-span-1 xl:col-span-3">
           <UserAchievements />
         </div>
       </div>
@@ -626,8 +742,8 @@ export default function Library() {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-        {courses.map((course, index) => (
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5 gap-5">
+        {displayCourses.map((course, index) => (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -639,10 +755,10 @@ export default function Library() {
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
-                setIsWorkspaceOpen(true);
+                openCourse(course);
               }
             }}
-            onClick={() => setIsWorkspaceOpen(true)}
+            onClick={() => openCourse(course)}
             className="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-sm border border-slate-200/60 dark:border-slate-800/60 hover:shadow-lg hover:shadow-slate-200/50 dark:hover:shadow-indigo-900/20 hover:-translate-y-1 transition-all duration-300 cursor-pointer group flex flex-col justify-between"
           >
             <div>
@@ -730,7 +846,18 @@ export default function Library() {
         ))}
 
         {/* Add New Course Card */}
-        <div className="border-2 border-dashed border-slate-200 dark:border-slate-700/60 rounded-2xl p-5 flex flex-col items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/30 hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-900 dark:hover:text-white transition-all duration-300 cursor-pointer min-h-[220px] group">
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => setIsUploadModalOpen(true)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              setIsUploadModalOpen(true);
+            }
+          }}
+          className="border-2 border-dashed border-slate-200 dark:border-slate-700/60 rounded-2xl p-5 flex flex-col items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/30 hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-900 dark:hover:text-white transition-all duration-300 cursor-pointer min-h-[220px] group"
+        >
           <div className="w-12 h-12 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl flex items-center justify-center mb-3 shadow-sm group-hover:scale-110 transition-transform duration-300">
             <Plus className="w-5 h-5" />
           </div>
@@ -856,6 +983,6 @@ export default function Library() {
           <DocumentWorkspace onClose={() => setIsWorkspaceOpen(false)} />
         )}
       </AnimatePresence>
-    </div>
+    </PageShell>
   );
 }

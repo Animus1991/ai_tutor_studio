@@ -12,7 +12,8 @@ export default defineConfig(() => {
       VitePWA({
         registerType: "autoUpdate",
         devOptions: {
-          enabled: true,
+          // SW in dev caches stale CSS/JS and hides layout updates (e.g. full-width).
+          enabled: false,
         },
         manifest: {
           name: "Memora",

@@ -2,6 +2,7 @@ import * as Y from 'yjs';
 import { IndexeddbPersistence } from 'y-indexeddb';
 import { WebsocketProvider } from 'y-websocket';
 import { useState, useEffect } from 'react';
+import { getCollabWebSocketUrl } from './collabProvider';
 
 export class CrdtStore {
   public doc: Y.Doc;
@@ -13,39 +14,42 @@ export class CrdtStore {
     this.roomName = roomName;
     this.doc = new Y.Doc();
 
-    // Offline persistence
     this.persistence = new IndexeddbPersistence(this.roomName, this.doc);
-    
+
     this.persistence.on('synced', () => {
       console.log(`[CRDT] Loaded offline data for room: ${this.roomName}`);
     });
 
-    // Real-time syncing (disabled during server build, safe to run in browser)
     if (typeof window !== 'undefined') {
       try {
-        this.provider = new WebsocketProvider(
-          'wss://demos.yjs.dev',
-          this.roomName,
-          this.doc
-        );
+        const wsUrl = getCollabWebSocketUrl();
+        this.provider = new WebsocketProvider(wsUrl, this.roomName, this.doc, {
+          connect: true,
+          maxBackoffTime: 5000,
+        });
+        this.provider.on('status', (event: { status: string }) => {
+          if (event.status === 'connected') {
+            console.info(`[CRDT] Connected to room: ${this.roomName}`);
+          }
+        });
       } catch (e) {
         console.warn('Failed to initialize Websocket Provider for CRDT', e);
       }
     }
   }
 
-  public getMap<T = any>(name: string): Y.Map<T> {
+  public getMap<T = unknown>(name: string): Y.Map<T> {
     return this.doc.getMap<T>(name);
   }
 
-  public getArray<T = any>(name: string): Y.Array<T> {
+  public getArray<T = unknown>(name: string): Y.Array<T> {
     return this.doc.getArray<T>(name);
   }
 
   public getText(name: string): Y.Text {
     return this.doc.getText(name);
   }
-  
+
   public destroy() {
     this.provider?.destroy();
     this.doc.destroy();
@@ -59,17 +63,11 @@ export function useYjsText(name: string, initialContent: string = '') {
 
   useEffect(() => {
     const yText = globalCrdtStore.getText(name);
-    
+
     const handleUpdate = () => {
       setContent(yText.toString());
     };
 
-    // If it's empty but we have initialContent, maybe initialize it, 
-    // but only if it's completely empty and not just deleted.
-    if (yText.length === 0 && initialContent) {
-       // yText.insert(0, initialContent);
-    }
-    
     setContent(yText.toString() || initialContent);
 
     yText.observe(handleUpdate);

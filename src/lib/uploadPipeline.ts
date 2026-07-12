@@ -21,7 +21,12 @@ export async function extractFileContent(file: File): Promise<string> {
   }
 
   if (mime.startsWith('image/')) {
-    return `[Image: ${file.name}] — OCR processing recommended for scanned content.`;
+    const form = new FormData();
+    form.append('image', file);
+    const res = await fetch('/api/ocr', { method: 'POST', body: form });
+    if (!res.ok) throw new Error('Failed to extract text from image (OCR)');
+    const data = await res.json();
+    return normalizeDocumentText(data.text ?? '');
   }
 
   throw new Error(`Unsupported file type: ${mime || file.name}`);

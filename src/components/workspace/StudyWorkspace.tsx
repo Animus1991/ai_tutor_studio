@@ -9,10 +9,12 @@ import {
   buildWorkspaceStepsFromNotes,
   type WorkspaceToolId,
 } from '../../lib/workspaceNoteContent';
-import { getNoteContentForLessonStep, buildQuizFromNotes } from '../../lib/groundedLesson';
+import { getNoteContentForLessonStep, buildQuizSetFromNotes } from '../../lib/groundedLesson';
+import QuizStepPanel from './QuizStepPanel';
 import { WORKSPACE_TOOLS } from '../../lib/workspaceToolRegistry';
 import CompactPomodoroTimer from '../CompactPomodoroTimer';
 import Whiteboard from '../Whiteboard';
+import FeynmanToolPanel from './FeynmanToolPanel';
 import { logActivity } from '../../lib/activity';
 
 function EmptySourceState({ onUpload }: { onUpload: () => void }) {
@@ -61,10 +63,12 @@ function ToolPanel({
   toolId,
   bundle,
   ydoc,
+  courseTitle,
 }: {
   toolId: WorkspaceToolId;
   bundle: ReturnType<typeof buildWorkspaceNoteBundle>;
   ydoc: Y.Doc;
+  courseTitle?: string;
 }) {
   if (!bundle.hasSource) return null;
 
@@ -129,18 +133,13 @@ function ToolPanel({
       return <div className="h-[400px]"><Whiteboard ydoc={ydoc} /></div>;
     case 'feynman':
       return (
-        <div className="p-4 space-y-4">
-          <ol className="list-decimal list-inside text-sm space-y-2">
-            {bundle.feynman.steps.map((s, i) => <li key={i}>{s}</li>)}
-          </ol>
-          <div>
-            <h4 className="text-xs font-semibold text-slate-500 mb-2">Knowledge gaps to check</h4>
-            {bundle.feynman.gaps.map((g, i) => (
-              <p key={i} className="text-xs text-amber-700 dark:text-amber-400 mb-1">• {g}</p>
-            ))}
-          </div>
-          <textarea placeholder="Explain the concept in your own words..." className="w-full h-24 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-3" />
-        </div>
+        <FeynmanToolPanel
+          sourceText={bundle.sourceText}
+          concept={bundle.concept}
+          steps={bundle.feynman.steps}
+          suggestedGaps={bundle.feynman.gaps}
+          courseTitle={courseTitle}
+        />
       );
     case 'timer':
       return (
@@ -228,7 +227,7 @@ export default function StudyWorkspace({ onRequestUpload }: { onRequestUpload?: 
   const lessonContent = currentStep
     ? getNoteContentForLessonStep(bundle, stepIndex, currentStep.kind)
     : null;
-  const quiz = buildQuizFromNotes(bundle);
+  const quizQuestions = useMemo(() => buildQuizSetFromNotes(bundle), [bundle]);
 
   useEffect(() => {
     if (bundle.hasSource) logActivity(`Study workspace: ${course?.title ?? 'course'}`, 'study');
@@ -257,7 +256,7 @@ export default function StudyWorkspace({ onRequestUpload }: { onRequestUpload?: 
   }
 
   return (
-    <div className="h-[calc(100vh-4rem)] flex flex-col bg-slate-50 dark:bg-slate-950">
+    <div className="h-[calc(100dvh-3.5rem)] flex flex-col bg-slate-50 dark:bg-slate-950 w-full">
       <header className="flex items-center gap-4 px-4 py-3 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
         <button onClick={() => navigate('/library')} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg">
           <ArrowLeft className="w-5 h-5" />
@@ -306,12 +305,13 @@ export default function StudyWorkspace({ onRequestUpload }: { onRequestUpload?: 
                   <p className="text-sm text-slate-600 dark:text-slate-400 whitespace-pre-wrap">{lessonContent.body}</p>
                 </div>
               )}
-              {quiz && currentStep?.id === 'quiz' && (
-                <div className="mt-4 rounded-xl border border-indigo-200 dark:border-indigo-800 p-4">
-                  <p className="text-sm font-semibold mb-3">{quiz.question}</p>
-                  {quiz.options.map((opt, i) => (
-                    <button key={i} className="block w-full text-left text-sm px-3 py-2 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/20 mb-1">{opt}</button>
-                  ))}
+              {quizQuestions.length > 0 && currentStep?.id === 'quiz' && (
+                <div className="mt-4">
+                  <QuizStepPanel
+                    questions={quizQuestions}
+                    courseId={courseId ?? course.id}
+                    courseTitle={course.title}
+                  />
                 </div>
               )}
             </div>
@@ -325,7 +325,7 @@ export default function StudyWorkspace({ onRequestUpload }: { onRequestUpload?: 
                 </h3>
               </div>
               <div className="h-[calc(100%-2.5rem)] overflow-auto">
-                <ToolPanel toolId={activeTool} bundle={bundle} ydoc={ydoc} />
+                <ToolPanel toolId={activeTool} bundle={bundle} ydoc={ydoc} courseTitle={course.title} />
               </div>
             </div>
           </Panel>

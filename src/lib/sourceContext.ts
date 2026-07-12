@@ -64,6 +64,8 @@ export interface RetrieveOptions {
   topK?: number;
   useEmbeddings?: boolean;
   maxChars?: number;
+  /** Limit retrieval to chunks from these document IDs (e.g. course file ids). */
+  docIds?: string[];
 }
 
 /**
@@ -74,8 +76,12 @@ export async function retrieveForQueryHybrid(
   query: string,
   opts: RetrieveOptions = {},
 ): Promise<RetrievalResult> {
-  const { topK = 5, useEmbeddings = true } = opts;
-  const allDocs = await getAllEmbeddings();
+  const { topK = 5, useEmbeddings = true, docIds } = opts;
+  let allDocs = await getAllEmbeddings();
+  if (docIds && docIds.length > 0) {
+    const allowed = new Set(docIds);
+    allDocs = allDocs.filter((d) => allowed.has(d.docId));
+  }
   const corpus = allDocs.map(toCorpusDoc);
 
   if (corpus.length === 0) {

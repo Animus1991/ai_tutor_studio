@@ -1,4 +1,3 @@
-import { motion } from "framer-motion";
 import { Play, Brain, Users, Upload, Calendar, Clock, ArrowRight, CheckCircle2, Download, GripHorizontal, Loader2 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import MasteryDashboard from "../components/MasteryDashboard";
@@ -12,17 +11,21 @@ import FocusSession from "../components/FocusSession";
 import Flashcards from "../components/Flashcards";
 import StudyTimeChart from "../components/StudyTimeChart";
 import StudyRoadmap from "../components/StudyRoadmap";
+import ContinueStudyingCard from "../components/ContinueStudyingCard";
 import { useState, useEffect } from "react";
 import { auth, db } from "../lib/firebase";
 import { collection, query, getDocs, limit, orderBy } from "firebase/firestore";
 import localforage from "localforage";
 import { format, isFuture, isToday, isTomorrow } from "date-fns";
 import { toast } from "sonner";
+import { cn } from "../lib/utils";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import { getRecentActivity } from "../lib/activity";
 import { isDemoModeActive, loadDemoTasks } from "../lib/demoStorage";
+import PageShell from "../components/layout/PageShell";
+import { CONTENT_GUTTER, CONTENT_GUTTER_NEG } from "../components/layout/pageLayout";
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -130,7 +133,7 @@ export default function Dashboard() {
 
   const blocks: Record<string, React.ReactNode> = {
     stats: (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
         <DailyStreak />
         <DailyGoalRing />
         
@@ -179,17 +182,20 @@ export default function Dashboard() {
       </div>
     ),
     charts: (
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="h-[320px] lg:col-span-2 print-expand print-break-inside-avoid">
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
+        <div className="h-[320px] xl:col-span-8 print-expand print-break-inside-avoid">
           <StudyProgressChart />
         </div>
-        <div className="h-[320px] lg:col-span-1 print-expand print-break-inside-avoid">
+        <div className="h-[320px] xl:col-span-4 print-expand print-break-inside-avoid">
           <TaskCompletionChart />
         </div>
       </div>
     ),
     actionable: (
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
+        <div className="xl:col-span-1 h-[420px] md:h-[380px] print-expand print-break-inside-avoid">
+          <ContinueStudyingCard />
+        </div>
         <div className="xl:col-span-1 h-[420px] md:h-[380px] print-expand print-break-inside-avoid">
           <Flashcards />
         </div>
@@ -301,8 +307,11 @@ export default function Dashboard() {
   };
 
   return (
-    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: "easeOut" }} className="flex-1 overflow-y-auto relative">
-      <header className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-slate-200/60 dark:border-slate-800/60 sticky top-0 z-40 px-4 sm:px-6 py-3 sm:py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+    <PageShell className="flex flex-col min-h-full">
+      <header className={cn(
+        "bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-slate-200/60 dark:border-slate-800/60 sticky top-0 z-40 py-3 sm:py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3",
+        CONTENT_GUTTER_NEG, CONTENT_GUTTER,
+      )}>
         <div>
           <h1 className="text-xl sm:text-2xl font-display font-bold text-slate-900 dark:text-white tracking-tight">
             Dashboard
@@ -330,7 +339,7 @@ export default function Dashboard() {
         </div>
       </header>
       
-      <div id="dashboard-content" className="p-4 sm:p-6 max-w-7xl mx-auto min-h-screen">
+      <div id="dashboard-content" className="w-full min-h-0 flex-1">
         <DragDropContext onDragEnd={handleDragEnd}>
           <Droppable droppableId="dashboard-sections">
             {(provided) => (
@@ -365,6 +374,6 @@ export default function Dashboard() {
           </Droppable>
         </DragDropContext>
       </div>
-    </motion.div>
+    </PageShell>
   );
 }

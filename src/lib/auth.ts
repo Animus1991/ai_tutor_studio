@@ -12,6 +12,7 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 
 const provider = new GoogleAuthProvider();
+provider.addScope('https://www.googleapis.com/auth/classroom.courses.readonly');
 
 let isSigningIn = false;
 let cachedAccessToken: string | null = null;

@@ -16,11 +16,20 @@
   line-height: 1.8 !important;
 }
 
+html,
+body,
+#root {
+  width: 100%;
+  max-width: none;
+  min-height: 100%;
+}
+
 body {
   background-color: #FAFAFA;
   color: #0F172A;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  margin: 0;
 }
 
 .dark body {

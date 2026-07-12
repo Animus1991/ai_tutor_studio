@@ -31,6 +31,28 @@ The marginal cost equation is MC = 2q + 5 for a representative firm.
 Total revenue TR = p * q where p is market price and q is quantity sold.
 `.trim();
 
+const DEMO_DATA_ANALYSIS_TEXT = `
+# Introduction to Data Analysis
+
+Data analysis is the process of inspecting, cleansing, transforming, and modeling data to discover useful information.
+
+## Descriptive Statistics
+
+Mean, median, and mode summarize central tendency. Standard deviation measures spread.
+Definition: A histogram visualizes the frequency distribution of numeric data.
+
+## Inferential Statistics
+
+Hypothesis testing evaluates claims about population parameters using sample data.
+The p-value indicates the probability of observing results at least as extreme under the null hypothesis.
+Correlation does not imply causation — confounding variables must be controlled.
+
+## Regression
+
+Linear regression models the relationship Y = beta0 + beta1 * X + epsilon.
+R-squared measures the proportion of variance explained by the model.
+`.trim();
+
 export async function seedDemoCourse() {
   const fileId = 'demo-file-cournot';
   const lib = await loadLibrary();
@@ -42,6 +64,22 @@ export async function seedDemoCourse() {
   file.id = fileId;
   file.courseId = course.id;
   file.name = 'Demo: Microeconomics.pdf';
+  await persistLibraryCourse(course, file);
+  await indexDemoFileForRag(file.id, file.name, file.extractedText);
+  return course;
+}
+
+export async function seedDemoDataAnalysisCourse() {
+  const fileId = 'demo-file-data-analysis';
+  const lib = await loadLibrary();
+  const existing = lib.courses.find((c) => c.id === 'demo-course-data');
+  if (existing) return existing;
+
+  const { course, file } = processTextToCourse(DEMO_DATA_ANALYSIS_TEXT, 'Introduction to Data Analysis.pdf', fileId);
+  course.id = 'demo-course-data';
+  file.id = fileId;
+  file.courseId = course.id;
+  file.name = 'Introduction to Data Analysis.pdf';
   await persistLibraryCourse(course, file);
   await indexDemoFileForRag(file.id, file.name, file.extractedText);
   return course;
@@ -97,6 +135,7 @@ export function seedDemoStoreStats() {
 export async function seedDemoSandbox() {
   setDemoModeFlag(true);
   await seedDemoCourse();
+  await seedDemoDataAnalysisCourse();
   await seedDemoTasks();
   await seedDemoActivities();
   seedDemoStoreStats();

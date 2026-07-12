@@ -47,16 +47,60 @@ export function buildQuizFromNotes(bundle: WorkspaceNoteBundle): {
   options: string[];
   correctIndex: number;
 } | null {
-  if (!bundle.hasSource || !bundle.course || bundle.course.glossary.length === 0) return null;
+  const set = buildQuizSetFromNotes(bundle);
+  return set.length > 0 ? set[0] : null;
+}
 
-  const term = bundle.course.glossary[0];
-  const distractors = bundle.course.glossary.slice(1, 4).map((g) => g.definition);
-  const options = [term.definition, ...distractors].slice(0, 4);
-  while (options.length < 4) options.push('None of the above');
+export type QuizQuestion = {
+  id: string;
+  question: string;
+  options: string[];
+  correctIndex: number;
+};
 
+function shuffleArray<T>(arr: T[]): T[] {
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
+/** Up to 4 glossary-based questions from course material. */
+export function buildQuizSetFromNotes(bundle: WorkspaceNoteBundle): QuizQuestion[] {
+  if (!bundle.hasSource || !bundle.course || bundle.course.glossary.length === 0) {
+    return [];
+  }
+
+  const terms = bundle.course.glossary.slice(0, 4);
+  return terms.map((term, idx) => {
+    const distractors = bundle
+      .course!.glossary.filter((g) => g.term !== term.term)
+      .slice(0, 3)
+      .map((g) => g.definition);
+    const options = [term.definition, ...distractors].slice(0, 4);
+    while (options.length < 4) options.push('None of the above');
+
+    return {
+      id: `quiz-${idx}-${term.term}`,
+      question: `What is the definition of "${term.term}"?`,
+      options,
+      correctIndex: 0,
+    };
+  });
+}
+
+/** Shuffle options while tracking the correct answer index. */
+export function shuffleQuizQuestion(question: QuizQuestion): QuizQuestion {
+  const tagged = question.options.map((text, i) => ({
+    text,
+    isCorrect: i === question.correctIndex,
+  }));
+  const shuffled = shuffleArray(tagged);
   return {
-    question: `What is the definition of "${term.term}"?`,
-    options,
-    correctIndex: 0,
+    ...question,
+    options: shuffled.map((o) => o.text),
+    correctIndex: shuffled.findIndex((o) => o.isCorrect),
   };
 }

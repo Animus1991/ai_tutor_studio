@@ -16,12 +16,13 @@ import SettingsModal from '../SettingsModal';
 import ShortcutsModal from '../ShortcutsModal';
 import BatteryIndicator from '../BatteryIndicator';
 import { toast } from 'sonner';
+import { isFullBleedRoute, CONTENT_GUTTER } from './pageLayout';
 
 export default function Layout() {
   useKeyboardShortcuts();
   useStudyReminders();
   const location = useLocation();
-  const { isDarkMode, toggleDarkMode, isFocusMode, toggleFocusMode, isDyslexiaFont, toggleDyslexiaFont } = useStore();
+  const { isDarkMode, toggleDarkMode, isFocusMode, toggleFocusMode, isDyslexiaFont, toggleDyslexiaFont, xp, streakFreezes } = useStore();
   const { userRole, setUserRole } = useAuthStore();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isActivityDrawerOpen, setIsActivityDrawerOpen] = useState(false);
@@ -70,7 +71,7 @@ export default function Layout() {
   }
 
   return (
-    <div className="flex h-screen bg-[#FAFAFA] dark:bg-[#020617] text-slate-900 dark:text-slate-50 font-sans selection:bg-indigo-100 dark:selection:bg-indigo-900/50 selection:text-indigo-900 dark:selection:text-indigo-100 transition-colors duration-300">
+    <div className="flex h-screen w-full min-w-0 bg-[#FAFAFA] dark:bg-[#020617] text-slate-900 dark:text-slate-50 font-sans selection:bg-indigo-100 dark:selection:bg-indigo-900/50 selection:text-indigo-900 dark:selection:text-indigo-100 transition-colors duration-300">
       {/* Sidebar (Desktop) */}
       {!isFocusMode && (
         <aside className="hidden md:flex w-16 lg:w-56 bg-white dark:bg-slate-900 border-r border-slate-200/60 dark:border-slate-800/60 flex-col transition-all duration-300 relative z-20 no-print">
@@ -149,7 +150,7 @@ export default function Layout() {
       )}
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative mb-[120px] md:mb-0">
+      <main className="flex-1 flex flex-col min-w-0 w-full max-w-none overflow-hidden relative mb-[120px] md:mb-0">
         {/* Subtle background glow */}
         <div className="absolute top-0 left-0 right-0 h-96 bg-gradient-to-b from-indigo-50/50 dark:from-indigo-900/10 to-transparent pointer-events-none -z-10" />
         
@@ -178,11 +179,11 @@ export default function Layout() {
             </div>
             
             <div className="hidden sm:flex items-center gap-2 bg-amber-50 dark:bg-amber-900/30 px-2.5 py-1 rounded-lg border border-amber-200 dark:border-amber-800">
-              <span className="text-xs font-bold text-amber-600 dark:text-amber-400">{useStore().xp} XP</span>
+              <span className="text-xs font-bold text-amber-600 dark:text-amber-400">{xp} XP</span>
             </div>
             
             <div className="hidden sm:flex items-center gap-1.5 bg-sky-50 dark:bg-sky-900/30 px-2.5 py-1 rounded-lg border border-sky-200 dark:border-sky-800" title="Streak Freezes">
-              <span className="text-xs font-bold text-sky-600 dark:text-sky-400">🧊 {useStore().streakFreezes}</span>
+              <span className="text-xs font-bold text-sky-600 dark:text-sky-400">🧊 {streakFreezes}</span>
             </div>
 
             <SyncIndicator />
@@ -252,8 +253,15 @@ export default function Layout() {
         </header>
         )}
         
-        <div className="flex-1 overflow-y-auto">
-          <div className="max-w-7xl mx-auto p-4 md:p-8 h-full relative">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden">
+          <div
+            className={cn(
+              'w-full min-w-0 max-w-none h-full relative',
+              isFullBleedRoute(location.pathname)
+                ? 'p-0'
+                : cn(CONTENT_GUTTER, 'py-4 md:py-6'),
+            )}
+          >
             {isFocusMode ? (
               <div className="flex flex-col items-center justify-center h-full w-full">
                 <button 

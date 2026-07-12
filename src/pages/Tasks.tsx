@@ -1,4 +1,4 @@
-import { useState, useEffect, FormEvent } from "react";
+import { useState, useEffect, FormEvent, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   Calendar,
@@ -38,16 +38,8 @@ import {
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
-import { format, subDays } from "date-fns";
+import { format } from "date-fns";
 import { toast } from "sonner";
-
-const mockAnalyticsData = Array.from({ length: 7 }).map((_, i) => ({
-  date: format(subDays(new Date(), 6 - i), 'EEE'),
-  focusTime: Math.floor(Math.random() * 120) + 30, // mins
-  mastery: Math.floor(Math.random() * 40) + 50, // %
-  completionRate: Math.floor(Math.random() * 30) + 70, // %
-}));
-
 import ActivityFeed from "../components/ActivityFeed";
 
 import { useMicrophone } from '../hooks/useMicrophone';
@@ -57,6 +49,7 @@ import { Sparkles, Loader2 } from 'lucide-react';
 import { FSRS, Card, Rating } from 'fsrs.js';
 
 import DashboardStats from "../components/DashboardStats";
+import PageShell, { PageHeader } from "../components/layout/PageShell";
 import { useAuthStore } from "../store/useAuthStore";
 import {
   DEMO_USER,
@@ -65,11 +58,12 @@ import {
   type DemoTask,
 } from "../lib/demoStorage";
 import { logActivity } from "../lib/activity";
+import { buildTaskAnalytics } from "../lib/taskAnalytics";
 
 const fsrs = new FSRS();
 
 export default function Tasks() {
-  const { pomodoroSessions } = useStore();
+  const { pomodoroSessions, studySessionsHistory } = useStore();
   const isDemoMode = useAuthStore((s) => s.isDemoMode);
   const [isSyncingTasks, setIsSyncingTasks] = useState(false);
   const [user, setUser] = useState<any>(null);
@@ -345,6 +339,11 @@ export default function Tasks() {
 
   const [activeFilter, setActiveFilter] = useState("All");
   const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
+
+  const analyticsData = useMemo(
+    () => buildTaskAnalytics(tasks, studySessionsHistory),
+    [tasks, studySessionsHistory],
+  );
   const [isNewTaskModalOpen, setIsNewTaskModalOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
@@ -441,34 +440,29 @@ export default function Tasks() {
   };
 
   return (
-    <div className="pb-16">
-      <header className="mb-6 flex items-end justify-between">
-        <div>
-          <h2 className="text-xl md:text-2xl font-display font-bold text-slate-900 dark:text-white tracking-tight">
-            Command Center
-          </h2>
-          <p className="text-slate-500 dark:text-slate-400 mt-1.5 text-sm max-w-xl leading-relaxed">
-            Your adaptive study plan based on retention curves and upcoming
-            goals.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={exportSessionData}
-            className="hidden sm:flex items-center gap-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 px-3 py-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors font-medium text-xs shadow-sm"
-          >
-            <Download className="w-3.5 h-3.5" />
-            Export
-          </button>
-          <button
-            onClick={() => setIsNewTaskModalOpen(true)}
-            className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg font-semibold text-sm transition-all shadow-sm"
-          >
-            <Plus className="w-4 h-4" />
-            <span className="hidden sm:inline">New Task</span>
-          </button>
-        </div>
-      </header>
+    <PageShell className="pb-16">
+      <PageHeader
+        title="Command Center"
+        description="Your adaptive study plan based on retention curves and upcoming goals."
+        actions={
+          <>
+            <button
+              onClick={exportSessionData}
+              className="hidden sm:flex items-center gap-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 px-3 py-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors font-medium text-xs shadow-sm"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Export
+            </button>
+            <button
+              onClick={() => setIsNewTaskModalOpen(true)}
+              className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg font-semibold text-sm transition-all shadow-sm"
+            >
+              <Plus className="w-4 h-4" />
+              <span className="hidden sm:inline">New Task</span>
+            </button>
+          </>
+        }
+      />
 
       <DashboardStats />
 
@@ -524,8 +518,8 @@ export default function Tasks() {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        <div className="xl:col-span-2">
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+        <div className="xl:col-span-8">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 border-b border-slate-200/60 dark:border-slate-800/60 pb-3 gap-3">
             <div className="flex items-center gap-2">
               <h3 className="text-lg font-display font-bold text-slate-900 dark:text-white tracking-tight">
@@ -691,7 +685,7 @@ export default function Tasks() {
                 });
                 await batch.commit();
               }
-            }} className="space-y-4 max-w-4xl">
+            }} className="space-y-4 w-full">
               {filteredTasks.map((task, i) => {
                 const Icon = getIcon(task.icon);
                 if (task.completed) {
@@ -821,7 +815,7 @@ export default function Tasks() {
         </div>
 
         {/* Focus Timer & Stats Column */}
-        <div className="space-y-6">
+        <div className="xl:col-span-4 space-y-6">
           <PomodoroTimer />
 
           <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800 p-6 rounded-3xl shadow-sm transition-colors duration-300">
@@ -842,7 +836,7 @@ export default function Tasks() {
                 </div>
                 <div className="h-32 w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={mockAnalyticsData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
+                    <AreaChart data={analyticsData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
                       <defs>
                         <linearGradient id="colorFocus" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
@@ -866,7 +860,7 @@ export default function Tasks() {
                 </div>
                 <div className="h-32 w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={mockAnalyticsData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
+                    <AreaChart data={analyticsData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
                       <defs>
                         <linearGradient id="colorMastery" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
@@ -890,7 +884,7 @@ export default function Tasks() {
                 </div>
                 <div className="h-32 w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={mockAnalyticsData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
+                    <AreaChart data={analyticsData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
                       <defs>
                         <linearGradient id="colorCompletion" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.3}/>
@@ -1101,6 +1095,6 @@ export default function Tasks() {
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+    </PageShell>
   );
 }

@@ -40,12 +40,15 @@ import { onAuthStateChanged } from "firebase/auth";
 
 import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
+import { IndexeddbPersistence } from "y-indexeddb";
 
 import Room from "../components/Room";
 import Whiteboard from "../components/Whiteboard";
 import KnowledgeGraph from "../components/KnowledgeGraph";
 import { FireProvider } from "y-fire";
 import { app } from "../lib/firebase";
+import { getCollabWebSocketUrl } from "../lib/collabProvider";
+import { isDemoModeActive } from "../lib/demoStorage";
 
 import PresenceIndicator from "../components/PresenceIndicator";
 
@@ -71,15 +74,16 @@ export default function CollabRoom() {
   const [awarenessUsers, setAwarenessUsers] = useState<any[]>([]);
 
   useEffect(() => {
-    // Setup Yjs Websocket Provider
+    const roomDocName = `memora-collab-${roomId}`;
     const wsProvider = new WebsocketProvider(
-      "wss://demos.yjs.dev",
-      `memora-collab-${roomId}`,
-      ydoc
+      getCollabWebSocketUrl(),
+      roomDocName,
+      ydoc,
     );
     setProvider(wsProvider);
 
-    // Awareness updates
+    const indexeddbProvider = new IndexeddbPersistence(roomDocName, ydoc);
+
     const awareness = wsProvider.awareness;
     
     // Set local awareness state
@@ -102,12 +106,11 @@ export default function CollabRoom() {
       setUser(currentUser);
       updateAwareness(currentUser);
 
-      if (currentUser) {
-        // Initialize y-firestore for persistence
+      if (currentUser && !isDemoModeActive()) {
         const fireProvider = new FireProvider({
           firebaseApp: app,
           ydoc,
-          path: `yjs_state/${roomId}`
+          path: `yjs_state/${roomId}`,
         });
 
         const qMessages = query(
@@ -154,6 +157,7 @@ export default function CollabRoom() {
     return () => {
       unsubscribeAuth();
       wsProvider.disconnect();
+      void indexeddbProvider.destroy();
       ydoc.destroy();
     };
   }, []);
@@ -391,7 +395,7 @@ export default function CollabRoom() {
   };
 
   return (
-    <div className="min-h-[calc(100vh-8rem)] flex flex-col xl:flex-row gap-6 pb-6">
+    <div className="min-h-[calc(100dvh-3.5rem)] flex flex-col xl:flex-row gap-6 pb-6 w-full">
       {/* Main Video / Content Area */}
       <div className="flex-1 flex flex-col gap-5 min-h-[60vh] xl:min-h-0">
         <div className="flex items-center justify-between">

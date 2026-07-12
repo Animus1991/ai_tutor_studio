@@ -1,22 +1,27 @@
 import { toast } from 'sonner';
 import { useState, useRef, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Send, Bot, User, Sparkles, BookOpen, ChevronDown, Activity, Mic, Square } from 'lucide-react';
+import { Send, Bot, User, Sparkles, BookOpen, ChevronDown, Activity, Mic, Square, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { chatWithAgent, ApiError, checkHealth } from '../lib/api';
 import { retrieveForQueryHybrid, offlineAnswerFromExcerpt } from '../lib/sourceContext';
 import { formatCitation, type Citation } from '../lib/rag';
 import { logActivity } from '../lib/activity';
 import CompactPomodoroTimer from '../components/CompactPomodoroTimer';
-import localforage from 'localforage';
+import {
+  loadAgentMessages,
+  saveAgentMessages,
+  loadAgentMode,
+  saveAgentMode,
+  clearAgentMessages,
+  type AgentMessage,
+  type AgentModeId,
+} from '../lib/agentChatStorage';
+import { useAuthStore } from '../store/useAuthStore';
+import { useLibraryStore } from '../store/useLibraryStore';
+import { loadAgentCourseId, saveAgentCourseId } from '../lib/agentCourseContext';
 
-type Message = {
-  id: string;
-  role: 'user' | 'model';
-  content: string;
-  urls?: string[];
-  citations?: Citation[];
-};
+type Message = AgentMessage;
 
 const MODES = [
   { id: 'socratic', name: 'Socratic Tutor', desc: 'Guides with questions' },
@@ -33,7 +38,11 @@ const MODE_PROMPTS: Record<string, string> = {
 };
 
 export default function Agent() {
+  const isDemoMode = useAuthStore((s) => s.isDemoMode);
+  const { courses, hydrate: hydrateLibrary } = useLibraryStore();
+  const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [chatHydrated, setChatHydrated] = useState(false);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [activeMode, setActiveMode] = useState(MODES[0]);
@@ -47,19 +56,68 @@ export default function Agent() {
   const location = useLocation();
 
   useEffect(() => {
-    localforage.getItem<Message[]>('memora-ai-logs').then(logs => {
-      if (logs && logs.length > 0) {
-        setMessages(logs);
-        setHasSelectedMode(true);
-      }
-    });
-  }, []);
+    void hydrateLibrary();
+    void loadAgentCourseId().then(setSelectedCourseId);
+  }, [hydrateLibrary]);
 
   useEffect(() => {
-    if (messages.length > 0) {
-      localforage.setItem('memora-ai-logs', messages);
+    let cancelled = false;
+    (async () => {
+      setChatHydrated(false);
+      const savedModeId = await loadAgentMode();
+      const mode = MODES.find((m) => m.id === savedModeId) ?? MODES[0];
+      const modeId = mode.id as AgentModeId;
+      const stored = await loadAgentMessages(modeId, isDemoMode);
+      if (cancelled) return;
+      setActiveMode(mode);
+      if (stored.length > 0) {
+        setMessages(stored);
+        setHasSelectedMode(true);
+      } else {
+        setMessages([]);
+        setHasSelectedMode(false);
+      }
+      setChatHydrated(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isDemoMode]);
+
+  useEffect(() => {
+    if (!chatHydrated || messages.length === 0) return;
+    const timer = setTimeout(() => {
+      void saveAgentMessages(activeMode.id as AgentModeId, isDemoMode, messages);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [messages, activeMode.id, isDemoMode, chatHydrated]);
+
+  const handleModeChange = async (mode: (typeof MODES)[number]) => {
+    if (mode.id === activeMode.id) {
+      setIsModeOpen(false);
+      return;
     }
-  }, [messages]);
+    await saveAgentMessages(activeMode.id as AgentModeId, isDemoMode, messages);
+    const nextMessages = await loadAgentMessages(mode.id as AgentModeId, isDemoMode);
+    setActiveMode(mode);
+    setMessages(nextMessages);
+    await saveAgentMode(mode.id as AgentModeId);
+    setIsModeOpen(false);
+    if (nextMessages.length > 0) {
+      setHasSelectedMode(true);
+    }
+  };
+
+  const handleClearChat = async () => {
+    await clearAgentMessages(activeMode.id as AgentModeId, isDemoMode);
+    setMessages([]);
+    toast.success('Chat cleared for this mode');
+  };
+
+  const handleStartSession = async () => {
+    setHasSelectedMode(true);
+    await saveAgentMode(activeMode.id as AgentModeId);
+  };
 
   
   useEffect(() => {
@@ -140,8 +198,13 @@ export default function Agent() {
       let ragContext = "";
       let citations: Citation[] = [];
       let retrievalResult = { excerpt: '', citations: [] as Citation[], chunks: [] as import('../lib/rag').ScoredChunk[] };
+      const scopedCourse = selectedCourseId ? courses.find((c) => c.id === selectedCourseId) : undefined;
+      const docIds = scopedCourse?.uploadedFileIds;
       try {
-        retrievalResult = await retrieveForQueryHybrid(userMessage, { topK: 4 });
+        retrievalResult = await retrieveForQueryHybrid(userMessage, {
+          topK: 4,
+          docIds: docIds && docIds.length > 0 ? docIds : undefined,
+        });
         citations = retrievalResult.citations;
         if (retrievalResult.excerpt) {
           ragContext = `\n\nRelevant Context from User's Documents (cite as [Document ¶N]):\n${retrievalResult.excerpt}`;
@@ -151,7 +214,10 @@ export default function Agent() {
       }
 
       const modePrompt = MODE_PROMPTS[activeMode.id] ?? activeMode.desc;
-      const systemInstruction = `You are Memora, an advanced AI tutor. Current mode: ${activeMode.name}. ${modePrompt}
+      const courseScope = scopedCourse
+        ? `\nFocus on course: "${scopedCourse.title}". Only use document context from this course when available.`
+        : '';
+      const systemInstruction = `You are Memora, an advanced AI tutor. Current mode: ${activeMode.name}. ${modePrompt}${courseScope}
 When using document context, cite sources inline using the format [DocumentName ¶N].
 Do not hallucinate external facts if not confident. Focus on educational outcomes, mastery, and adaptive learning principles.
 Format responses nicely using markdown structure if helpful.${ragContext}`;
@@ -213,7 +279,7 @@ Format responses nicely using markdown structure if helpful.${ragContext}`;
   };
 
   return (
-    <div className="h-full flex flex-col bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200/60 dark:border-slate-800/60 overflow-hidden relative transition-colors duration-300">
+    <div className="h-full flex flex-col min-h-[calc(100dvh-8rem)] bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200/60 dark:border-slate-800/60 overflow-hidden relative transition-colors duration-300 w-full">
       
       <AnimatePresence>
         {!hasSelectedMode && (
@@ -255,7 +321,7 @@ Format responses nicely using markdown structure if helpful.${ragContext}`;
               </div>
               
               <button 
-                onClick={() => setHasSelectedMode(true)}
+                onClick={() => void handleStartSession()}
                 className="w-full py-2.5 bg-slate-900 dark:bg-indigo-600 text-sm text-white rounded-xl font-semibold hover:bg-slate-800 dark:hover:bg-indigo-700 transition-colors"
               >
                 Start Session
@@ -283,8 +349,35 @@ Format responses nicely using markdown structure if helpful.${ragContext}`;
           </div>
         </div>
         
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3 flex-wrap justify-end">
           <CompactPomodoroTimer />
+          <select
+            value={selectedCourseId ?? ''}
+            onChange={(e) => {
+              const id = e.target.value || null;
+              setSelectedCourseId(id);
+              void saveAgentCourseId(id);
+            }}
+            className="max-w-[180px] text-xs font-medium px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
+            title="Scope RAG context to a course"
+          >
+            <option value="">All library docs</option>
+            {courses.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.title}
+              </option>
+            ))}
+          </select>
+          {hasSelectedMode && messages.length > 0 && (
+            <button
+              type="button"
+              onClick={() => void handleClearChat()}
+              title="Clear chat for this mode"
+              className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-rose-600 hover:border-rose-200 dark:hover:border-rose-800 transition-colors"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
           {/* Dropdown Mode Selector */}
           <div className="relative">
             <button 
@@ -300,7 +393,7 @@ Format responses nicely using markdown structure if helpful.${ragContext}`;
               {MODES.map(mode => (
                 <button
                   key={mode.id}
-                  onClick={() => { setActiveMode(mode); setIsModeOpen(false); }}
+                  onClick={() => void handleModeChange(mode)}
                   className={`w-full text-left px-5 py-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors ${activeMode.id === mode.id ? 'bg-indigo-50/50 dark:bg-indigo-900/30' : ''}`}
                 >
                   <p className={`font-semibold ${activeMode.id === mode.id ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-900 dark:text-white'}`}>{mode.name}</p>
@@ -322,7 +415,7 @@ Format responses nicely using markdown structure if helpful.${ragContext}`;
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.3, ease: "easeOut" }}
               key={msg.id}
-              className={`flex gap-3 max-w-4xl mx-auto ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}
+              className={`flex gap-3 w-full ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}
             >
               <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 border shadow-sm ${
                 msg.role === 'model' 
@@ -383,7 +476,7 @@ Format responses nicely using markdown structure if helpful.${ragContext}`;
             </motion.div>
           ))}
           {isLoading && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex gap-3 max-w-4xl mx-auto">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex gap-3 w-full">
               <div className="w-8 h-8 rounded-xl bg-indigo-600 border-indigo-700 text-white flex items-center justify-center shrink-0 shadow-sm">
                 <Sparkles className="w-4 h-4 animate-pulse" strokeWidth={1.5} />
               </div>
@@ -400,7 +493,7 @@ Format responses nicely using markdown structure if helpful.${ragContext}`;
 
       {/* Input Area */}
       <div className="p-6 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800/60 relative z-20 transition-colors duration-300">
-        <div className="max-w-4xl mx-auto relative flex items-end shadow-sm">
+        <div className="w-full relative flex items-end shadow-sm">
           <textarea
             ref={inputRef}
             id="agent-input"
