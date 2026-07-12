@@ -13,6 +13,7 @@ import Agent from "./pages/Agent";
 import CollabRoom from "./pages/CollabRoom";
 import Admin from "./pages/Admin";
 import Workspace from "./pages/Workspace";
+import StudyWorkspacePage from "./pages/StudyWorkspacePage";
 import ThemeProvider from "./components/ThemeProvider";
 import TimerManager from "./components/TimerManager";
 import AudioController from "./components/AudioController";
@@ -131,6 +132,7 @@ export default function App() {
               <Route path="agent" element={<Agent />} />
               <Route path="collab" element={<CollabRoom />} />
               <Route path="workspace" element={<Workspace />} />
+              <Route path="study/:courseId" element={<StudyWorkspacePage />} />
               <Route path="admin" element={<Admin />} />
             </Route>
           </Routes>

@@ -166,5 +166,20 @@ service cloud.firestore {
                        incoming().createdAt == request.time;
       allow read, update, delete: if false; 
     }
+
+    function isValidActivityLog(data) {
+      return data.keys().hasAll(['title', 'type', 'timestamp']) &&
+             data.title is string && data.title.size() <= 300 &&
+             data.type is string && data.type.matches('^(study|upload|collab|task|other)$');
+    }
+
+    match /users/{userId}/activityLogs/{logId} {
+      allow read, list: if isSignedIn() && isVerified() && isValidId(userId) && request.auth.uid == userId;
+      allow create: if isSignedIn() && isVerified() && isValidId(userId) && isValidId(logId) &&
+                       request.auth.uid == userId &&
+                       isValidActivityLog(incoming()) &&
+                       incoming().timestamp == request.time;
+      allow update, delete: if false;
+    }
   }
 }

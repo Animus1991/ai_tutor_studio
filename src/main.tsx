@@ -24,6 +24,16 @@ class ErrorBoundary extends Component<{children: ReactNode}, {hasError: boolean,
   static getDerivedStateFromError(error: Error) { return { hasError: true, error }; }
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     Logger.error(error, errorInfo);
+    fetch('/api/health', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: error.message,
+        stack: error.stack,
+        componentStack: errorInfo.componentStack,
+        timestamp: new Date().toISOString(),
+      }),
+    }).catch(() => {});
   }
   render() {
     if (this.state.hasError) {

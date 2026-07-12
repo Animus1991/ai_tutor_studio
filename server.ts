@@ -10,16 +10,51 @@ import { createRequire } from 'module';
 const _require = createRequire(typeof import.meta !== 'undefined' && import.meta.url ? import.meta.url : 'file://' + process.cwd() + '/server.ts');
 const pdfParse = _require('pdf-parse');
 
+if (!process.env.GEMINI_API_KEY) {
+  console.warn('[Memora] GEMINI_API_KEY is not set — AI endpoints will fail until configured.');
+}
+
 // Initialize Gemini
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-const upload = multer({ storage: multer.memoryStorage() });
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY ?? '' });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
+
+/** Simple in-memory rate limiter per IP for AI routes. */
+function createRateLimiter(maxRequests: number, windowMs: number) {
+  const hits = new Map<string, { count: number; resetAt: number }>();
+  return (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const ip = req.ip ?? req.socket.remoteAddress ?? 'unknown';
+    const now = Date.now();
+    const entry = hits.get(ip);
+    if (!entry || now > entry.resetAt) {
+      hits.set(ip, { count: 1, resetAt: now + windowMs });
+      return next();
+    }
+    if (entry.count >= maxRequests) {
+      return res.status(429).json({ error: 'Too many requests. Please wait a moment and try again.' });
+    }
+    entry.count++;
+    return next();
+  };
+}
+
+const aiRateLimit = createRateLimiter(30, 60_000);
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   app.use(cors());
   app.use(express.json({ limit: '50mb' }));
+  app.use((req, res, next) => {
+    if (
+      req.path.startsWith('/api/agent') ||
+      req.path.startsWith('/api/embed') ||
+      req.path.startsWith('/api/generate')
+    ) {
+      return aiRateLimit(req, res, next);
+    }
+    next();
+  });
 
   // Intelligent Ingestion Routes
   app.post('/api/ingest/url', async (req, res) => {

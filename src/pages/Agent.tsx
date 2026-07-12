@@ -3,8 +3,10 @@ import { useState, useRef, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Send, Bot, User, Sparkles, BookOpen, ChevronDown, Activity, Mic, Square } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { chatWithAgent } from '../lib/api';
-import { searchVectors } from '../lib/vectorStore';
+import { chatWithAgent, ApiError, checkHealth } from '../lib/api';
+import { retrieveForQueryHybrid, offlineAnswerFromExcerpt } from '../lib/sourceContext';
+import { formatCitation, type Citation } from '../lib/rag';
+import { logActivity } from '../lib/activity';
 import CompactPomodoroTimer from '../components/CompactPomodoroTimer';
 import localforage from 'localforage';
 
@@ -13,6 +15,7 @@ type Message = {
   role: 'user' | 'model';
   content: string;
   urls?: string[];
+  citations?: Citation[];
 };
 
 const MODES = [
@@ -21,6 +24,13 @@ const MODES = [
   { id: 'quiz', name: 'Quick Quiz', desc: 'Tests your knowledge with questions' },
   { id: 'feynman', name: 'Feynman Mode', desc: 'You explain, I check' }
 ];
+
+const MODE_PROMPTS: Record<string, string> = {
+  socratic: 'Use the Socratic method: ask guiding questions rather than giving direct answers. Help the student discover insights themselves.',
+  direct: 'Provide thorough, structured theoretical explanations with clear definitions and examples.',
+  quiz: 'Act as a quiz master: ask one focused question at a time, wait for answers, then give brief feedback before the next question.',
+  feynman: 'Ask the student to explain concepts in their own words. When they do, compare against the source material and identify knowledge gaps gently.',
+};
 
 export default function Agent() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -118,6 +128,7 @@ export default function Agent() {
     setInput('');
     setMessages(prev => [...prev, { id: Date.now().toString(), role: 'user', content: userMessage }]);
     setIsLoading(true);
+    logActivity(`Agent session: ${activeMode.name}`, 'study');
 
     try {
       const geminiMessages = messages.map(m => ({
@@ -127,37 +138,59 @@ export default function Agent() {
       geminiMessages.push({ role: 'user', parts: [{ text: userMessage }] });
 
       let ragContext = "";
+      let citations: Citation[] = [];
+      let retrievalResult = { excerpt: '', citations: [] as Citation[], chunks: [] as import('../lib/rag').ScoredChunk[] };
       try {
-        const results = await searchVectors(userMessage, 4);
-        if (results && results.length > 0) {
-           ragContext = "\n\nRelevant Context from User's Documents:\n" + results.map((r) => `[Source: ${r.docTitle}]\n${r.text}`).join("\n\n");
+        retrievalResult = await retrieveForQueryHybrid(userMessage, { topK: 4 });
+        citations = retrievalResult.citations;
+        if (retrievalResult.excerpt) {
+          ragContext = `\n\nRelevant Context from User's Documents (cite as [Document ¶N]):\n${retrievalResult.excerpt}`;
         }
       } catch (err) {
-        console.error("Vector search failed", err);
+        console.error("Hybrid retrieval failed", err);
       }
 
-      const systemInstruction = `You are Memora, an advanced AI tutor. Current mode: ${activeMode.name}. ${activeMode.desc}. Do not hallucinate external facts if not confident. Focus on educational outcomes, mastery, and adaptive learning principles. Format responses nicely using markdown structure if helpful.${ragContext}`;
+      const modePrompt = MODE_PROMPTS[activeMode.id] ?? activeMode.desc;
+      const systemInstruction = `You are Memora, an advanced AI tutor. Current mode: ${activeMode.name}. ${modePrompt}
+When using document context, cite sources inline using the format [DocumentName ¶N].
+Do not hallucinate external facts if not confident. Focus on educational outcomes, mastery, and adaptive learning principles.
+Format responses nicely using markdown structure if helpful.${ragContext}`;
 
-      const response = await chatWithAgent(geminiMessages, systemInstruction);
+      const serverUp = await checkHealth();
+      let responseText: string;
+      let responseUrls: string[] | undefined;
+
+      if (serverUp) {
+        const response = await chatWithAgent(geminiMessages, systemInstruction);
+        responseText = response.text;
+        responseUrls = response.urls;
+      } else {
+        responseText = offlineAnswerFromExcerpt(userMessage, retrievalResult);
+      }
       
       setMessages(prev => [...prev, { 
         id: (Date.now() + 1).toString(), 
         role: 'model', 
-        content: response.text,
-        urls: response.urls
+        content: responseText,
+        urls: responseUrls,
+        citations: citations.length > 0 ? citations : undefined,
       }]);
 
       if (shouldSpeak) {
-        const utterance = new SpeechSynthesisUtterance(response.text);
+        const utterance = new SpeechSynthesisUtterance(responseText);
         window.speechSynthesis.speak(utterance);
       }
     } catch (error) {
       console.error('Chat error:', error);
+      const msg = error instanceof ApiError
+        ? `Service error (${error.status}): ${error.message}`
+        : 'Network interruption. Re-establishing Memora connection...';
       setMessages(prev => [...prev, { 
         id: (Date.now() + 1).toString(), 
         role: 'model', 
-        content: "Network interruption. Re-establishing memora connection..." 
+        content: msg,
       }]);
+      toast.error('Failed to get AI response');
     } finally {
       setIsLoading(false);
     }
@@ -311,12 +344,21 @@ export default function Agent() {
                 </div>
                 {msg.role === 'model' && msg.id !== '1' && (
                   <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-700/50">
-                    <div className="flex gap-3">
-                      <button className="text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 flex items-center gap-1.5 transition-colors bg-slate-50 dark:bg-slate-800/50 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 px-3 py-1.5 rounded-lg border border-slate-100 dark:border-slate-700/50">
-                        <BookOpen className="w-3.5 h-3.5" /> {msg.urls && msg.urls.length > 0 ? `${msg.urls.length} Sources` : 'Sources'}
-                      </button>
+                    <div className="flex flex-wrap gap-2">
+                      {(msg.citations && msg.citations.length > 0) ? (
+                        msg.citations.map((c, i) => (
+                          <span key={i} className="text-xs font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2.5 py-1 rounded-lg border border-indigo-100 dark:border-indigo-800/50">
+                            <BookOpen className="w-3 h-3 inline mr-1" />
+                            {formatCitation(c)}
+                          </span>
+                        ))
+                      ) : (
+                        <button className="text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 flex items-center gap-1.5 transition-colors bg-slate-50 dark:bg-slate-800/50 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 px-3 py-1.5 rounded-lg border border-slate-100 dark:border-slate-700/50">
+                          <BookOpen className="w-3.5 h-3.5" /> {msg.urls && msg.urls.length > 0 ? `${msg.urls.length} Web Sources` : 'No document citations'}
+                        </button>
+                      )}
                       <span className="text-xs font-mono text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-800/50 px-2.5 py-1.5 rounded-lg border border-slate-100 dark:border-slate-700/50">
-                        Grounding Active
+                        Hybrid RAG
                       </span>
                     </div>
                     

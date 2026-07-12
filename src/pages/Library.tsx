@@ -54,8 +54,14 @@ import {
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
+import { useLibraryStore } from "../store/useLibraryStore";
+import UploadCourseModal from "../components/UploadCourseModal";
 
 export default function Library() {
+  const navigate = useNavigate();
+  const { courses: memoraCourses, lastUploadQuality } = useLibraryStore();
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
   const [isWorkspaceOpen, setIsWorkspaceOpen] = useState(false);
   const [isPdfViewerOpen, setIsPdfViewerOpen] = useState(false);
@@ -439,7 +445,10 @@ export default function Library() {
               </button>
             </div>
           </div>
-          <button className="group relative px-4 py-2 bg-slate-900 dark:bg-indigo-600 text-white rounded-lg font-medium text-sm shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-1.5 overflow-hidden">
+          <button
+            onClick={() => setIsUploadModalOpen(true)}
+            className="group relative px-4 py-2 bg-slate-900 dark:bg-indigo-600 text-white rounded-lg font-medium text-sm shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-1.5 overflow-hidden"
+          >
             <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></div>
             <Upload className="w-4 h-4 relative z-10" />
             <span className="relative z-10">Upload</span>
@@ -451,11 +460,11 @@ export default function Library() {
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-4 mb-8">
         {/* Main Upload / Hero Card */}
         <div
-          onClick={() => setIsWorkspaceOpen(true)}
+          onClick={() => setIsUploadModalOpen(true)}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
               e.preventDefault();
-              setIsWorkspaceOpen(true);
+              setIsUploadModalOpen(true);
             }
           }}
           role="button"
@@ -524,6 +533,63 @@ export default function Library() {
           <UserAchievements />
         </div>
       </div>
+
+      {memoraCourses.length > 0 && (
+        <>
+          <div className="flex items-center justify-between mb-4 mt-8">
+            <h3 className="text-lg font-display font-bold text-slate-900 dark:text-white">
+              AI-Generated Courses
+            </h3>
+            {lastUploadQuality && (
+              <span className="text-xs text-slate-500">
+                Last upload quality: {lastUploadQuality.score}/100 ({lastUploadQuality.band})
+              </span>
+            )}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 mb-8">
+            {memoraCourses.map((mc) => (
+              <motion.div
+                key={mc.id}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-indigo-200/60 dark:border-indigo-800/40 shadow-sm hover:shadow-md transition-shadow"
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center">
+                    <Sparkles className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                  </div>
+                  {mc.sourceQuality && (
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded-lg ${
+                      mc.sourceQuality.band === 'strong' ? 'bg-emerald-100 text-emerald-700' :
+                      mc.sourceQuality.band === 'moderate' ? 'bg-amber-100 text-amber-700' :
+                      'bg-rose-100 text-rose-700'
+                    }`}>
+                      {mc.sourceQuality.score}
+                    </span>
+                  )}
+                </div>
+                <h4 className="font-bold text-slate-900 dark:text-white mb-1">{mc.title}</h4>
+                <p className="text-xs text-slate-500 mb-3">{mc.topics.length} modules · {mc.glossary.length} terms</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => navigate(`/study/${mc.id}`)}
+                    className="flex-1 py-2 bg-indigo-600 text-white text-xs font-semibold rounded-xl hover:bg-indigo-700"
+                  >
+                    Open Study Workspace
+                  </button>
+                  <button
+                    onClick={() => { setIsUploadModalOpen(true); }}
+                    title="Extend course"
+                    className="px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-800"
+                  >
+                    +
+                  </button>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </>
+      )}
 
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
@@ -782,6 +848,8 @@ export default function Library() {
           documentTitle={selectedDocument.title}
         />
       )}
+
+      <UploadCourseModal isOpen={isUploadModalOpen} onClose={() => setIsUploadModalOpen(false)} />
 
       <AnimatePresence>
         {isWorkspaceOpen && (

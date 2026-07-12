@@ -1,4 +1,5 @@
 import { openDB, IDBPDatabase } from 'idb';
+import { chunkDocument } from './rag';
 
 const dbName = 'memora-vector-store';
 const storeName = 'embeddings';
@@ -19,7 +20,7 @@ function getDB() {
 }
 
 export interface VectorDoc {
-  id: string; // docId + chunkIndex
+  id: string;
   docId: string;
   docTitle: string;
   text: string;
@@ -54,7 +55,6 @@ export async function deleteEmbeddingsForDoc(docId: string) {
   await tx.done;
 }
 
-// Cosine similarity
 export function cosineSimilarity(vecA: number[], vecB: number[]) {
   let dotProduct = 0;
   let normA = 0;
@@ -68,40 +68,31 @@ export function cosineSimilarity(vecA: number[], vecB: number[]) {
   return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
-// Generate embedding via our local server
 export async function generateEmbedding(text: string): Promise<number[]> {
   const res = await fetch('/api/embed', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text })
+    body: JSON.stringify({ text: text.slice(0, 8000) }),
   });
   if (!res.ok) throw new Error('Failed to generate embedding');
   const data = await res.json();
   return data.embedding;
 }
 
-// Simple chunking strategy
-export function chunkText(text: string, chunkSize: number = 500, overlap: number = 100): string[] {
-  const words = text.split(/\s+/);
-  const chunks: string[] = [];
-  let i = 0;
-  while (i < words.length) {
-    chunks.push(words.slice(i, i + chunkSize).join(' '));
-    i += chunkSize - overlap;
-  }
-  return chunks;
+/** Character-based chunking with overlap (900 chars / 160 overlap by default). */
+export function chunkText(text: string, chunkSize = 900, overlap = 160): string[] {
+  return chunkDocument(text, chunkSize, overlap);
 }
 
-// Main function to search
-export async function searchVectors(query: string, limit: number = 5): Promise<VectorDoc[]> {
-  const queryEmbedding = await generateEmbedding(query);
-  const allDocs = await getAllEmbeddings();
-  
-  const scoredDocs = allDocs.map(doc => ({
-    ...doc,
-    score: cosineSimilarity(queryEmbedding, doc.embedding)
+/** Legacy vector-only search — prefer retrieveForQueryHybrid from sourceContext. */
+export async function searchVectors(query: string, limit = 5): Promise<VectorDoc[]> {
+  const { retrieveForQueryHybrid } = await import('./sourceContext');
+  const result = await retrieveForQueryHybrid(query, { topK: limit });
+  return result.chunks.map((c) => ({
+    id: c.id,
+    docId: c.docId,
+    docTitle: c.docTitle,
+    text: c.text,
+    embedding: [],
   }));
-  
-  scoredDocs.sort((a, b) => b.score - a.score);
-  return scoredDocs.slice(0, limit);
 }

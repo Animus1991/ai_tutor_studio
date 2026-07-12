@@ -338,7 +338,7 @@ export default function Dashboard() {
                 className="space-y-6"
               >
                 {layoutOrder.map((blockId, index) => (
-                  <Draggable key={blockId} draggableId={blockId} index={index}>
+                  <Draggable draggableId={blockId} index={index} key={blockId}>
                     {(provided, snapshot) => (
                       <div
                         ref={provided.innerRef}

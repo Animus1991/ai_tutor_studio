@@ -362,7 +362,7 @@ export default function CollabRoom() {
       setIsAiTyping(true);
       try {
         const res = await chatWithAgent(
-          [{ role: "user", content: messageText }],
+          [{ role: "user", parts: [{ text: messageText }] }],
           "You are a highly intelligent tutor in a collaborative study room. Provide concise, grounded answers.",
         );
         if (user) {

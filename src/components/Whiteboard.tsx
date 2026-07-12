@@ -152,9 +152,9 @@ export default function Whiteboard({ ydoc }: { ydoc: Y.Doc }) {
     const currentStrokes = Array.from(yStrokes.current.values());
     if (currentStrokes.length === 0) return;
     
-    const lastStroke = currentStrokes[currentStrokes.length - 1];
+    const lastStroke = currentStrokes[currentStrokes.length - 1] as Stroke;
     
-    const updatedStroke = {
+    const updatedStroke: Stroke = {
       ...lastStroke,
       points: [...lastStroke.points, point.x, point.y]
     };
