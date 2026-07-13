@@ -1,178 +1,109 @@
-import { extractGlossary } from '../utils/nlp';
+/**
+ * Content analysis engine (v2) — orchestrates NLP primitives into course outlines.
+ * Deterministic, offline, dependency-free. Falls back gracefully when LLM unavailable.
+ */
+
 import { detectDocumentSections, splitStructuredParagraphs } from './textSegmentation';
 import type { CourseOutline, CourseTopic, GlossaryEntry } from './courseTypes';
+import { normalizeConcept, titleCasePhrase, splitSentences, WORD_RE } from './nlpCore';
+import { rankKeyphrases } from './keyphraseExtractor';
+import { extractDefinitions, extractAcronyms, buildObjectives } from './definitionMiner';
+import { extractiveSummary } from './extractiveSummary';
+import { inferSubject, estimateDifficulty } from './subjectClassifier';
 
-const STOP = new Set([
-  'the', 'and', 'for', 'with', 'that', 'this', 'from', 'are', 'was', 'were', 'have', 'has', 'been',
-  'και', 'το', 'τα', 'η', 'οι', 'του', 'της', 'για', 'με', 'σε', 'που', 'να', 'είναι',
-]);
+// Re-export sub-modules for backward compatibility
+export { rankKeyphrases, type Keyphrase } from './keyphraseExtractor';
+export { extractDefinitions as extractDefinitionsV2, extractAcronyms, buildObjectives } from './definitionMiner';
+export { extractiveSummary, type SummaryOptions } from './extractiveSummary';
+export { inferSubject, estimateDifficulty } from './subjectClassifier';
+export { stemLite, normalizeConcept, titleCasePhrase, splitSentences } from './nlpCore';
 
-function tokenize(text: string): string[] {
-  return text.toLowerCase().match(/[\w\u0370-\u03ff]+/g) ?? [];
-}
-
-function rakeScores(text: string): Map<string, number> {
-  const sentences = text.match(/[^.!?]+[.!?]+/g) ?? [text];
-  const phraseScores = new Map<string, number>();
-  const wordDegree = new Map<string, number>();
-  const wordFreq = new Map<string, number>();
-
-  for (const sentence of sentences) {
-    const words = tokenize(sentence).filter((w) => w.length > 2 && !STOP.has(w));
-    const phrases: string[][] = [[]];
-    for (const w of words) {
-      if (STOP.has(w)) {
-        if (phrases[phrases.length - 1].length) phrases.push([]);
-      } else {
-        phrases[phrases.length - 1].push(w);
-      }
-    }
-    for (const phrase of phrases) {
-      if (phrase.length === 0) continue;
-      const key = phrase.join(' ');
-      for (const w of phrase) {
-        wordFreq.set(w, (wordFreq.get(w) ?? 0) + 1);
-        wordDegree.set(w, (wordDegree.get(w) ?? 0) + phrase.length);
-      }
-      let score = 0;
-      for (const w of phrase) {
-        const f = wordFreq.get(w) ?? 1;
-        score += (wordDegree.get(w) ?? 0) / f;
-      }
-      phraseScores.set(key, Math.max(phraseScores.get(key) ?? 0, score / phrase.length));
-    }
-  }
-  return phraseScores;
-}
-
-function textRankScores(text: string, window = 4): Map<string, number> {
-  const words = tokenize(text).filter((w) => w.length > 2 && !STOP.has(w));
-  const graph = new Map<string, Set<string>>();
-  for (let i = 0; i < words.length; i++) {
-    if (!graph.has(words[i])) graph.set(words[i], new Set());
-    for (let j = Math.max(0, i - window); j <= Math.min(words.length - 1, i + window); j++) {
-      if (i !== j) {
-        graph.get(words[i])!.add(words[j]);
-        if (!graph.has(words[j])) graph.set(words[j], new Set());
-        graph.get(words[j])!.add(words[i]);
-      }
-    }
-  }
-  const scores = new Map<string, number>();
-  for (const n of graph.keys()) scores.set(n, 1);
-  const d = 0.85;
-  for (let iter = 0; iter < 30; iter++) {
-    const next = new Map<string, number>();
-    for (const [node, neighbors] of graph) {
-      let sum = 0;
-      for (const nb of neighbors) {
-        const nbNeighbors = graph.get(nb);
-        if (nbNeighbors && nbNeighbors.size) sum += (scores.get(nb) ?? 0) / nbNeighbors.size;
-      }
-      next.set(node, (1 - d) + d * sum);
-    }
-    for (const [k, v] of next) scores.set(k, v);
-  }
-  return scores;
-}
-
-export function rankKeyphrases(text: string, limit = 20): { phrase: string; score: number }[] {
-  const rake = rakeScores(text);
-  const tr = textRankScores(text);
-  const combined = new Map<string, number>();
-  const maxRake = Math.max(...rake.values(), 1);
-  const maxTr = Math.max(...tr.values(), 1);
-
-  for (const [phrase, score] of rake) {
-    const words = phrase.split(' ');
-    const trScore = words.reduce((s, w) => s + (tr.get(w) ?? 0), 0) / words.length;
-    combined.set(phrase, 0.6 * (score / maxRake) + 0.4 * (trScore / maxTr));
-  }
-  for (const [word, score] of tr) {
-    if (!combined.has(word)) combined.set(word, 0.4 * (score / maxTr));
-  }
-
-  return [...combined.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, limit)
-    .map(([phrase, score]) => ({ phrase, score }));
-}
-
-function extractDefinitions(text: string): GlossaryEntry[] {
-  const defs: GlossaryEntry[] = [];
-  const patterns = [
-    /(?:^|\n)([A-ZΑ-Ω][\w\s-]{2,40})\s*(?:is|are|means|refers to|—|:)\s*([^\n.]{20,200})/gim,
-    /(?:^|\n)([\w\s]{3,30})\s*:\s*([^\n.]{20,200})/gim,
-  ];
-  for (const re of patterns) {
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(text)) !== null) {
-      defs.push({ term: m[1].trim(), definition: m[2].trim() });
-    }
-  }
-  const seen = new Set<string>();
-  return defs.filter((d) => {
-    const k = d.term.toLowerCase();
-    if (seen.has(k)) return false;
-    seen.add(k);
-    return true;
-  }).slice(0, 30);
-}
+/* Old inline implementations removed — now delegated to:
+ *   nlpCore.ts, keyphraseExtractor.ts, definitionMiner.ts,
+ *   extractiveSummary.ts, subjectClassifier.ts
+ */
 
 export function analyzeContentToOutline(text: string, fileName?: string): CourseOutline {
-  const sections = detectDocumentSections(text);
-  const keyphrases = rankKeyphrases(text, 25);
-  const glossaryFromDefs = extractDefinitions(text);
-  const glossaryFromNlp = extractGlossary(text).slice(0, 10).map((g) => ({
-    term: g.term,
-    definition: `Key concept appearing ${g.count} times in source material.`,
-  }));
-
-  const glossaryMap = new Map<string, GlossaryEntry>();
-  for (const g of [...glossaryFromDefs, ...glossaryFromNlp]) {
-    glossaryMap.set(g.term.toLowerCase(), g);
+  const clean = (text ?? '').trim();
+  if (clean.length < 200) {
+    return {
+      title: fileName?.replace(/\.[^.]+$/, '') ?? 'New Course',
+      topics: [{ id: 'topic-0', title: fileName ?? 'Uploaded Material', description: clean.slice(0, 300), objectives: ['Review uploaded content'], durationMinutes: 25 }],
+      glossary: [],
+      prerequisites: [],
+    };
   }
-  const glossary = [...glossaryMap.values()].slice(0, 25);
 
-  const sourceSections = sections.length >= 2 ? sections : splitStructuredParagraphs(text).map((body, i) => ({
-    id: `p-${i}`,
-    title: keyphrases[i]?.phrase ?? `Topic ${i + 1}`,
-    body,
-    kind: 'paragraph' as const,
-    startOffset: 0,
-  }));
+  const isGreek = /[\u0370-\u03ff]{20,}/.test(clean);
+  const subject = inferSubject(clean);
+  const sections = detectDocumentSections(clean);
+  const allKeyphrases = rankKeyphrases(clean, 25);
 
-  const topics: CourseTopic[] = sourceSections.slice(0, 12).map((sec, i) => {
-    const kp = keyphrases[i]?.phrase ?? sec.title;
-    const sentences = sec.body.match(/[^.!?]+[.!?]+/g) ?? [sec.body];
+  // Build topics from sections or keyphrase clustering
+  const sourceSections = sections.length >= 3
+    ? sections
+    : splitStructuredParagraphs(clean).map((body, i) => ({
+        id: `p-${i}`, title: allKeyphrases[i]?.phrase ?? `Topic ${i + 1}`,
+        body, kind: 'paragraph' as const, startOffset: 0,
+      }));
+
+  const topics: CourseTopic[] = sourceSections.slice(0, 10).map((sec, i) => {
+    const kp = rankKeyphrases(sec.body, 6, sec.title);
+    const concepts = kp.map((k) => titleCasePhrase(k.phrase)).slice(0, 5);
+    const difficulty = estimateDifficulty(sec.body);
+    const summary = extractiveSummary(sec.body, 1, {
+      biasTerms: [sec.title, ...concepts.slice(0, 2)],
+      leadBias: 0.18, mmrLambda: 0.7,
+    })[0];
+    const wc = (sec.body.match(WORD_RE) ?? []).length;
+
     return {
       id: `topic-${i}`,
-      title: sec.title.slice(0, 100) || kp,
-      description: sentences[0]?.trim().slice(0, 300) ?? sec.body.slice(0, 300),
-      objectives: [
-        `Understand ${kp}`,
-        `Apply concepts from ${sec.title}`,
-      ],
-      durationMinutes: Math.min(45, Math.max(15, Math.ceil(sec.body.split(/\s+/).length / 150))),
+      title: titleCasePhrase(sec.title.toLowerCase()).slice(0, 100) || concepts[0] || `Topic ${i + 1}`,
+      description: (summary?.slice(0, 200) ?? '') || sec.body.slice(0, 200),
+      objectives: buildObjectives(concepts.length > 0 ? concepts : [sec.title], isGreek, difficulty),
+      durationMinutes: Math.min(45, Math.max(8, Math.round((wc / 130) * 6))),
     };
   });
 
   if (topics.length === 0) {
-    topics.push({
-      id: 'topic-0',
-      title: fileName ?? 'Uploaded Material',
-      description: text.slice(0, 300),
-      objectives: ['Review uploaded content'],
-      durationMinutes: 25,
-    });
+    topics.push({ id: 'topic-0', title: fileName ?? 'Uploaded Material', description: clean.slice(0, 300), objectives: ['Review uploaded content'], durationMinutes: 25 });
   }
 
-  const prerequisites = keyphrases.slice(0, 3).map((k) => k.phrase);
+  // Build glossary from definitions + acronyms + top keyphrases
+  const glossaryMap = new Map<string, GlossaryEntry>();
+  for (const g of extractDefinitions(clean, 20)) glossaryMap.set(normalizeConcept(g.term), g);
+  for (const g of extractAcronyms(clean)) glossaryMap.set(normalizeConcept(g.term), g);
+  if (glossaryMap.size < 8) {
+    const sentences = splitSentences(clean);
+    for (const { phrase } of allKeyphrases) {
+      if (glossaryMap.size >= 14) break;
+      if (phrase.split(/\s+/).length > 2) continue;
+      const display = titleCasePhrase(phrase);
+      const ctx = sentences.find((s) => s.toLowerCase().includes(phrase));
+      glossaryMap.set(normalizeConcept(phrase), {
+        term: display,
+        definition: ctx ? ctx.slice(0, 220) : `${display} — a key concept from your material.`,
+      });
+    }
+  }
+
+  const title = deriveTitle(clean, fileName, subject);
 
   return {
-    title: fileName?.replace(/\.[^.]+$/, '') ?? 'New Course',
+    title,
     topics,
-    glossary,
-    prerequisites,
+    glossary: [...glossaryMap.values()].slice(0, 25),
+    prerequisites: allKeyphrases.slice(0, 3).map((k) => titleCasePhrase(k.phrase)),
   };
+}
+
+function deriveTitle(text: string, fileName: string | undefined, subject: string): string {
+  const fromFile = fileName?.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim();
+  if (fromFile && fromFile.length >= 4 && !/^untitled/i.test(fromFile)) {
+    return titleCasePhrase(fromFile.toLowerCase());
+  }
+  const top = rankKeyphrases(text, 1)[0];
+  if (top) return `${subject}: ${titleCasePhrase(top.phrase)}`;
+  return `${subject} Study Course`;
 }

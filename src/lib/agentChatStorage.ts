@@ -9,7 +9,7 @@ export type AgentMessage = {
   citations?: Citation[];
 };
 
-export type AgentModeId = 'socratic' | 'direct' | 'quiz' | 'feynman';
+export type AgentModeId = 'socratic' | 'direct' | 'quiz' | 'feynman' | 'exam-coach' | 'summariser' | 'debate' | 'explorer';
 
 const MODE_KEY = 'memora-agent-active-mode';
 const LEGACY_KEY = 'memora-ai-logs';
@@ -21,8 +21,9 @@ function chatKey(modeId: AgentModeId, isDemo: boolean): string {
 
 export async function loadAgentMode(): Promise<AgentModeId | null> {
   const stored = await localforage.getItem<string>(MODE_KEY);
-  if (stored === 'socratic' || stored === 'direct' || stored === 'quiz' || stored === 'feynman') {
-    return stored;
+  const VALID: AgentModeId[] = ['socratic', 'direct', 'quiz', 'feynman', 'exam-coach', 'summariser', 'debate', 'explorer'];
+  if (stored && VALID.includes(stored as AgentModeId)) {
+    return stored as AgentModeId;
   }
   return null;
 }
@@ -69,6 +70,6 @@ export async function clearAgentMessages(modeId: AgentModeId, isDemo: boolean): 
 }
 
 export async function clearAllAgentMessages(isDemo: boolean): Promise<void> {
-  const modes: AgentModeId[] = ['socratic', 'direct', 'quiz', 'feynman'];
+  const modes: AgentModeId[] = ['socratic', 'direct', 'quiz', 'feynman', 'exam-coach', 'summariser', 'debate', 'explorer'];
   await Promise.all(modes.map((m) => clearAgentMessages(m, isDemo)));
 }

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useLanguage } from '../lib/i18n';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 import { Clock, CheckCircle2 } from 'lucide-react';
 import { auth, db } from '../lib/firebase';
@@ -9,6 +10,7 @@ import { buildTaskAnalytics } from '../lib/taskAnalytics';
 import { isDemoModeActive, loadDemoTasks } from '../lib/demoStorage';
 
 export default function DashboardStats() {
+  const { t } = useLanguage();
   const studySessionsHistory = useStore((s) => s.studySessionsHistory);
   const [tasks, setTasks] = useState<Array<{ completed?: boolean; createdAt?: string; completedAt?: string }>>([]);
   const [loading, setLoading] = useState(true);
@@ -58,32 +60,32 @@ export default function DashboardStats() {
   );
 
   return (
-    <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800 p-6 rounded-3xl shadow-sm mb-8 transition-colors duration-300">
+    <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800 p-6 rounded-2xl shadow-sm mb-8 transition-colors duration-300 card-hover">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h3 className="font-display font-bold text-xl text-slate-900 dark:text-white">
-            7-Day Activity Summary
+          <h3 className="font-display font-bold text-lg text-slate-900 dark:text-white">
+            {t('7-Day Activity Summary', 'Σύνοψη 7 Ημερών')}
           </h3>
-          <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Study time and task completion progress.</p>
+          <p className="text-slate-500 dark:text-slate-400 text-sm mt-0.5">{t('Study time and task completion progress.', 'Χρόνος μελέτης και πρόοδος εργασιών.')}</p>
         </div>
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center">
+            <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center">
               <Clock className="w-4 h-4 text-indigo-500" />
             </div>
             <div>
-              <div className="text-xs text-slate-500 dark:text-slate-400">Avg Time</div>
+              <div className="text-xs text-slate-500 dark:text-slate-400">{t('Avg Time', 'Μέσος Χρόνος')}</div>
               <div className="text-sm font-bold text-slate-900 dark:text-white">
                 {loading ? '…' : `${avgFocus}m / day`}
               </div>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-emerald-50 dark:bg-emerald-900/30 flex items-center justify-center">
+            <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-900/30 flex items-center justify-center">
               <CheckCircle2 className="w-4 h-4 text-emerald-500" />
             </div>
             <div>
-              <div className="text-xs text-slate-500 dark:text-slate-400">Avg Completion</div>
+              <div className="text-xs text-slate-500 dark:text-slate-400">{t('Avg Completion', 'Μέση Ολοκλήρωση')}</div>
               <div className="text-sm font-bold text-slate-900 dark:text-white">
                 {loading ? '…' : `${avgCompletion}%`}
               </div>

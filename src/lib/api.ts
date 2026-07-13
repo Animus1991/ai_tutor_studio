@@ -36,13 +36,34 @@ export async function chatWithAgent(
   return parseResponse<{ text: string; urls?: string[] }>(response);
 }
 
-/** Stream agent tokens via SSE; calls onChunk for each text delta. */
+export interface AgentCitation {
+  uri: string;
+  title?: string;
+}
+
+export interface StreamAgentHandlers {
+  /** Called for each streamed text delta. */
+  onChunk: (text: string) => void;
+  /** Called incrementally as each grounding citation is discovered. */
+  onCitation?: (citation: AgentCitation) => void;
+  /** Called once at the end with the full list of grounding URLs. */
+  onDone?: (urls: string[]) => void;
+}
+
+/**
+ * Stream agent tokens via SSE.
+ * Accepts either a plain `onChunk` callback (back-compat) or a handlers object
+ * that additionally receives grounding citations as they arrive.
+ */
 export async function streamChatWithAgent(
   messages: { role: string; parts: { text: string }[] }[],
   systemInstruction: string,
-  onChunk: (text: string) => void,
+  onChunkOrHandlers: ((text: string) => void) | StreamAgentHandlers,
   model = 'gemini-3.5-flash',
 ): Promise<void> {
+  const handlers: StreamAgentHandlers =
+    typeof onChunkOrHandlers === 'function' ? { onChunk: onChunkOrHandlers } : onChunkOrHandlers;
+
   const response = await fetch('/api/agent/chat/stream', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -70,9 +91,17 @@ export async function streamChatWithAgent(
     for (const line of lines) {
       if (!line.startsWith('data: ')) continue;
       try {
-        const payload = JSON.parse(line.slice(6)) as { text?: string; error?: string; done?: boolean };
+        const payload = JSON.parse(line.slice(6)) as {
+          text?: string;
+          error?: string;
+          done?: boolean;
+          citation?: AgentCitation;
+          urls?: string[];
+        };
         if (payload.error) throw new ApiError(payload.error, 500);
-        if (payload.text) onChunk(payload.text);
+        if (payload.text) handlers.onChunk(payload.text);
+        if (payload.citation) handlers.onCitation?.(payload.citation);
+        if (payload.done) handlers.onDone?.(payload.urls ?? []);
       } catch (e) {
         if (e instanceof ApiError) throw e;
       }
@@ -86,7 +115,11 @@ export async function batchIngestYoutube(urls: string[]) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ urls }),
   });
-  return parseResponse<{ results: Array<{ url: string; videoId?: string; title?: string; text?: string; error?: string }> }>(response);
+  return parseResponse<{
+    results: Array<{ url: string; videoId?: string; title?: string; text?: string; error?: string }>;
+    expandedCount?: number;
+    truncated?: boolean;
+  }>(response);
 }
 
 export async function generateImage(prompt: string) {

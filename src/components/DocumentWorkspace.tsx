@@ -929,7 +929,7 @@ export default function DocumentWorkspace({
                       className="w-full h-24 object-cover"
                       referrerPolicy="no-referrer"
                     />
-                    <p className="text-[10px] text-slate-500 truncate p-1">
+                    <p className="text-xs text-slate-500 truncate p-1">
                       {img.prompt}
                     </p>
                   </div>
@@ -1207,7 +1207,7 @@ export default function DocumentWorkspace({
                             </div>
                             
                             {fc.fsrs && (
-                              <div className="flex flex-wrap gap-2 text-[10px] uppercase font-bold tracking-wider text-slate-500 mt-2">
+                              <div className="flex flex-wrap gap-2 text-xs uppercase font-bold tracking-wider text-slate-500 mt-2">
                                 <span className="bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded">Difficulty: {fc.fsrs.difficulty}</span>
                                 <span className="bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded">Retrievability: {(fc.fsrs.retrievability * 100).toFixed(0)}%</span>
                                 {fc.fsrs.next_review && (
@@ -1317,7 +1317,7 @@ export default function DocumentWorkspace({
                             className="w-full bg-slate-50 dark:bg-slate-800 p-2 rounded-lg border border-slate-200 dark:border-slate-700 flex items-center justify-between hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-left"
                           >
                             <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{g.term}</span>
-                            <span className="text-[10px] bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded text-slate-500 dark:text-slate-400">{g.count}</span>
+                            <span className="text-xs bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded text-slate-500 dark:text-slate-400">{g.count}</span>
                           </button>
                         ))}
                       </div>

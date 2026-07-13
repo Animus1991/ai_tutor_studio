@@ -7,15 +7,19 @@ import { saveQuizScore } from '../../lib/quizStorage';
 import { useStore } from '../../store/useStore';
 import { logActivity } from '../../lib/activity';
 import { toast } from 'sonner';
+import { noteConceptActivity } from '../../lib/workspaceConceptBus';
+import { useLanguage } from '../../lib/i18n';
 
 type Props = {
   questions: QuizQuestion[];
   courseId: string;
   courseTitle?: string;
+  concept?: string;
 };
 
-export default function QuizStepPanel({ questions, courseId, courseTitle }: Props) {
+export default function QuizStepPanel({ questions, courseId, courseTitle, concept }: Props) {
   const addXP = useStore((s) => s.addXP);
+  const { t } = useLanguage();
   const shuffledQuestions = useMemo(
     () => questions.map((q) => shuffleQuizQuestion(q)),
     [questions],
@@ -46,6 +50,9 @@ export default function QuizStepPanel({ questions, courseId, courseTitle }: Prop
       setScore((s) => s + 1);
       addXP(15);
     }
+    // Emit concept bus signal
+    const conceptLabel = concept ?? courseTitle ?? courseId;
+    noteConceptActivity(conceptLabel, 'quiz', correct ? 'quiz-correct' : 'quiz-wrong');
   };
 
   const handleNext = async () => {

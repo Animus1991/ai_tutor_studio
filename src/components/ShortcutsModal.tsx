@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Keyboard } from 'lucide-react';
-import { useEffect } from 'react';
+import { useFocusTrap } from '../hooks/useFocusTrap';
+import { useLanguage } from '../lib/i18n';
 
 interface ShortcutsModalProps {
   isOpen: boolean;
@@ -18,15 +19,8 @@ const shortcuts = [
 ];
 
 export default function ShortcutsModal({ isOpen, onClose }: ShortcutsModalProps) {
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+  const dialogRef = useFocusTrap<HTMLDivElement>(isOpen, onClose);
+  const { t } = useLanguage();
 
   return (
     <AnimatePresence>
@@ -40,6 +34,10 @@ export default function ShortcutsModal({ isOpen, onClose }: ShortcutsModalProps)
             className="fixed inset-0 bg-slate-900/20 dark:bg-slate-900/60 backdrop-blur-sm z-50 no-print"
           />
           <motion.div
+            ref={dialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="shortcuts-modal-title"
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -50,10 +48,11 @@ export default function ShortcutsModal({ isOpen, onClose }: ShortcutsModalProps)
                 <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
                   <Keyboard className="w-4 h-4" />
                 </div>
-                <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Keyboard Shortcuts</h2>
+                <h2 id="shortcuts-modal-title" className="text-lg font-semibold text-slate-900 dark:text-white">{t('Keyboard Shortcuts', 'Συντομεύσεις Πληκτρολογίου')}</h2>
               </div>
               <button
                 onClick={onClose}
+                aria-label={t('Close keyboard shortcuts', 'Κλείσιμο συντομεύσεων')}
                 className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors"
               >
                 <X className="w-4 h-4" />

@@ -77,7 +77,17 @@ export default function TaskCompletionChart() {
         <h3 className="text-lg font-display font-bold text-slate-900 dark:text-white tracking-tight">Weekly Task Activity</h3>
         <p className="text-slate-500 dark:text-slate-400 text-xs mt-0.5">Tasks completed over the last 7 days.</p>
       </div>
-      <div className="flex-1 w-full min-h-0 relative">
+      <div
+        className="flex-1 w-full min-h-0 relative"
+        role="img"
+        aria-label={
+          loading
+            ? 'Weekly task activity chart loading'
+            : `Weekly task activity: ${data.reduce((s, d) => s + d.tasks, 0)} tasks completed over 7 days. ${data
+                .map((d) => `${d.day}: ${d.tasks}`)
+                .join(', ')}.`
+        }
+      >
         {loading ? (
           <div className="w-full h-full animate-pulse flex items-end justify-between gap-2 px-2">
             {[1, 2, 3, 4, 5, 6, 7].map((i) => (

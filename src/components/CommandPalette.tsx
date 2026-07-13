@@ -8,6 +8,7 @@ import localforage from "localforage";
 import { auth, db } from "../lib/firebase";
 import { collection, query, getDocs } from "firebase/firestore";
 import { useSearch } from "../hooks/useSearch";
+import { useLanguage } from '../lib/i18n';
 
 type SearchResult = {
   id: string;
@@ -18,6 +19,7 @@ type SearchResult = {
 };
 
 export default function CommandPalette() {
+  const { t } = useLanguage();
   const { isOpen, openSearch, closeSearch } = useSearch();
   const [searchQuery, setSearchQuery] = useState("");
   const [isCommandMode, setIsCommandMode] = useState(false);
@@ -33,19 +35,19 @@ export default function CommandPalette() {
   const toggleFocusMode = useStore(state => state.toggleFocusMode);
 
   const commands = [
-    { text: "Toggle Feynman Mode", icon: <BrainCircuit className="w-4 h-4 text-amber-500" />, action: "feynman" },
-    { text: "Toggle Bionic Reading", icon: <BookOpen className="w-4 h-4 text-indigo-500" />, action: "bionic" },
-    { text: "Toggle Dyslexia Font", icon: <Type className="w-4 h-4 text-emerald-500" />, action: "dyslexia" },
-    { text: "Toggle Dark Mode", icon: <Moon className="w-4 h-4 text-indigo-500" />, action: "dark" },
-    { text: "Toggle Focus Mode", icon: <Search className="w-4 h-4 text-rose-500" />, action: "focus" },
-    { text: "Sync Knowledge Base (Vectors)", icon: <BrainCircuit className="w-4 h-4 text-sky-500" />, action: "sync" },
+    { text: t('Toggle Feynman Mode', 'Εναλλαγή Feynman Mode'), icon: <BrainCircuit className="w-4 h-4 text-amber-500" />, action: "feynman" },
+    { text: t('Toggle Bionic Reading', 'Εναλλαγή Bionic Reading'), icon: <BookOpen className="w-4 h-4 text-indigo-500" />, action: "bionic" },
+    { text: t('Toggle Dyslexia Font', 'Εναλλαγή Γραμματοσειράς Δυσλεξίας'), icon: <Type className="w-4 h-4 text-emerald-500" />, action: "dyslexia" },
+    { text: t('Toggle Dark Mode', 'Εναλλαγή Σκοτεινού Θέματος'), icon: <Moon className="w-4 h-4 text-indigo-500" />, action: "dark" },
+    { text: t('Toggle Focus Mode', 'Εναλλαγή Λειτουργίας Εστίασης'), icon: <Search className="w-4 h-4 text-rose-500" />, action: "focus" },
+    { text: t('Sync Knowledge Base (Vectors)', 'Συγχρονισμός Βάσης Γνώσης'), icon: <BrainCircuit className="w-4 h-4 text-sky-500" />, action: "sync" },
   ];
 
   const filteredCommands = commands.filter(c => c.text.toLowerCase().includes(searchQuery.substring(1).toLowerCase()));
   const defaultActions = [
-    { label: "View Dashboard", icon: <Search className="w-4 h-4 text-rose-500" />, url: "/" },
-    { label: "Upcoming Tasks", icon: <CheckSquare className="w-4 h-4 text-emerald-500" />, url: "/tasks" },
-    { label: "Recent Study Notes", icon: <FileText className="w-4 h-4 text-sky-500" />, url: "/library" },
+    { label: t('View Dashboard', 'Προβολή Πίνακα'), icon: <Search className="w-4 h-4 text-rose-500" />, url: "/" },
+    { label: t('Upcoming Tasks', 'Εκκρεμείς Εργασίες'), icon: <CheckSquare className="w-4 h-4 text-emerald-500" />, url: "/tasks" },
+    { label: t('Recent Study Notes', 'Πρόσφατες Σημειώσεις'), icon: <FileText className="w-4 h-4 text-sky-500" />, url: "/library" },
   ];
 
   useEffect(() => {
@@ -290,11 +292,11 @@ export default function CommandPalette() {
       <button 
         aria-label="Open command palette"
         onClick={() => openSearch()}
-        className="w-9 h-9 md:w-64 md:h-10 rounded-full md:rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center md:justify-start md:px-3 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:hover:border-slate-600 transition-all shadow-sm"
+        className="w-10 h-10 md:w-72 md:h-11 rounded-full md:rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center md:justify-start md:px-4 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:hover:border-slate-600 transition-all shadow-sm whitespace-nowrap overflow-hidden"
       >
         <Search className="w-4 h-4 md:mr-2" strokeWidth={1.5} />
-        <span className="hidden md:inline text-sm">Search notes & tasks...</span>
-        <span className="hidden md:inline ml-auto text-xs bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded text-slate-500 dark:text-slate-400 font-mono border border-slate-300 dark:border-slate-600">
+        <span className="hidden md:inline text-sm font-medium">{t('Search notes & tasks...', 'Αναζήτηση σημειώσεων & εργασιών...')}</span>
+        <span className="hidden md:inline ml-auto text-xs bg-slate-200 dark:bg-slate-700 px-2 py-0.5 rounded-lg text-slate-500 dark:text-slate-300 font-mono border border-slate-300 dark:border-slate-600">
           ⌘K
         </span>
       </button>
@@ -315,7 +317,7 @@ export default function CommandPalette() {
               exit={{ opacity: 0, scale: 0.95, y: -20 }}
               className="fixed top-[10%] left-1/2 -translate-x-1/2 w-[90%] max-w-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl z-50 overflow-hidden flex flex-col"
             >
-              <form onSubmit={handleSearch} className="flex items-center px-4 py-3 border-b border-slate-100 dark:border-slate-800">
+              <form onSubmit={handleSearch} className="flex items-center px-5 py-4 border-b border-slate-100 dark:border-slate-800">
                 {isCommandMode ? (
                   <ChevronRight className="w-5 h-5 text-indigo-500" />
                 ) : (
@@ -327,8 +329,8 @@ export default function CommandPalette() {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onKeyDown={handleKeyDownInput}
-                  placeholder="Search your knowledge base... (Type > for commands, ? for AI semantic search)"
-                  className={`flex-1 bg-transparent border-none outline-none px-3 placeholder:text-slate-400 ${isCommandMode ? 'text-indigo-600 font-mono font-bold' : isSemanticMode ? 'text-sky-600 font-medium' : 'text-slate-900 dark:text-white'}`}
+                  placeholder={t('Search your knowledge base... (Type > for commands, ? for AI semantic search)', 'Αναζήτηση στη βάση γνώσης... (Πληκτρολόγησε > για εντολές, ? για AI σημασιολογική αναζήτηση)')}
+                  className={`flex-1 bg-transparent border-none outline-none px-3 placeholder:text-slate-400 text-sm md:text-base ${isCommandMode ? 'text-indigo-600 font-mono font-bold' : isSemanticMode ? 'text-sky-600 font-medium' : 'text-slate-900 dark:text-white'}`}
                 />
                 <button type="button" aria-label="Close search" onClick={() => closeSearch()} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
                   <X className="w-5 h-5" />
@@ -337,7 +339,7 @@ export default function CommandPalette() {
               <div className="p-2 max-h-80 overflow-y-auto">
                 {isCommandMode ? (
                   <>
-                    <div className="px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">Available Commands</div>
+                    <div className="px-3 py-2 text-sm font-semibold text-slate-500 uppercase tracking-wider">{t('Available Commands', 'Διαθέσιμες Εντολές')}</div>
                     {filteredCommands.map((cmd, i) => (
                       <button 
                         key={i} 
@@ -351,9 +353,9 @@ export default function CommandPalette() {
                   </>
                 ) : isSemanticMode ? (
                   <>
-                    <div className="px-3 py-2 text-xs font-semibold text-sky-500 uppercase tracking-wider">AI Semantic Search</div>
+                    <div className="px-3 py-2 text-sm font-semibold text-sky-500 uppercase tracking-wider">{t('AI Semantic Search', 'AI Σημασιολογική Αναζήτηση')}</div>
                     {semanticLoading ? (
-                      <div className="px-3 py-4 text-center text-sm text-slate-500">Generating embeddings & searching...</div>
+                      <div className="px-3 py-4 text-center text-sm text-slate-500">{t('Generating embeddings & searching...', 'Δημιουργία embeddings & αναζήτηση...')}</div>
                     ) : results.length > 0 ? (
                       results.map((result, i) => (
                         <button
@@ -368,19 +370,19 @@ export default function CommandPalette() {
                           <BrainCircuit className="w-4 h-4 text-sky-500 shrink-0" />
                           <div className="truncate">
                             <span className="font-medium block truncate">{result.title}</span>
-                            <span className="text-xs text-slate-500">{result.subtitle}</span>
+                            <span className="text-sm text-slate-500">{result.subtitle}</span>
                           </div>
                         </button>
                       ))
                     ) : (
-                      <div className="px-3 py-4 text-center text-sm text-slate-500">Press enter to search conceptually across your library.</div>
+                      <div className="px-3 py-4 text-center text-sm text-slate-500">{t('Press enter to search conceptually across your library.', 'Πάτησε enter για εννοιολογική αναζήτηση στη βιβλιοθήκη.')}</div>
                     )}
                   </>
                 ) : searchQuery.trim() ? (
                   <>
                     {results.length > 0 ? (
                       <>
-                        <div className="px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">Search Results</div>
+                        <div className="px-3 py-2 text-sm font-semibold text-slate-500 uppercase tracking-wider">{t('Search Results', 'Αποτελέσματα Αναζήτησης')}</div>
                         {results.map((result, i) => (
                           <button
                             key={result.id}
@@ -396,21 +398,21 @@ export default function CommandPalette() {
                             {result.type === "ai_log" && <Bot className="w-4 h-4 text-indigo-500 shrink-0" />}
                             <div className="truncate">
                               <span className="font-medium block truncate">{result.title}</span>
-                              <span className="text-xs text-slate-500">{result.subtitle}</span>
+                              <span className="text-sm text-slate-500">{result.subtitle}</span>
                             </div>
                           </button>
                         ))}
                       </>
                     ) : (
-                      <div className="px-3 py-4 text-center text-sm text-slate-500">No results found for "{searchQuery}"</div>
+                      <div className="px-3 py-4 text-center text-sm text-slate-500">{t(`No results found for "${searchQuery}"`, `Δεν βρέθηκαν αποτελέσματα για "${searchQuery}"`)}</div>
                     )}
                   </>
                 ) : (
                   <>
-                    <div className="px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">Quick Suggestions</div>
+                    <div className="px-3 py-2 text-sm font-semibold text-slate-500 uppercase tracking-wider">{t('Quick Suggestions', 'Γρήγορες Προτάσεις')}</div>
                     <button onClick={() => { setSearchQuery(">"); inputRef.current?.focus(); }} className="w-full flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/50 text-left transition-colors text-slate-700 dark:text-slate-300 text-sm">
                       <ChevronRight className="w-4 h-4 text-indigo-500" />
-                      View Actions & Commands
+                      {t('View Actions & Commands', 'Προβολή Εντολών')}
                     </button>
                     {defaultActions.map((action, i) => (
                       <button 
@@ -424,6 +426,18 @@ export default function CommandPalette() {
                     ))}
                   </>
                 )}
+              </div>
+              {/* Footer hint — keyboard navigation (synapse-learning pattern) */}
+              <div className="border-t border-slate-100 dark:border-slate-800 px-5 py-3 text-xs text-slate-400 dark:text-slate-500 flex flex-wrap items-center gap-3">
+                <span>↑ ↓ {t('navigate', 'πλοήγηση')}</span>
+                <span>·</span>
+                <span>Enter {t('run', 'εκτέλεση')}</span>
+                <span>·</span>
+                <span>Esc {t('close', 'κλείσιμο')}</span>
+                <span>·</span>
+                <span className="font-mono">&gt;</span> {t('commands', 'εντολές')}
+                <span>·</span>
+                <span className="font-mono">?</span> {t('AI search', 'AI αναζήτηση')}
               </div>
             </motion.div>
           </>

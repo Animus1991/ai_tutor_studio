@@ -30,7 +30,9 @@ export type WorkspaceToolId =
   | 'debate'
   | 'reader'
   | 'scratchpad'
-  | 'source';
+  | 'source'
+  | 'dashboard'
+  | 'quiz';
 
 export interface SourceIntelligence {
   score: number;
@@ -49,7 +51,7 @@ export interface WorkspaceNoteBundle {
   conceptMap: { nodes: ConceptNode[]; edges: ConceptEdge[] };
   flashcards: Flashcard[];
   comparisons: ComparisonRow[];
-  formulas: string[];
+  formulas: import('./noteContentExtractors').ExtractedFormula[];
   feynman: { steps: string[]; gaps: string[] };
   debate: DebateNode[];
   readerExcerpt: string;
@@ -139,9 +141,9 @@ export function buildWorkspaceNoteBundle(
     concept: activeConcept,
     course,
     conceptMap: buildConceptMapFromCourse(course),
-    flashcards: buildFlashcards(sourceText, glossary),
+    flashcards: buildFlashcards(sourceText, activeConcept, glossary),
     comparisons: extractComparisons(sourceText, glossary),
-    formulas: extractFormulas(sourceText),
+    formulas: extractFormulas(sourceText, activeConcept),
     feynman: buildFeynmanOutline(sourceText, activeConcept),
     debate: buildDebateTreeFromNotes(sourceText, activeConcept),
     readerExcerpt: relevantExcerpt(sourceText, activeConcept),

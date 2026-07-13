@@ -24,7 +24,13 @@ export default function TopicCompletionChart() {
           Progress across your active subjects.
         </p>
       </div>
-      <div className="flex-1 w-full relative">
+      <div
+        className="flex-1 w-full relative"
+        role="img"
+        aria-label={`Topic completion rates: ${data
+          .map((d) => `${d.name} ${d.completed} percent`)
+          .join(', ')}.`}
+      >
         <ResponsiveContainer width="100%" height="100%">
           <RadialBarChart
             cx="50%"

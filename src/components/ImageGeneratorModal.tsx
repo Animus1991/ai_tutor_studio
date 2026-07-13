@@ -3,11 +3,13 @@ import { useState, FormEvent } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Image, Loader2, Sparkles } from 'lucide-react';
 import { generateImage } from '../lib/api';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 export default function ImageGeneratorModal({ isOpen, onClose, onSave }: { isOpen: boolean, onClose: () => void, onSave?: (imageUrl: string, prompt: string) => void }) {
   const [prompt, setPrompt] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const dialogRef = useFocusTrap<HTMLDivElement>(isOpen, onClose);
 
   const handleGenerate = async (e: FormEvent) => {
     e.preventDefault();
@@ -38,6 +40,10 @@ export default function ImageGeneratorModal({ isOpen, onClose, onSave }: { isOpe
           className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-6"
         >
           <motion.div 
+            ref={dialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="imagegen-modal-title"
             initial={{ scale: 0.95, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.95, opacity: 0 }}
@@ -45,11 +51,12 @@ export default function ImageGeneratorModal({ isOpen, onClose, onSave }: { isOpe
           >
             <button 
               onClick={onClose}
+              aria-label="Close diagram generator"
               className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors"
             >
               &times;
             </button>
-            <h2 className="text-2xl font-display font-bold text-slate-900 dark:text-white mb-2 flex items-center gap-2">
+            <h2 id="imagegen-modal-title" className="text-2xl font-display font-bold text-slate-900 dark:text-white mb-2 flex items-center gap-2">
               <Sparkles className="w-5 h-5 text-indigo-500" /> Generate Diagram
             </h2>
             <p className="text-slate-500 dark:text-slate-400 mb-6 text-sm">

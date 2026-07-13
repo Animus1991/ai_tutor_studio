@@ -2,6 +2,7 @@ import { StrictMode, Component, ErrorInfo, ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
+import { LanguageProvider } from "./lib/i18n";
 import { Logger } from "./utils/logger";
 import { reportWebVitals } from "./lib/reportWebVitals";
 import { registerSW } from 'virtual:pwa-register';
@@ -67,7 +68,9 @@ class ErrorBoundary extends Component<{children: ReactNode}, {hasError: boolean,
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ErrorBoundary>
-      <App />
+      <LanguageProvider>
+        <App />
+      </LanguageProvider>
     </ErrorBoundary>
   </StrictMode>,
 );

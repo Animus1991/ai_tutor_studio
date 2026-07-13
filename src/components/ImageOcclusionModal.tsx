@@ -4,6 +4,7 @@ import { X, Image as ImageIcon, Loader2, UploadCloud, Target } from "lucide-reac
 import { toast } from "sonner";
 import { auth, db } from "../lib/firebase";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { useFocusTrap } from "../hooks/useFocusTrap";
 
 interface ImageOcclusionModalProps {
   isOpen: boolean;
@@ -11,6 +12,7 @@ interface ImageOcclusionModalProps {
 }
 
 export default function ImageOcclusionModal({ isOpen, onClose }: ImageOcclusionModalProps) {
+  const dialogRef = useFocusTrap<HTMLDivElement>(isOpen, onClose);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -109,16 +111,23 @@ export default function ImageOcclusionModal({ isOpen, onClose }: ImageOcclusionM
             exit={{ opacity: 0, scale: 0.95 }}
             className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
           >
-            <div className="w-full max-w-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-2xl rounded-2xl overflow-hidden pointer-events-auto flex flex-col max-h-[90vh]">
+            <div
+              ref={dialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="occlusion-modal-title"
+              className="w-full max-w-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-2xl rounded-2xl overflow-hidden pointer-events-auto flex flex-col max-h-[90vh]"
+            >
               <div className="flex items-center justify-between p-4 border-b border-zinc-100 dark:border-zinc-800 shrink-0">
                 <div className="flex items-center gap-2">
                   <div className="p-2 rounded-lg bg-emerald-100 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400">
                     <Target className="w-5 h-5" />
                   </div>
-                  <h3 className="font-semibold text-zinc-900 dark:text-white">AI Image Occlusion</h3>
+                  <h3 id="occlusion-modal-title" className="font-semibold text-zinc-900 dark:text-white">AI Image Occlusion</h3>
                 </div>
                 <button
                   onClick={onClose}
+                  aria-label="Close image occlusion"
                   className="p-2 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 dark:hover:text-zinc-300 dark:hover:bg-zinc-800 rounded-lg transition-colors"
                 >
                   <X className="w-5 h-5" />
@@ -216,7 +225,7 @@ export default function ImageOcclusionModal({ isOpen, onClose }: ImageOcclusionM
                                     height: `${l.box[2] - l.box[0]}px`, width: `${l.box[3] - l.box[1]}px`
                                 }}
                             >
-                                <span className="absolute -top-6 bg-indigo-600 text-white text-[10px] px-1.5 py-0.5 rounded shadow whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">
+                                <span className="absolute -top-6 bg-indigo-600 text-white text-xs px-1.5 py-0.5 rounded shadow whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">
                                     {l.text}
                                 </span>
                                 <button

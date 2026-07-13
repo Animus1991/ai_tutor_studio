@@ -4,6 +4,7 @@ import { X, Globe, Link as LinkIcon, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { auth, db } from "../lib/firebase";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { useFocusTrap } from "../hooks/useFocusTrap";
 
 interface WebClipperModalProps {
   isOpen: boolean;
@@ -13,6 +14,7 @@ interface WebClipperModalProps {
 export default function WebClipperModal({ isOpen, onClose }: WebClipperModalProps) {
   const [url, setUrl] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const dialogRef = useFocusTrap<HTMLDivElement>(isOpen, onClose);
 
   const handleClip = async () => {
     if (!url.trim()) {
@@ -104,16 +106,23 @@ export default function WebClipperModal({ isOpen, onClose }: WebClipperModalProp
             exit={{ opacity: 0, scale: 0.95 }}
             className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
           >
-            <div className="w-full max-w-md bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-2xl rounded-2xl overflow-hidden pointer-events-auto">
+            <div
+              ref={dialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="webclipper-modal-title"
+              className="w-full max-w-md bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-2xl rounded-2xl overflow-hidden pointer-events-auto"
+            >
               <div className="flex items-center justify-between p-4 border-b border-zinc-100 dark:border-zinc-800">
                 <div className="flex items-center gap-2">
                   <div className="p-2 rounded-lg bg-indigo-100 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-400">
                     <Globe className="w-5 h-5" />
                   </div>
-                  <h3 className="font-semibold text-zinc-900 dark:text-white">Web Clipper</h3>
+                  <h3 id="webclipper-modal-title" className="font-semibold text-zinc-900 dark:text-white">Web Clipper</h3>
                 </div>
                 <button
                   onClick={onClose}
+                  aria-label="Close web clipper"
                   className="p-2 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 dark:hover:text-zinc-300 dark:hover:bg-zinc-800 rounded-lg transition-colors"
                 >
                   <X className="w-5 h-5" />

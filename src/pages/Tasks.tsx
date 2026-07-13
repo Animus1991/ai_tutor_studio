@@ -59,10 +59,19 @@ import {
 } from "../lib/demoStorage";
 import { logActivity } from "../lib/activity";
 import { buildTaskAnalytics } from "../lib/taskAnalytics";
+import { useLanguage } from "../lib/i18n";
 
 const fsrs = new FSRS();
 
+const priorityBorder = (task: any) => {
+  if (task.urgent) return 'bg-rose-500';
+  if (task.type === 'Review') return 'bg-amber-500';
+  if (task.type === 'Quiz Prep') return 'bg-violet-500';
+  return 'bg-indigo-500';
+};
+
 export default function Tasks() {
+  const { t } = useLanguage();
   const { pomodoroSessions, studySessionsHistory } = useStore();
   const isDemoMode = useAuthStore((s) => s.isDemoMode);
   const [isSyncingTasks, setIsSyncingTasks] = useState(false);
@@ -442,23 +451,23 @@ export default function Tasks() {
   return (
     <PageShell className="pb-16">
       <PageHeader
-        title="Command Center"
-        description="Your adaptive study plan based on retention curves and upcoming goals."
+        title={t('Command Center', 'Κέντρο Ελέγχου')}
+        description={t('Your adaptive study plan based on retention curves and upcoming goals.', 'Αδαπτιυτικό πλάνο μελέτης βασισμένο στις καμπύλες μνήμης.')}
         actions={
           <>
             <button
               onClick={exportSessionData}
-              className="hidden sm:flex items-center gap-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 px-3 py-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors font-medium text-xs shadow-sm"
+              className="hidden sm:flex items-center gap-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 px-3 py-1.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors font-medium text-xs shadow-sm"
             >
               <Download className="w-3.5 h-3.5" />
-              Export
+              {t('Export', 'Εξαγωγή')}
             </button>
             <button
               onClick={() => setIsNewTaskModalOpen(true)}
-              className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg font-semibold text-sm transition-all shadow-sm"
+              className="flex items-center gap-1.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white px-3 py-1.5 rounded-xl font-semibold text-sm transition-all shadow-md shadow-indigo-500/20"
             >
               <Plus className="w-4 h-4" />
-              <span className="hidden sm:inline">New Task</span>
+              <span className="hidden sm:inline">{t('New Task', 'Νέα Εργασία')}</span>
             </button>
           </>
         }
@@ -473,10 +482,10 @@ export default function Tasks() {
           <Zap className="w-6 h-6 mb-3 text-indigo-400 dark:text-white relative z-10" />
           <div className="relative z-10">
             <h3 className="font-display font-bold text-base mb-1">
-              Quick Session
+              {t('Quick Session', 'Γρήγορη Συνεδρία')}
             </h3>
             <p className="text-slate-400 dark:text-indigo-100 text-xs">
-              15 min rapid review
+              {t('15 min rapid review', '15 λεπτά γρήγορη επανάληψη')}
             </p>
           </div>
         </button>
@@ -485,10 +494,10 @@ export default function Tasks() {
           <Target className="w-6 h-6 mb-3 text-emerald-500 dark:text-emerald-400 group-hover:scale-110 transition-transform duration-300" />
           <div>
             <h3 className="font-display font-bold text-base text-slate-900 dark:text-white mb-1">
-              Deep Focus
+              {t('Deep Focus', 'Βαθιά Εστίαση')}
             </h3>
             <p className="text-slate-500 dark:text-slate-400 text-xs">
-              50 min deep learning
+              {t('50 min deep learning', '50 λεπτά βαθιά μάθηση')}
             </p>
           </div>
         </button>
@@ -497,10 +506,10 @@ export default function Tasks() {
           <AlertTriangle className="w-6 h-6 mb-3 text-amber-500 group-hover:scale-110 transition-transform duration-300" />
           <div>
             <h3 className="font-display font-bold text-base text-slate-900 dark:text-white mb-1">
-              Danger Zone
+              {t('Danger Zone', 'Ζώνη Κινδύνου')}
             </h3>
             <p className="text-slate-500 dark:text-slate-400 text-xs">
-              Review struggling concepts
+              {t('Review struggling concepts', 'Επανάληψη αδύνατων εννοιών')}
             </p>
           </div>
         </button>
@@ -509,10 +518,10 @@ export default function Tasks() {
           <Calendar className="w-6 h-6 mb-3 text-blue-500 group-hover:scale-110 transition-transform duration-300" />
           <div>
             <h3 className="font-display font-bold text-base text-slate-900 dark:text-white mb-1">
-              Exam Cram
+              {t('Exam Cram', 'Προετοιμασία Εξέτασης')}
             </h3>
             <p className="text-slate-500 dark:text-slate-400 text-xs">
-              Prepare for upcoming test
+              {t('Prepare for upcoming test', 'Προετοιμάσου για επερχόμενο διαγωνισμό')}
             </p>
           </div>
         </button>
@@ -523,7 +532,7 @@ export default function Tasks() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 border-b border-slate-200/60 dark:border-slate-800/60 pb-3 gap-3">
             <div className="flex items-center gap-2">
               <h3 className="text-lg font-display font-bold text-slate-900 dark:text-white tracking-tight">
-                Up Next
+                {t('Up Next', 'Επόμενα')}
               </h3>
               <button
                 onClick={handleSyncGoogleTasks}
@@ -531,7 +540,7 @@ export default function Tasks() {
                 className="px-3 py-1.5 bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-500/20 rounded-xl text-xs font-semibold hover:bg-blue-100 dark:hover:bg-blue-500/20 transition-colors flex items-center gap-2 disabled:opacity-50"
               >
                 <CheckCircle2 className="w-3 h-3" />{" "}
-                {isSyncingTasks ? "Syncing..." : "Sync to Google Tasks"}
+                {isSyncingTasks ? t('Syncing...', 'Συγχρονισμός...') : t('Sync to Google Tasks', 'Συγχρονισμός με Google Tasks')}
               </button>
               
               {isSelectionMode ? (
@@ -541,13 +550,13 @@ export default function Tasks() {
                     disabled={selectedTasks.length === 0}
                     className="px-3 py-1.5 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-500/20 rounded-xl text-xs font-semibold hover:bg-rose-100 dark:hover:bg-rose-500/20 transition-colors disabled:opacity-50"
                   >
-                    Delete Selected ({selectedTasks.length})
+                    {t('Delete Selected', 'Διαγραφή Επιλεγμένων')} ({selectedTasks.length})
                   </button>
                   <button
                     onClick={() => { setIsSelectionMode(false); setSelectedTasks([]); }}
                     className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
                   >
-                    Cancel
+                    {t('Cancel', 'Ακύρωση')}
                   </button>
                 </>
               ) : (
@@ -555,7 +564,7 @@ export default function Tasks() {
                   onClick={() => setIsSelectionMode(true)}
                   className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
                 >
-                  Select
+                  {t('Select', 'Επιλογή')}
                 </button>
               )}
             </div>
@@ -570,7 +579,7 @@ export default function Tasks() {
                       : "text-slate-500 hover:text-slate-700",
                   )}
                 >
-                  List
+                  {t('List', 'Λίστα')}
                 </button>
                 <button
                   onClick={() => setViewMode("calendar")}
@@ -581,7 +590,7 @@ export default function Tasks() {
                       : "text-slate-500 hover:text-slate-700",
                   )}
                 >
-                  Calendar
+                  {t('Calendar', 'Ημερολόγιο')}
                 </button>
               </div>
               {categories.map((category) => (
@@ -604,11 +613,11 @@ export default function Tasks() {
             <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 overflow-hidden">
               <div className="flex items-center justify-between mb-6">
                 <h4 className="font-bold text-slate-700 dark:text-slate-200">
-                  This Week
+                  {t('This Week', 'Αυτή η Εβδομάδα')}
                 </h4>
                 <div className="flex gap-2">
                   <span className="w-2 h-2 rounded-full bg-amber-500 mt-1.5"></span>
-                  <span className="text-xs text-slate-500">Urgent</span>
+                  <span className="text-xs text-slate-500">{t('Urgent', 'Επείγον')}</span>
                 </div>
               </div>
               <div className="relative border-l-2 border-slate-100 dark:border-slate-800 ml-4 pl-6 pb-4 space-y-8">
@@ -694,21 +703,21 @@ export default function Tasks() {
                       value={task}
                       dragListener={false}
                       key={task.id}
-                      className="bg-slate-50/50 dark:bg-slate-900/30 border border-slate-200/40 dark:border-slate-800/40 p-4 rounded-2xl flex items-center justify-between opacity-60"
+                      className="bg-slate-50/50 dark:bg-slate-900/20 border border-slate-100/60 dark:border-slate-800/40 p-4 rounded-2xl flex items-center justify-between opacity-50 hover:opacity-70 transition-opacity"
                     >
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center bg-slate-100 dark:bg-slate-800 shrink-0">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-emerald-50 dark:bg-emerald-900/20 shrink-0">
                           <CheckCircle2
-                            className="w-5 h-5 md:w-6 md:h-6 text-slate-400 dark:text-slate-500"
-                            strokeWidth={1.5}
+                            className="w-4 h-4 text-emerald-500"
+                            strokeWidth={2}
                           />
                         </div>
                         <div>
-                          <h4 className="font-display font-bold text-slate-500 dark:text-slate-400 text-base line-through">
+                          <h4 className="font-medium text-slate-400 dark:text-slate-500 text-sm line-through">
                             {task.title}
                           </h4>
-                          <p className="text-xs font-medium text-slate-400 dark:text-slate-500 mt-1">
-                            Completed
+                          <p className="text-xs font-semibold text-emerald-500 dark:text-emerald-600 mt-0.5 uppercase tracking-wide">
+                            {t('Completed', 'Ολοκληρώθηκε')}
                           </p>
                         </div>
                       </div>
@@ -719,19 +728,14 @@ export default function Tasks() {
                 return (
                   <Reorder.Item
                     value={task}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{
-                      duration: 0.2,
-                      ease: "easeOut",
-                    }}
-                    whileDrag={{ scale: 1.02, zIndex: 50 }}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.2, ease: 'easeOut' }}
+                    whileDrag={{ scale: 1.02, zIndex: 50, boxShadow: '0 20px 40px -12px rgba(0,0,0,0.15)' }}
                     key={task.id}
-                    className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800 p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between hover:shadow-md hover:border-slate-300 dark:hover:border-slate-700 transition-all duration-300 group relative overflow-hidden"
+                    className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800 p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between hover:shadow-lg hover:shadow-slate-200/50 dark:hover:shadow-slate-900/50 hover:border-slate-300 dark:hover:border-slate-700 transition-all duration-300 group relative overflow-hidden"
                   >
-                    {task.urgent && (
-                      <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500" />
-                    )}
+                    <div className={`absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl ${priorityBorder(task)}`} />
 
                     <div className="flex items-start sm:items-center gap-4 mb-3 sm:mb-0">
                       {isSelectionMode ? (
@@ -765,33 +769,37 @@ export default function Tasks() {
                         </div>
                       </button>
                       <div>
-                        <h4 className="font-display font-bold text-slate-900 dark:text-white text-base leading-tight group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                        <h4 className="font-display font-bold text-slate-900 dark:text-white text-sm leading-tight group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
                           {task.title}
                         </h4>
-                        <div className="flex flex-wrap items-center gap-2 mt-1.5">
-                          <span className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-100/50 dark:border-indigo-800/50 px-2 py-0.5 rounded-md">
+                        <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                          <span className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-100/60 dark:border-indigo-800/50 px-2 py-0.5 rounded-lg">
                             {task.course}
                           </span>
-                          <span className="w-1 h-1 bg-slate-300 dark:bg-slate-600 rounded-full hidden sm:block"></span>
-                          <span className="text-xs font-medium text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60 px-2 py-0.5 rounded-md">
+                          <span className="text-xs font-medium text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60 px-2 py-0.5 rounded-lg">
                             {task.type}
                           </span>
+                          {task.urgent && (
+                            <span className="text-xs font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 border border-rose-200/60 dark:border-rose-800/50 px-2 py-0.5 rounded-lg uppercase tracking-wide">
+                              {t('Urgent', 'Επείγον')}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
 
                     <div className="flex items-center justify-between sm:justify-end gap-4 w-full sm:w-auto mt-3 sm:mt-0 pl-14 sm:pl-0">
                       {task.nextReviewDate ? (
-                        <div className={cn("flex flex-col items-end gap-0.5 px-2.5 py-1 rounded-lg border", new Date(task.nextReviewDate) <= new Date() ? "bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-900/50 text-amber-700 dark:text-amber-400" : "bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700/50 text-slate-500 dark:text-slate-400")}>
-                          <span className="text-[9px] font-bold uppercase tracking-wider">
-                            {new Date(task.nextReviewDate) <= new Date() ? 'Review Due' : 'Next Review'}
+                        <div className={cn('flex flex-col items-end gap-0.5 px-2.5 py-1 rounded-xl border', new Date(task.nextReviewDate) <= new Date() ? 'bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-900/50 text-amber-700 dark:text-amber-400' : 'bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700/50 text-slate-500 dark:text-slate-400')}>
+                          <span className="text-xs font-bold uppercase tracking-wider">
+                            {new Date(task.nextReviewDate) <= new Date() ? t('Review Due', 'Εκκρεμή Επανάληψη') : t('Next Review', 'Επόμενη Επανάληψη')}
                           </span>
                           <span className="text-xs font-bold font-mono">
-                            {format(new Date(task.nextReviewDate), "MMM d, HH:mm")}
+                            {format(new Date(task.nextReviewDate), 'MMM d, HH:mm')}
                           </span>
                         </div>
                       ) : (
-                        <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-100 dark:border-slate-700/50">
+                        <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800 px-2.5 py-1 rounded-xl border border-slate-100 dark:border-slate-700/50">
                           <Clock className="w-3.5 h-3.5" />
                           <span className="text-xs font-bold font-mono">
                             {task.time}
@@ -802,7 +810,7 @@ export default function Tasks() {
                       <button 
                         onClick={() => handleCompleteTask(task)}
                         aria-label={`Start task ${task.title}`}
-                        className="bg-slate-900 dark:bg-indigo-600 hover:bg-slate-800 dark:hover:bg-indigo-700 hover:scale-105 active:scale-95 text-white w-10 h-10 rounded-xl flex items-center justify-center transition-all shadow-[0_4px_14px_0_rgba(15,23,42,0.39)] dark:shadow-[0_4px_14px_0_rgba(79,70,229,0.39)] shrink-0"
+                        className="bg-gradient-to-br from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 hover:scale-105 active:scale-95 text-white w-10 h-10 rounded-xl flex items-center justify-center transition-all shadow-md shadow-indigo-500/25 shrink-0"
                       >
                         <Play className="w-4 h-4 ml-0.5" fill="currentColor" />
                       </button>
@@ -815,7 +823,7 @@ export default function Tasks() {
         </div>
 
         {/* Focus Timer & Stats Column */}
-        <div className="xl:col-span-4 space-y-6">
+        <div className="xl:col-span-4 space-y-6 xl:sticky xl:top-6 xl:self-start xl:max-h-[calc(100vh-5rem)] xl:overflow-y-auto">
           <PomodoroTimer />
 
           <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800 p-6 rounded-3xl shadow-sm transition-colors duration-300">
@@ -824,14 +832,14 @@ export default function Tasks() {
                 <Target className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
               </div>
               <h3 className="font-display font-bold text-lg text-slate-900 dark:text-white">
-                Learning Analytics
+                {t('Learning Analytics', 'Αναλυτικά Μάθησης')}
               </h3>
             </div>
             
             <div className="space-y-6">
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Focus Time (Last 7 Days)</span>
+                  <span className="text-sm font-medium text-slate-500 dark:text-slate-400">{t('Focus Time (Last 7 Days)', 'Χρόνος Εστίασης (7 ημέρες)')}</span>
                   <span className="text-xs font-bold text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 px-2 py-1 rounded-md">+14%</span>
                 </div>
                 <div className="h-32 w-full">
@@ -855,8 +863,8 @@ export default function Tasks() {
 
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Knowledge Retention</span>
-                  <span className="text-xs font-bold text-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 px-2 py-1 rounded-md">High</span>
+                  <span className="text-sm font-medium text-slate-500 dark:text-slate-400">{t('Knowledge Retention', 'Διατήρηση Γνώσης')}</span>
+                  <span className="text-xs font-bold text-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 px-2 py-1 rounded-md">{t('High', 'Υψηλή')}</span>
                 </div>
                 <div className="h-32 w-full">
                   <ResponsiveContainer width="100%" height="100%">

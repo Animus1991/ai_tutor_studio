@@ -206,7 +206,7 @@ export default function Workspace() {
                               {name.charAt(0)}
                             </div>
                           )}
-                          <span className="text-[10px] text-slate-600 dark:text-slate-400 max-w-[60px] truncate">{name.split(' ')[0]}</span>
+                          <span className="text-xs text-slate-600 dark:text-slate-400 max-w-[4.5rem] truncate">{name.split(' ')[0]}</span>
                         </div>
                       );
                     })}

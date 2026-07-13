@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
-import { CloudOff, Cloud, RefreshCw } from "lucide-react";
+import { CloudOff, RefreshCw } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useLanguage } from '../lib/i18n';
 
 export default function SyncIndicator() {
+  const { t } = useLanguage();
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isSyncing, setIsSyncing] = useState(false);
 
@@ -40,12 +42,12 @@ export default function SyncIndicator() {
           {!isOnline ? (
             <>
               <CloudOff className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Offline</span>
+              <span className="hidden sm:inline">{t('Offline', 'Εκτός σύνδεσης')}</span>
             </>
           ) : (
             <>
               <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-              <span className="hidden sm:inline">Syncing</span>
+              <span className="hidden sm:inline">{t('Syncing', 'Συγχρονισμός')}</span>
             </>
           )}
         </motion.div>

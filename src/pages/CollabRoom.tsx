@@ -20,9 +20,14 @@ import {
   BrainCircuit,
   ExternalLink,
   Calendar,
-  Network
+  Network,
+  Clock,
+  Timer,
+  ScreenShare,
+  StickyNote
 } from "lucide-react";
 import { useStore } from "../store/useStore";
+import { useLanguage } from "../lib/i18n";
 import { cn } from "../lib/utils";
 import { chatWithAgent } from "../lib/api";
 import { auth, db } from "../lib/firebase";
@@ -58,45 +63,70 @@ import {
 } from "../lib/collabDemoStorage";
 
 import PresenceIndicator from "../components/PresenceIndicator";
+import { useGoogleOAuth, type GoogleOAuthScopes } from '../hooks/useGoogleOAuth';
+import GoogleOAuthConsentModal from '../components/GoogleOAuthConsentModal';
+import StudyRoomPanel, { type StudyRoomSharedTool } from '../components/collab/StudyRoomPanel';
 
 export default function CollabRoom() {
+  const { t } = useLanguage();
   const [isVideoOn, setIsVideoOn] = useState(true);
   const [isMicOn, setIsMicOn] = useState(true);
   const [activeTab, setActiveTab] = useState<
     "chat" | "tasks" | "notes" | "ai" | "quizzes"
   >("chat");
   const [mainView, setMainView] = useState<"video" | "whiteboard" | "graph">("video");
+  const [sharedTimerSeconds, setSharedTimerSeconds] = useState(0);
+  const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [chatMessage, setChatMessage] = useState("");
+  const googleOAuth = useGoogleOAuth();
+  const [oauthModalOpen, setOauthModalOpen] = useState(false);
+  const [pendingOauthScopes, setPendingOauthScopes] = useState<GoogleOAuthScopes[]>([]);
+  const [pendingOauthAction, setPendingOauthAction] = useState<(() => void) | null>(null);
 
   const [user, setUser] = useState<any>(null);
-  const roomId = "default_room";
+  const [roomId, setRoomId] = useState("default_room");
+  const [studyRoomOpen, setStudyRoomOpen] = useState(false);
+  const [selfRole, setSelfRole] = useState<'student' | 'mentor' | 'facilitator' | 'observer'>('student');
 
   const [messages, setMessages] = useState<any[]>([]);
   const [invitedContacts, setInvitedContacts] = useState<any[]>([]);
   const [quizzes, setQuizzes] = useState<any[]>([]);
   
-  // Yjs State
-  const [ydoc] = useState(() => new Y.Doc());
+  // Yjs State (re-created per room)
+  const [ydoc, setYdoc] = useState(() => new Y.Doc());
   const [provider, setProvider] = useState<WebsocketProvider | null>(null);
   const [awarenessUsers, setAwarenessUsers] = useState<any[]>([]);
 
   useEffect(() => {
+    const doc = new Y.Doc();
+    setYdoc(doc);
+
     const roomDocName = `memora-collab-${roomId}`;
-    const wsProvider = new WebsocketProvider(
-      getCollabWebSocketUrl(),
-      roomDocName,
-      ydoc,
-    );
+    const wsProvider = new WebsocketProvider(getCollabWebSocketUrl(), roomDocName, doc);
     setProvider(wsProvider);
 
-    const indexeddbProvider = new IndexeddbPersistence(roomDocName, ydoc);
+    const indexeddbProvider = new IndexeddbPersistence(roomDocName, doc);
 
     const awareness = wsProvider.awareness;
+
+    const getLocalMemberId = (userObj: any) => {
+      const base = userObj?.uid ? `uid:${userObj.uid}` : userObj?.email ? `email:${userObj.email}` : 'guest';
+      if (typeof window === 'undefined') return base;
+      const key = `memora-member-id:${base}`;
+      const existing = window.localStorage.getItem(key);
+      if (existing) return existing;
+      const created = `${base}:${crypto.randomUUID()}`;
+      window.localStorage.setItem(key, created);
+      return created;
+    };
     
     // Set local awareness state
     const updateAwareness = (userObj: any) => {
+      const memberId = getLocalMemberId(userObj);
       awareness.setLocalStateField("user", {
+        memberId,
         name: userObj?.email?.split('@')[0] || "Guest",
+        role: selfRole,
         color: "#" + Math.floor(Math.random() * 16777215).toString(16),
         avatar: `https://ui-avatars.com/api/?name=${userObj?.email || 'G'}`
       });
@@ -128,7 +158,7 @@ export default function CollabRoom() {
       if (currentUser && !isDemoModeActive()) {
         const fireProvider = new FireProvider({
           firebaseApp: app,
-          ydoc,
+          ydoc: doc,
           path: `yjs_state/${roomId}`,
         });
 
@@ -177,9 +207,33 @@ export default function CollabRoom() {
       unsubscribeAuth();
       wsProvider.disconnect();
       void indexeddbProvider.destroy();
-      ydoc.destroy();
+      doc.destroy();
     };
-  }, []);
+  }, [roomId, selfRole]);
+
+  const localSharedTool: StudyRoomSharedTool = { activeTab, mainView };
+
+  const joinRoom = async (nextRoomId: string) => {
+    const trimmed = nextRoomId.trim();
+    if (!trimmed) return;
+    setRoomId(trimmed);
+    setStudyRoomOpen(false);
+    if (isDemoModeActive()) {
+      const [msgs, qzs] = await Promise.all([loadCollabMessages(trimmed), loadCollabQuizzes(trimmed)]);
+      setMessages(msgs);
+      setQuizzes(qzs);
+    }
+  };
+
+  const leaveRoom = async () => {
+    setRoomId('default_room');
+    setStudyRoomOpen(false);
+    if (isDemoModeActive()) {
+      const [msgs, qzs] = await Promise.all([loadCollabMessages('default_room'), loadCollabQuizzes('default_room')]);
+      setMessages(msgs);
+      setQuizzes(qzs);
+    }
+  };
 
   const [tasks, setTasks] = useState([
     {
@@ -205,6 +259,13 @@ export default function CollabRoom() {
   const [isAiTyping, setIsAiTyping] = useState(false);
   const [meetUrl, setMeetUrl] = useState<string | null>(null);
   const [isCreatingMeet, setIsCreatingMeet] = useState(false);
+
+  // Shared study timer interval
+  useEffect(() => {
+    if (!isTimerRunning) return;
+    const id = setInterval(() => setSharedTimerSeconds((s) => s + 1), 1000);
+    return () => clearInterval(id);
+  }, [isTimerRunning]);
 
   useEffect(() => {
     if (isInviteModalOpen) {
@@ -262,10 +323,28 @@ export default function CollabRoom() {
       }
 
       if (user) {
-        const formUrl = `https://docs.google.com/forms/d/${quizId}/edit`;
+        // Create a real Google Form when server credentials are configured;
+        // otherwise fall back to the "create new form" URL.
+        let formUrl = 'https://docs.google.com/forms/create';
+        let realFormId: string = quizId;
+        try {
+          const res = await fetch('/api/google/forms', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title, accessToken: googleOAuth.token ?? undefined }),
+          });
+          if (res.ok) {
+            const data = (await res.json()) as { editUrl?: string; formId?: string };
+            if (data.editUrl) formUrl = data.editUrl;
+            if (data.formId) realFormId = data.formId;
+          }
+        } catch {
+          /* keep fallback URL */
+        }
+
         await setDoc(doc(db, "rooms", roomId, "quizzes", quizId), {
           roomId,
-          formId: quizId,
+          formId: realFormId,
           formUrl,
           title,
           userId: user.uid,
@@ -277,7 +356,7 @@ export default function CollabRoom() {
           {
             roomId,
             user: "System",
-            text: `A new Demo Quiz has been created for the group: ${formUrl}`,
+            text: `A new group quiz has been created: ${formUrl}`,
             time: new Date().toLocaleTimeString([], {
               hour: "2-digit",
               minute: "2-digit",
@@ -299,17 +378,34 @@ export default function CollabRoom() {
   const handleCreateMeet = async () => {
     try {
       setIsCreatingMeet(true);
-      const demoUri = "https://meet.google.com/demo-meet-xyz";
-      setMeetUrl(demoUri);
+
+      // Ask the server to create a real Meet space when Google credentials are
+      // configured; otherwise it returns the universal "new meeting" URL.
+      let meetUri = "https://meet.google.com/new";
+      try {
+        const res = await fetch('/api/google/meet', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ accessToken: googleOAuth.token ?? undefined }),
+        });
+        if (res.ok) {
+          const data = (await res.json()) as { meetUrl?: string };
+          if (data.meetUrl) meetUri = data.meetUrl;
+        }
+      } catch {
+        /* keep fallback URL */
+      }
+      setMeetUrl(meetUri);
 
       if (isDemoModeActive()) {
         await appendLocalMessage({
           roomId,
           user: 'System',
-          text: `Demo Meet link: ${demoUri}`,
+          text: `Meet link: ${meetUri}`,
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           userId: DEMO_USER.uid,
         });
+        window.open(meetUri, '_blank');
         return;
       }
       
@@ -319,7 +415,7 @@ export default function CollabRoom() {
           {
             roomId,
             user: "System",
-            text: `A new Demo Meet has been created for this room: ${demoUri}`,
+            text: `A Google Meet has been created for this room: ${meetUri}`,
             time: new Date().toLocaleTimeString([], {
               hour: "2-digit",
               minute: "2-digit",
@@ -328,6 +424,7 @@ export default function CollabRoom() {
             createdAt: serverTimestamp(),
           },
         );
+        window.open(meetUri, '_blank');
       }
     } catch (err) {
       console.error(err);
@@ -481,59 +578,96 @@ export default function CollabRoom() {
 
   return (
     <div className="min-h-[calc(100dvh-3.5rem)] flex flex-col xl:flex-row gap-6 pb-6 w-full">
+      <GoogleOAuthConsentModal
+        open={oauthModalOpen}
+        scopes={pendingOauthScopes}
+        isPending={googleOAuth.isPending}
+        isConnected={googleOAuth.isConnected}
+        onConnect={() => googleOAuth.request(pendingOauthScopes)}
+        onRevoke={googleOAuth.revoke}
+        onClose={() => setOauthModalOpen(false)}
+      />
       {/* Main Video / Content Area */}
       <div className="flex-1 flex flex-col gap-5 min-h-[60vh] xl:min-h-0">
-        <div className="flex items-center justify-between">
+        <div className="flex items-start justify-between gap-4">
           <div>
+            <p className="section-eyebrow mb-0.5">{t('Collaboration Space', 'Συνεργατικός Χώρος')}</p>
             <h1 className="text-xl font-display font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <Users className="w-5 h-5 text-indigo-500" />
               Macroeconomics Study Group
             </h1>
-            <p className="text-slate-500 dark:text-slate-400 text-xs mt-0.5">
-              Real-time collaboration & peer-to-peer learning
+            <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">
+              {t('Real-time collaboration & peer-to-peer learning', 'Συνεργασία σε πραγματικό χρόνο & μάθηση μεταξύ συνομηλίκων')}
+              {awarenessUsers.length > 0 && (
+                <span className="ml-2 inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  {awarenessUsers.length} {t('online', 'συνδεδεμένοι')}
+                </span>
+              )}
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2.5 justify-end">
             {/* Presence Indicator */}
             <PresenceIndicator users={awarenessUsers} />
+            <button
+              type="button"
+              onClick={() => setStudyRoomOpen(true)}
+              className="px-3 py-2 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-semibold hover:shadow-md transition-all flex items-center gap-2 shadow-sm"
+              aria-label="Open study room panel"
+            >
+              <Users className="w-3.5 h-3.5" aria-hidden="true" />
+              {t('Study Room', 'Αίθουσα Μελέτης')}
+            </button>
+            <button
+              onClick={() => { setPendingOauthScopes(['forms', 'meet']); setOauthModalOpen(true); }}
+              title={googleOAuth.isConnected ? 'Google Connected' : 'Connect Google for real Forms & Meet'}
+              className={`px-3 py-2 border rounded-xl text-sm font-semibold transition-all flex items-center gap-2 shadow-sm ${
+                googleOAuth.isConnected
+                  ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800/50 text-emerald-700 dark:text-emerald-400'
+                  : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:shadow-md'
+              }`}
+            >
+              <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" aria-hidden="true"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+              {googleOAuth.isConnected ? 'Google Connected' : 'Connect Google'}
+            </button>
             
             <button
               onClick={handleScheduleSession}
-              className="px-2.5 py-1.5 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold hover:shadow-md transition-all flex items-center gap-1.5 shadow-sm"
+              className="px-3 py-2 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-semibold hover:shadow-md transition-all flex items-center gap-2 shadow-sm"
             >
               <img
                 src="https://upload.wikimedia.org/wikipedia/commons/a/a5/Google_Calendar_icon_%282020%29.svg"
                 className="w-3.5 h-3.5"
                 alt="Calendar"
               />{" "}
-              Schedule
+              {t('Schedule', 'Προγραμματισμός')}
             </button>
             {meetUrl ? (
               <a
                 href={meetUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="px-2.5 py-1.5 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold hover:shadow-md transition-all flex items-center gap-1.5 shadow-sm"
+                className="px-3 py-2 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-semibold hover:shadow-md transition-all flex items-center gap-2 shadow-sm"
               >
                 <img
                   src="https://upload.wikimedia.org/wikipedia/commons/9/9b/Google_Meet_icon_%282020%29.svg"
                   className="w-3.5 h-3.5"
                   alt="Meet"
                 />{" "}
-                Join Meet
+                {t('Join Meet', 'Σύνδεση Meet')}
               </a>
             ) : (
               <button
                 onClick={handleCreateMeet}
                 disabled={isCreatingMeet}
-                className="px-2.5 py-1.5 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold hover:shadow-md transition-all flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+                className="px-3 py-2 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-semibold hover:shadow-md transition-all flex items-center gap-2 shadow-sm disabled:opacity-50"
               >
                 <img
                   src="https://upload.wikimedia.org/wikipedia/commons/9/9b/Google_Meet_icon_%282020%29.svg"
                   className="w-3.5 h-3.5"
                   alt="Meet"
                 />{" "}
-                {isCreatingMeet ? "Creating..." : "Start Meet"}
+                {isCreatingMeet ? t('Creating...', 'Δημιουργία...') : t('Start Meet', 'Έναρξη Meet')}
               </button>
             )}
             <button
@@ -557,21 +691,21 @@ export default function CollabRoom() {
                   toast.error("Failed to create chat space.");
                 }
               }}
-              className="px-2.5 py-1.5 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold hover:shadow-md transition-all flex items-center gap-1.5 shadow-sm"
+              className="px-3 py-2 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-semibold hover:shadow-md transition-all flex items-center gap-2 shadow-sm"
             >
               <img
                 src="https://upload.wikimedia.org/wikipedia/commons/0/07/Google_Chat_icon_%282020%29.svg"
                 className="w-3.5 h-3.5"
                 alt="Chat"
               />{" "}
-              Google Chat
+              {t('Google Chat', 'Google Chat')}
             </button>
-            <div className="w-px h-5 bg-slate-200 dark:bg-slate-700 mx-0.5" />
+            <div className="w-px h-6 bg-slate-200 dark:bg-slate-700 mx-1" />
             <button
               onClick={() => setIsInviteModalOpen(true)}
-              className="px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-semibold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors flex items-center gap-1.5"
+              className="px-3 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-xl text-sm font-semibold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors flex items-center gap-2"
             >
-              <Users className="w-3.5 h-3.5" /> Manage Access
+              <Users className="w-3.5 h-3.5" /> {t('Manage Access', 'Διαχείριση Πρόσβασης')}
             </button>
           </div>
         </div>
@@ -592,10 +726,10 @@ export default function CollabRoom() {
                   <Plus className="w-5 h-5 rotate-45" />
                 </button>
                 <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-4">
-                  Manage Access
+                  {t('Manage Access', 'Διαχείριση Πρόσβασης')}
                 </h3>
                 <p className="text-sm text-slate-500 mb-4">
-                  Invite people by email to join this secure study room.
+                  {t('Invite people by email to join this secure study room.', 'Προσκάλεσε άτομα με email να συμμετέχουν σε αυτό το ασφαλές δωμάτιο μελέτης.')}
                 </p>
                 <form
                   onSubmit={handleInvite}
@@ -807,9 +941,24 @@ export default function CollabRoom() {
               <Network className="w-4 h-4" aria-hidden="true" />
             </button>
             <div className="w-px h-6 bg-white/20 mx-0.5" />
+            {/* Shared Study Timer */}
+            <button
+              onClick={() => setIsTimerRunning(!isTimerRunning)}
+              aria-label={isTimerRunning ? t('Pause timer', 'Παύση χρονόμετρου') : t('Start timer', 'Έναρξη χρονόμετρου')}
+              className={cn(
+                "h-10 px-3 rounded-xl flex items-center justify-center gap-1.5 text-xs font-mono font-bold transition-colors",
+                isTimerRunning
+                  ? "bg-emerald-500/80 text-white shadow-[0_0_12px_rgba(16,185,129,0.4)]"
+                  : "bg-white/20 text-white hover:bg-white/30",
+              )}
+            >
+              <Clock className="w-3.5 h-3.5" />
+              {Math.floor(sharedTimerSeconds / 60).toString().padStart(2, '0')}:{(sharedTimerSeconds % 60).toString().padStart(2, '0')}
+            </button>
+            <div className="w-px h-6 bg-white/20 mx-0.5" />
             <button
               onClick={() => setIsMicOn(!isMicOn)}
-              aria-label={isMicOn ? "Mute microphone" : "Unmute microphone"}
+              aria-label={isMicOn ? t('Mute microphone', 'Σίγαση μικροφώνου') : t('Unmute microphone', 'Ενεργοποίηση μικροφώνου')}
               className={cn(
                 "w-10 h-10 rounded-xl flex items-center justify-center transition-colors",
                 isMicOn
@@ -825,7 +974,7 @@ export default function CollabRoom() {
             </button>
             <button
               onClick={() => setIsVideoOn(!isVideoOn)}
-              aria-label={isVideoOn ? "Turn off camera" : "Turn on camera"}
+              aria-label={isVideoOn ? t('Turn off camera', 'Απενεργοποίηση κάμερας') : t('Turn on camera', 'Ενεργοποίηση κάμερας')}
               className={cn(
                 "w-10 h-10 rounded-xl flex items-center justify-center transition-colors",
                 isVideoOn
@@ -840,13 +989,19 @@ export default function CollabRoom() {
               )}
             </button>
             <button 
-              aria-label="Maximize view"
+              aria-label={t('Share screen', 'Κοινοποίηση οθόνης')}
+              className="w-10 h-10 rounded-xl flex items-center justify-center bg-white/20 text-white hover:bg-white/30 transition-colors"
+            >
+              <ScreenShare className="w-4 h-4" aria-hidden="true" />
+            </button>
+            <button 
+              aria-label={t('Maximize view', 'Μεγιστοποίηση προβολής')}
               className="w-10 h-10 rounded-xl flex items-center justify-center bg-white/20 text-white hover:bg-white/30 transition-colors"
             >
               <Maximize2 className="w-4 h-4" aria-hidden="true" />
             </button>
             <button 
-              aria-label="Leave meeting"
+              aria-label={t('Leave meeting', 'Αποχώρηση από σύσκεψη')}
               className="w-12 h-10 rounded-xl flex items-center justify-center bg-red-500 text-white hover:bg-red-600 transition-colors shadow-lg shadow-red-500/20"
             >
               <PhoneOff className="w-4 h-4" aria-hidden="true" />
@@ -856,57 +1011,68 @@ export default function CollabRoom() {
       </div>
 
       {/* Right Side Panel */}
-      <div className="w-full xl:w-96 h-[500px] xl:h-auto bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800 rounded-3xl flex flex-col overflow-hidden shadow-sm">
+      <div className="w-full xl:w-[26rem] h-[500px] xl:h-auto bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800 rounded-3xl flex flex-col overflow-hidden shadow-sm">
         {/* Tabs */}
-        <div className="flex items-center p-2 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900">
+        <div className="flex items-center gap-1.5 p-2.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 overflow-x-auto scrollbar-hover">
           <button
             onClick={() => setActiveTab("chat")}
             className={cn(
-              "flex-1 py-2 text-sm font-semibold rounded-lg flex items-center justify-center gap-2 transition-colors",
+              "shrink-0 px-3 py-2.5 text-sm font-semibold rounded-xl flex items-center justify-center gap-2 transition-colors whitespace-nowrap",
               activeTab === "chat"
                 ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm"
                 : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300",
             )}
           >
-            <MessageSquare className="w-4 h-4" /> Chat
+            <MessageSquare className="w-4 h-4 shrink-0" /> {t('Chat', 'Συνομιλία')}
           </button>
           <button
             onClick={() => setActiveTab("ai")}
             className={cn(
-              "flex-1 py-2 text-sm font-semibold rounded-lg flex items-center justify-center gap-2 transition-colors",
+              "shrink-0 px-3 py-2.5 text-sm font-semibold rounded-xl flex items-center justify-center gap-2 transition-colors whitespace-nowrap",
               activeTab === "ai"
                 ? "bg-indigo-50 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-400 shadow-sm"
                 : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300",
             )}
           >
-            <BrainCircuit className="w-4 h-4" /> AI Tutor
+            <BrainCircuit className="w-4 h-4 shrink-0" /> {t('AI Tutor', 'AI Βοηθός')}
           </button>
           <button
             onClick={() => setActiveTab("tasks")}
             className={cn(
-              "flex-1 py-2 text-sm font-semibold rounded-lg flex items-center justify-center gap-2 transition-colors",
+              "shrink-0 px-3 py-2.5 text-sm font-semibold rounded-xl flex items-center justify-center gap-2 transition-colors whitespace-nowrap",
               activeTab === "tasks"
                 ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm"
                 : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300",
             )}
           >
-            <CheckSquare className="w-4 h-4" /> Tasks
+            <CheckSquare className="w-4 h-4 shrink-0" /> {t('Tasks', 'Εργασίες')}
+          </button>
+          <button
+            onClick={() => setActiveTab("notes")}
+            className={cn(
+              "shrink-0 px-3 py-2.5 text-sm font-semibold rounded-xl flex items-center justify-center gap-2 transition-colors whitespace-nowrap",
+              activeTab === "notes"
+                ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm"
+                : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300",
+            )}
+          >
+            <StickyNote className="w-4 h-4 shrink-0" /> {t('Notes', 'Σημειώσεις')}
           </button>
           <button
             onClick={() => setActiveTab("quizzes")}
             className={cn(
-              "flex-1 py-2 text-sm font-semibold rounded-lg flex items-center justify-center gap-2 transition-colors",
+              "shrink-0 px-3 py-2.5 text-sm font-semibold rounded-xl flex items-center justify-center gap-2 transition-colors whitespace-nowrap",
               activeTab === "quizzes"
                 ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm"
                 : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300",
             )}
           >
-            <FileText className="w-4 h-4" /> Quizzes
+            <FileText className="w-4 h-4 shrink-0" /> {t('Quizzes', 'Κουίζ')}
           </button>
         </div>
 
         {/* Content Area */}
-        <div className="flex-1 overflow-y-auto p-4 bg-slate-50/50 dark:bg-slate-900/50">
+        <div className="flex-1 overflow-y-auto p-4 bg-slate-50/50 dark:bg-slate-900/50 scrollbar-hover">
           {(activeTab === "chat" || activeTab === "ai") && (
             <div className="space-y-4">
               {messages
@@ -925,21 +1091,36 @@ export default function CollabRoom() {
                       <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                         {msg.user}
                       </span>
-                      <span className="text-[10px] text-slate-400">
+                      <span className="text-xs text-slate-400">
                         {msg.time}
                       </span>
                     </div>
-                    <div
-                      className={cn(
-                        "px-4 py-2 rounded-2xl max-w-[85%] text-sm",
-                        msg.user === "You"
-                          ? "bg-indigo-600 text-white rounded-tr-sm"
-                          : msg.isAi
-                            ? "bg-gradient-to-r from-indigo-500/10 to-purple-500/10 border border-indigo-500/20 text-slate-800 dark:text-slate-200 rounded-tl-sm"
-                            : "bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-tl-sm",
-                      )}
-                    >
-                      {msg.text}
+                    <div className="group/msg relative">
+                      <div
+                        className={cn(
+                          "px-4 py-2 rounded-2xl max-w-[85%] text-sm",
+                          msg.user === "You"
+                            ? "bg-indigo-600 text-white rounded-tr-sm"
+                            : msg.isAi
+                              ? "bg-gradient-to-r from-indigo-500/10 to-purple-500/10 border border-indigo-500/20 text-slate-800 dark:text-slate-200 rounded-tl-sm"
+                              : "bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-tl-sm",
+                        )}
+                      >
+                        {msg.text}
+                      </div>
+                      {/* Quick reactions */}
+                      <div className="absolute -bottom-3 right-2 hidden group-hover/msg:flex items-center gap-0.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full px-1.5 py-0.5 shadow-lg z-10">
+                        {['👍', '❤️', '😂', '🎯'].map((emoji) => (
+                          <button
+                            key={emoji}
+                            type="button"
+                            className="text-xs hover:scale-125 transition-transform p-0.5"
+                            aria-label={`React with ${emoji}`}
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -968,7 +1149,7 @@ export default function CollabRoom() {
           {activeTab === "tasks" && (
             <div className="space-y-3">
               <button className="w-full py-3 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-xl text-slate-500 font-medium hover:border-indigo-500 hover:text-indigo-500 transition-colors flex items-center justify-center gap-2">
-                <Plus className="w-4 h-4" /> Add Google Task
+                <Plus className="w-4 h-4" /> {t('Add Google Task', 'Προσθήκη Google Task')}
               </button>
               {tasks.map((task) => (
                 <div
@@ -1006,13 +1187,31 @@ export default function CollabRoom() {
                       {task.title}
                     </p>
                     <div className="flex items-center gap-2 mt-2">
-                      <span className="text-[10px] font-bold bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-full text-slate-500">
+                      <span className="text-xs font-bold bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-full text-slate-500">
                         {task.assignees.join(", ")}
                       </span>
                     </div>
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+          {activeTab === "notes" && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  {t('Shared Notes', 'Κοινές Σημειώσεις')}
+                </h4>
+                <span className="text-xs text-slate-400">{t('Synced via Yjs', 'Συγχρονισμένο μέσω Yjs')}</span>
+              </div>
+              <textarea
+                className="w-full min-h-[200px] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-4 text-sm text-slate-700 dark:text-slate-200 resize-y focus:ring-2 focus:ring-indigo-500 focus:border-transparent placeholder:text-slate-400"
+                placeholder={t('Type shared notes here... everyone in the room can see them.', 'Γράψε σημειώσεις εδώ... όλοι στο δωμάτιο τις βλέπουν.')}
+              />
+              <div className="flex items-center gap-2 text-xs text-slate-400">
+                <StickyNote className="w-3 h-3" />
+                <span>{t('Collaborative editing — changes sync in real-time', 'Συνεργατική επεξεργασία — οι αλλαγές συγχρονίζονται σε πραγματικό χρόνο')}</span>
+              </div>
             </div>
           )}
           {activeTab === "quizzes" && (
@@ -1025,24 +1224,30 @@ export default function CollabRoom() {
                 {isCreatingQuiz ? (
                   <span className="flex items-center gap-2">
                     <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
-                    Creating Quiz...
+                    {t('Creating Quiz...', 'Δημιουργία Quiz...')}
                   </span>
                 ) : (
                   <>
                     <FileText className="w-5 h-5" />
-                    Create Google Form Quiz
+                    {t('Create Google Form Quiz', 'Δημιουργία Google Form Quiz')}
                   </>
                 )}
               </button>
 
               <div className="space-y-2 mt-4">
                 <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider px-1">
-                  Room Quizzes
+                  {t('Room Quizzes', 'Quiz Δωματίου')}
                 </h4>
                 {quizzes.length === 0 ? (
-                  <p className="text-sm text-slate-500 text-center py-6 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
-                    No quizzes created yet.
-                  </p>
+                  <div className="text-center py-8 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+                    <FileText className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto mb-2" />
+                    <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+                      {t('No quizzes created yet', 'Δεν έχουν δημιουργηθεί quiz ακόμα')}
+                    </p>
+                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+                      {t('Create your first quiz above', 'Δημιούργησε το πρώτο σου quiz παραπάνω')}
+                    </p>
+                  </div>
                 ) : (
                   quizzes.map((q) => (
                     <div
@@ -1058,8 +1263,8 @@ export default function CollabRoom() {
                             <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">
                               {q.title}
                             </p>
-                            <p className="text-[10px] text-slate-500">
-                              Google Forms Quiz
+                            <p className="text-xs text-slate-500">
+                              {t('Google Forms Quiz', 'Google Forms Quiz')}
                             </p>
                           </div>
                         </div>
@@ -1090,8 +1295,8 @@ export default function CollabRoom() {
                 onChange={(e) => setChatMessage(e.target.value)}
                 placeholder={
                   activeTab === "ai"
-                    ? "Ask the AI tutor... (Search enabled)"
-                    : "Message group..."
+                    ? t('Ask the AI tutor...', 'Ρώτησε τον AI βοηθό...')
+                    : t('Message group...', 'Γράψε μήνυμα...')
                 }
                 className="w-full bg-slate-100 dark:bg-slate-800 border-none rounded-xl pl-4 pr-12 py-3 text-sm focus:ring-2 focus:ring-indigo-500 dark:text-white"
               />
@@ -1106,6 +1311,26 @@ export default function CollabRoom() {
           </div>
         )}
       </div>
+
+      <StudyRoomPanel
+        open={studyRoomOpen}
+        onClose={() => setStudyRoomOpen(false)}
+        selfId={(user?.uid ? `uid:${user.uid}` : (user?.email ? `email:${user.email}` : 'guest')) as string}
+        selfName={(user?.email?.split?.('@')?.[0] ?? 'Guest') as string}
+        selfRole={selfRole}
+        onRoleChange={setSelfRole}
+        roomId={roomId}
+        onJoinRoom={joinRoom}
+        onLeaveRoom={leaveRoom}
+        awarenessUsers={awarenessUsers}
+        ydoc={ydoc}
+        localTool={localSharedTool}
+        onFollowTool={(tool) => {
+          setActiveTab(tool.activeTab);
+          setMainView(tool.mainView);
+          toast.success(t('Following shared tool', 'Ακολούθησες το κοινό εργαλείο'));
+        }}
+      />
     </div>
   );
 }

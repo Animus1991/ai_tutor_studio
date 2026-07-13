@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { useLibraryStore } from '../store/useLibraryStore';
 import { parseYoutubeUrls } from '../lib/youtubeIngest';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 type Tab = 'file' | 'youtube';
 
@@ -23,6 +24,7 @@ export default function UploadCourseModal({
   const [dragOver, setDragOver] = useState(false);
   const [tab, setTab] = useState<Tab>('file');
   const [youtubeInput, setYoutubeInput] = useState('');
+  const dialogRef = useFocusTrap<HTMLDivElement>(isOpen, onClose);
 
   const titleId = 'upload-course-modal-title';
 
@@ -67,6 +69,7 @@ export default function UploadCourseModal({
         role="presentation"
       >
         <motion.div
+          ref={dialogRef}
           initial={{ scale: 0.95, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.95, opacity: 0 }}

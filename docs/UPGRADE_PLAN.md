@@ -150,16 +150,36 @@ Memora is a full-stack AI tutoring workspace (React 19 + Vite + Express + Gemini
 
 ---
 
-## 9. Remaining gaps (Phase 12+ backlog)
+### Phase 12 — Accessibility, performance & interactivity
+
+- [x] Reusable `useFocusTrap` hook (`src/hooks/useFocusTrap.ts`): traps Tab/Shift+Tab, moves initial focus into dialog, restores focus on close, handles Escape
+- [x] Focus trap + `role="dialog"`/`aria-modal`/`aria-labelledby` applied to `ShortcutsModal`, `SettingsModal`, `FeedbackModal` (+ `aria-label` on close buttons)
+- [x] Chart alt text: `D3ActivityChart` exposes computed `role="img"` `aria-label` summary + `sr-only` text for screen readers
+- [x] Performance: `Whiteboard` (tldraw) and new `ConceptMapGraph` are `React.lazy`-loaded inside Study Workspace, so tldraw/@xyflow bundles load only when their tool tab is opened (Suspense fallback)
+- [x] Interactivity: concept-map tool upgraded from a static text list to a data-driven interactive `@xyflow` graph (`ConceptMapGraph.tsx`) with radial layout, relation-typed edges, legend, and minimap — built from the same `bundle.conceptMap` data (no functionality removed)
+- [x] Ingest: YouTube **playlist auto-expand** — `expandYoutubePlaylist()` in `server.ts` scrapes playlist video IDs; wired into `/api/ingest/youtube/batch` (expand + de-dupe, cap 50) and `/api/ingest/url` (concatenate first 10 transcripts, `type: 'youtube-playlist'`)
+
+### Phase 13 — Accessibility coverage sweep
+
+- [x] Focus trap + `role="dialog"`/`aria-modal`/`aria-labelledby` extended to `QuickAddModal`, `UploadCourseModal`, `WebClipperModal`, `FlashcardGeneratorModal`, `ImageOcclusionModal` (all with `aria-label` close buttons); `QuickAddModal` retains its Cmd+K toggle
+- [x] Chart alt text (`role="img"` + computed `aria-label`) added to `TaskCompletionChart`, `StudyProgressChart`, `TopicCompletionChart` (in addition to `D3ActivityChart` from Phase 12)
+
+### Phase 14 — Backlog completion (a11y, agent grounding, i18n, integrations)
+
+- [x] Focus trap + `role="dialog"`/`aria-modal`/`aria-labelledby` + close `aria-label` on the final modals: `PostSessionModal`, `PDFViewerModal`, `ImageGeneratorModal` (all 11 dialogs now trapped)
+- [x] **Agent SSE grounding/citations**: `/api/agent/chat/stream` now enables `googleSearch` grounding and streams each `citation` event + a final `urls` list; `streamChatWithAgent` accepts a handlers object (`onChunk`/`onCitation`/`onDone`, back-compatible with the plain callback); `Agent.tsx` renders web-source chips incrementally during streaming (previously only the non-stream path had sources)
+- [x] **i18n foundation**: `src/lib/i18n.tsx` — `LanguageProvider` + `useLanguage()` (safe no-provider fallback) + `t(en, el?)`; persisted to `localStorage` (`memora-lang`), browser-locale aware, sets `<html lang>`. Wrapped in `main.tsx`. Language toggle (EN/ΕΛ) added to `SettingsModal`; `SettingsModal` + `ShortcutsModal` strings translated as the reference implementation
+- [x] **YouTube playlist pagination**: `expandYoutubePlaylist` follows InnerTube (`youtubei/v1/browse`) continuation tokens (up to 20 pages / 200 videos); batch route paginates then truncates to 100 (with `truncated`/`expandedCount` in the response) instead of rejecting large playlists
+- [x] **Real Google Forms/Meet API**: `POST /api/google/forms` (Forms API) + `POST /api/google/meet` (Meet `v2/spaces`) — use an OAuth token from `body.accessToken`/`GOOGLE_ACCESS_TOKEN` when available, else return graceful fallback URLs (`forms/create`, `meet.google.com/new`). `CollabRoom` quiz + Meet handlers wired to these endpoints
+
+## 9. Remaining gaps (Phase 15+ backlog)
 
 | Area | Gap | Priority |
 |------|-----|----------|
-| **Performance** | Lazy-load tldraw/cytoscape inside Study Workspace tools | Medium |
-| **Collab** | Real Google Forms/Meet API | Low |
-| **i18n** | UI strings English-only | Low |
-| **Accessibility** | Keyboard trap in all modals; chart alt text | Medium |
-| **Agent** | Stream citations/grounding over SSE | Low |
-| **Ingest** | YouTube playlist auto-expand | Low |
+| **i18n** | Translate remaining pages/components beyond Settings/Shortcuts reference | Medium |
+| **Google APIs** | OAuth consent flow to obtain `forms.body` / `meetings.space.created` scoped tokens in-app (server scaffold + fallback shipped) | Low |
+| **Accessibility** | Live-region announcements for async toasts/streaming | Low |
+| **Ingest** | Playlists beyond 200 videos (raise continuation page cap) | Low |
 
 ---
 
@@ -181,6 +201,7 @@ Before each release:
 | `GEMINI_API_KEY` | AI agent, embeddings, summaries, OCR |
 | `XAPI_LRS_ENDPOINT` / `XAPI_LRS_KEY` | Optional xAPI forwarding |
 | `VITE_YJS_WS_URL` | Optional Yjs WebSocket override |
+| `GOOGLE_ACCESS_TOKEN` | Optional — real Google Forms/Meet creation (`forms.body`, `meetings.space.created` scopes); falls back to `forms/create` + `meet.google.com/new` when unset |
 | Firebase authorized domains | Google sign-in on localhost |
 | `PORT` | Default 3010 |
 
@@ -188,4 +209,4 @@ See `.env.local.example` for template.
 
 ---
 
-*Last updated: Phase 11 lazy routes, agent SSE, YouTube batch, WCAG baseline.*
+*Last updated: Phase 14 — focus trap + ARIA across all 11 modals, SSE agent grounding/citations, i18n foundation (EN/ΕΛ), InnerTube playlist pagination, real Google Forms/Meet endpoints with graceful fallback.*

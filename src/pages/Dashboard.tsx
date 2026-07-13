@@ -1,4 +1,4 @@
-import { Play, Brain, Users, Upload, Calendar, Clock, ArrowRight, CheckCircle2, Download, GripHorizontal, Loader2 } from "lucide-react";
+import { Play, Brain, Users, Upload, Calendar, Clock, ArrowRight, CheckCircle2, Download, GripHorizontal, Loader2, Flame, Target, Sparkles } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import MasteryDashboard from "../components/MasteryDashboard";
 import DailyStreak from "../components/DailyStreak";
@@ -26,8 +26,19 @@ import { getRecentActivity } from "../lib/activity";
 import { isDemoModeActive, loadDemoTasks } from "../lib/demoStorage";
 import PageShell from "../components/layout/PageShell";
 import { CONTENT_GUTTER, CONTENT_GUTTER_NEG } from "../components/layout/pageLayout";
+import { useLanguage } from '../lib/i18n';
+
+function getGreeting(t: (en: string, el?: string) => string): string {
+  const h = new Date().getHours();
+  if (h < 5)  return t('Good night', 'Καλή νύχτα');
+  if (h < 12) return t('Good morning', 'Καλημέρα');
+  if (h < 17) return t('Good afternoon', 'Καλό απόγευμα');
+  if (h < 21) return t('Good evening', 'Καλό βράδυ');
+  return t('Good night', 'Καλή νύχτα');
+}
 
 export default function Dashboard() {
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
   const [upcomingTasks, setUpcomingTasks] = useState<any[]>([]);
@@ -137,13 +148,13 @@ export default function Dashboard() {
         <DailyStreak />
         <DailyGoalRing />
         
-        <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 rounded-xl p-4 sm:p-5 shadow-sm flex flex-col justify-between print-break-inside-avoid">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 rounded-xl p-4 sm:p-5 shadow-sm flex flex-col justify-between print-break-inside-avoid card-hover">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-8 h-8 rounded-lg bg-sky-50 dark:bg-sky-900/30 flex items-center justify-center text-sky-500 shrink-0">
               <Clock className="w-4 h-4" />
             </div>
             <h3 className="text-base font-semibold text-slate-900 dark:text-white tracking-tight">
-              Study Time
+              {t('Study Time', 'Χρόνος Μελέτης')}
             </h3>
           </div>
           {loading ? (
@@ -158,13 +169,13 @@ export default function Dashboard() {
           )}
         </div>
 
-        <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 rounded-xl p-4 sm:p-5 shadow-sm flex flex-col justify-between print-break-inside-avoid">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 rounded-xl p-4 sm:p-5 shadow-sm flex flex-col justify-between print-break-inside-avoid card-hover">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-900/30 flex items-center justify-center text-emerald-500 shrink-0">
               <CheckCircle2 className="w-4 h-4" />
             </div>
             <h3 className="text-base font-semibold text-slate-900 dark:text-white tracking-tight">
-              Tasks Done
+              {t('Tasks Done', 'Ολοκληρωμένες Εργασίες')}
             </h3>
           </div>
           {loading ? (
@@ -174,8 +185,13 @@ export default function Dashboard() {
             </div>
           ) : (
             <div>
-              <p className="text-2xl font-bold text-slate-900 dark:text-white mb-1">{tasksDone}</p>
-              <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400">{completionRate}% completion rate</p>
+              <p className="text-2xl font-bold text-slate-900 dark:text-white mb-1 animate-count-up">{tasksDone}</p>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                  <div className="h-full rounded-full bg-emerald-500" style={{ width: `${completionRate}%`, animation: 'progress-fill .8s ease-out' }} />
+                </div>
+                <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 shrink-0">{completionRate}%</p>
+              </div>
             </div>
           )}
         </div>
@@ -201,13 +217,13 @@ export default function Dashboard() {
         </div>
         
         {/* Upcoming Tasks */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 rounded-xl p-4 sm:p-5 shadow-sm xl:col-span-1 h-[420px] md:h-[380px] flex flex-col print-expand print-break-inside-avoid">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 rounded-xl p-4 sm:p-5 shadow-sm xl:col-span-1 h-[420px] md:h-[380px] flex flex-col print-expand print-break-inside-avoid card-hover">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-slate-900 dark:text-white tracking-tight">
-              Upcoming Deadlines
+            <h3 className="text-base font-semibold text-slate-900 dark:text-white tracking-tight">
+              {t('Upcoming Deadlines', 'Επερχόμενες Προθεσμίες')}
             </h3>
-            <Link to="/tasks" className="text-indigo-600 dark:text-indigo-400 text-xs font-medium hover:underline">
-              View all
+            <Link to="/tasks" className="text-indigo-600 dark:text-indigo-400 text-sm font-medium hover:underline">
+              {t('View all', 'Προβολή όλων')}
             </Link>
           </div>
           
@@ -228,7 +244,7 @@ export default function Dashboard() {
                       </div>
                       <div>
                         <h4 className="text-sm font-medium text-slate-900 dark:text-white">{task.title}</h4>
-                        <p className="text-[10px] text-slate-500 dark:text-slate-400">{task.course || 'Task'}</p>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">{task.course || 'Task'}</p>
                       </div>
                     </div>
                     <button className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 transition-colors">
@@ -238,18 +254,21 @@ export default function Dashboard() {
                 ))}
               </div>
             ) : (
-              <div className="text-center py-6">
-                <p className="text-sm text-slate-500 dark:text-slate-400">No upcoming tasks.</p>
+              <div className="flex flex-col items-center justify-center py-8 gap-2">
+                <div className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center">
+                  <Calendar className="w-5 h-5 text-slate-300 dark:text-slate-600" />
+                </div>
+                <p className="text-sm text-slate-400 dark:text-slate-500">{t('No upcoming tasks.', 'Δεν υπάρχουν εκκρεμείς εργασίες.')}</p>
               </div>
             )}
           </div>
         </div>
 
         {/* Recent Activity */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 rounded-xl p-4 sm:p-5 shadow-sm xl:col-span-1 h-[420px] md:h-[380px] flex flex-col print-expand print-break-inside-avoid">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 rounded-xl p-4 sm:p-5 shadow-sm xl:col-span-1 h-[420px] md:h-[380px] flex flex-col print-expand print-break-inside-avoid card-hover">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-slate-900 dark:text-white tracking-tight">
-              Recent Activity
+            <h3 className="text-base font-semibold text-slate-900 dark:text-white tracking-tight">
+              {t('Recent Activity', 'Πρόσφατη Δραστηριότητα')}
             </h3>
           </div>
           
@@ -272,16 +291,19 @@ export default function Dashboard() {
                         {activity.icon === 'CheckCircle2' && <CheckCircle2 className="w-4 h-4" />}
                       </div>
                       <div>
-                        <h4 className="text-xs font-medium text-slate-900 dark:text-white">{activity.title}</h4>
-                        <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">{activity.time}</p>
+                        <h4 className="text-sm font-medium text-slate-900 dark:text-white">{activity.title}</h4>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{activity.time}</p>
                       </div>
                     </div>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="text-center py-6">
-                <p className="text-sm text-slate-500 dark:text-slate-400">No recent activity.</p>
+              <div className="flex flex-col items-center justify-center py-8 gap-2">
+                <div className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center">
+                  <Brain className="w-5 h-5 text-slate-300 dark:text-slate-600" />
+                </div>
+                <p className="text-sm text-slate-400 dark:text-slate-500">{t('No recent activity.', 'Δεν υπάρχει πρόσφατη δραστηριότητα.')}</p>
               </div>
             )}
           </div>
@@ -309,33 +331,71 @@ export default function Dashboard() {
   return (
     <PageShell className="flex flex-col min-h-full">
       <header className={cn(
-        "bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-slate-200/60 dark:border-slate-800/60 sticky top-0 z-40 py-3 sm:py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3",
+        'bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-slate-200/60 dark:border-slate-800/60 sticky top-0 z-40 py-4 sm:py-5',
         CONTENT_GUTTER_NEG, CONTENT_GUTTER,
       )}>
-        <div>
-          <h1 className="text-xl sm:text-2xl font-display font-bold text-slate-900 dark:text-white tracking-tight">
-            Dashboard
-          </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-            Welcome back! Here's your study overview.
-          </p>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+          <div>
+            <p className="section-eyebrow mb-1">{t('Dashboard', 'Πίνακας Ελέγχου')}</p>
+            <h1 className="text-xl sm:text-2xl font-display font-bold tracking-tight">
+              <span className="text-slate-500 dark:text-slate-400 font-medium">{getGreeting(t)}, </span>
+              <span className="bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">Alex</span>
+            </h1>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+              {tasksDone > 0
+                ? t(`${tasksDone} tasks completed · ${completionRate}% on track`, `${tasksDone} εργασίες ολοκληρώθηκαν · ${completionRate}% σε πορεία`)
+                : t("Here's your study overview.", 'Ιδού η επισκόπηση μελέτης σου.')}
+            </p>
+          </div>
+          <div className="flex items-center gap-2.5">
+            <button 
+              onClick={handleDownloadReport}
+              disabled={isExporting}
+              className="flex items-center gap-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 text-slate-700 dark:text-slate-200 px-3.5 py-2 rounded-xl font-medium text-sm transition-colors shadow-sm disabled:opacity-50"
+            >
+              {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+              <span className="hidden sm:inline">{isExporting ? t('Exporting...', 'Εξαγωγή...') : t('Download Report', 'Λήψη Αναφοράς')}</span>
+            </button>
+            <button 
+              onClick={() => navigate('/agent')}
+              className="flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white px-4 py-2.5 rounded-xl font-semibold text-sm transition-all shadow-md shadow-indigo-500/20 hover:shadow-lg hover:shadow-indigo-500/30"
+            >
+              <Play className="w-3.5 h-3.5 fill-current" />
+              {t('Start Session', 'Έναρξη')}
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-3">
-          <button 
-            onClick={handleDownloadReport}
-            disabled={isExporting}
-            className="flex items-center gap-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 text-slate-700 dark:text-slate-200 px-4 py-2 rounded-lg font-medium text-sm transition-colors shadow-sm disabled:opacity-50"
-          >
-            {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-            <span className="hidden sm:inline">{isExporting ? 'Exporting...' : 'Download Report'}</span>
-          </button>
-          <button 
-            onClick={() => navigate('/agent')}
-            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium text-sm transition-colors shadow-sm"
-          >
-            <Play className="w-3.5 h-3.5 fill-current" />
-            Quick Start Session
-          </button>
+
+        {/* Quick Stat Pills */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div className="stat-tile ux-stat-tile flex items-center gap-3">
+            <Flame className="w-5 h-5 text-amber-500 shrink-0" />
+            <div className="min-w-0">
+              <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{t('Tasks Done', 'Ολοκληρωμένες')}</p>
+              <p className="text-base font-bold text-slate-900 dark:text-white">{tasksDone}</p>
+            </div>
+          </div>
+          <div className="stat-tile ux-stat-tile flex items-center gap-3">
+            <Target className="w-5 h-5 text-emerald-500 shrink-0" />
+            <div className="min-w-0">
+              <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{t('Completion', 'Ολοκλήρωση')}</p>
+              <p className="text-base font-bold text-slate-900 dark:text-white">{completionRate}%</p>
+            </div>
+          </div>
+          <div className="stat-tile ux-stat-tile flex items-center gap-3">
+            <Clock className="w-5 h-5 text-sky-500 shrink-0" />
+            <div className="min-w-0">
+              <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{t('Upcoming', 'Εκκρεμείς')}</p>
+              <p className="text-base font-bold text-slate-900 dark:text-white">{upcomingTasks.length}</p>
+            </div>
+          </div>
+          <div className="stat-tile ux-stat-tile flex items-center gap-3">
+            <Sparkles className="w-5 h-5 text-violet-500 shrink-0" />
+            <div className="min-w-0">
+              <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{t('Activity', 'Δραστηριότητα')}</p>
+              <p className="text-base font-bold text-slate-900 dark:text-white">{recentActivity.length}</p>
+            </div>
+          </div>
         </div>
       </header>
       
@@ -356,10 +416,10 @@ export default function Dashboard() {
                         {...provided.draggableProps}
                         className={`relative rounded-xl transition-shadow ${snapshot.isDragging ? 'shadow-2xl z-50 ring-2 ring-indigo-500/50 ring-offset-2 dark:ring-offset-slate-900 bg-white/50 dark:bg-slate-900/50 backdrop-blur' : ''}`}
                       >
-                        <div 
+                        <div
                           {...provided.dragHandleProps}
-                          className={`absolute -left-3 top-1/2 -translate-y-1/2 p-1 text-slate-300 hover:text-slate-600 dark:text-slate-700 dark:hover:text-slate-400 cursor-grab active:cursor-grabbing transition-colors opacity-0 hover:opacity-100 lg:opacity-100 ${snapshot.isDragging ? 'opacity-100' : ''}`}
-                          title="Drag to reorder"
+                          className={`absolute -left-5 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-slate-300 hover:text-slate-500 dark:text-slate-700 dark:hover:text-slate-400 cursor-grab active:cursor-grabbing transition-all opacity-0 hover:opacity-100 lg:opacity-50 lg:hover:opacity-100 hover:bg-slate-100 dark:hover:bg-slate-800 ${snapshot.isDragging ? 'opacity-100' : ''}`}
+                          title={t('Drag to reorder', 'Σύρε για αναδιάταξη')}
                         >
                           <GripHorizontal className="w-5 h-5" />
                         </div>

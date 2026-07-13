@@ -345,11 +345,11 @@ export default function Whiteboard({ ydoc }: { ydoc: Y.Doc }) {
         {showShortcuts && (
           <div className="absolute bottom-full left-0 mb-2 w-48 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg p-3 text-xs text-slate-600 dark:text-slate-400">
             <div className="font-semibold text-slate-900 dark:text-white mb-2">Keyboard Shortcuts</div>
-            <div className="flex justify-between py-1"><span>Move/Pan</span><kbd className="bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-600 font-mono text-[10px]">V</kbd></div>
-            <div className="flex justify-between py-1"><span>Pen Tool</span><kbd className="bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-600 font-mono text-[10px]">P</kbd></div>
-            <div className="flex justify-between py-1"><span>Eraser</span><kbd className="bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-600 font-mono text-[10px]">E</kbd></div>
-            <div className="flex justify-between py-1"><span>Add Node</span><kbd className="bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-600 font-mono text-[10px]">N</kbd></div>
-            <div className="flex justify-between py-1 border-t border-slate-100 dark:border-slate-700 mt-1 pt-1"><span>Clear Board</span><kbd className="bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-600 font-mono text-[10px]">C</kbd></div>
+            <div className="flex justify-between py-1"><span>Move/Pan</span><kbd className="bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-600 font-mono text-xs">V</kbd></div>
+            <div className="flex justify-between py-1"><span>Pen Tool</span><kbd className="bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-600 font-mono text-xs">P</kbd></div>
+            <div className="flex justify-between py-1"><span>Eraser</span><kbd className="bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-600 font-mono text-xs">E</kbd></div>
+            <div className="flex justify-between py-1"><span>Add Node</span><kbd className="bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-600 font-mono text-xs">N</kbd></div>
+            <div className="flex justify-between py-1 border-t border-slate-100 dark:border-slate-700 mt-1 pt-1"><span>Clear Board</span><kbd className="bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-600 font-mono text-xs">C</kbd></div>
           </div>
         )}
       </div>

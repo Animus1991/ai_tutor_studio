@@ -4,7 +4,7 @@
  */
 
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { lazy, Suspense, useEffect, useLayoutEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useState } from "react";
 import Layout from "./components/layout/Layout";
 import Dashboard from "./pages/Dashboard";
 import Tasks from "./pages/Tasks";
@@ -16,6 +16,7 @@ const CollabRoom = lazy(() => import("./pages/CollabRoom"));
 const Admin = lazy(() => import("./pages/Admin"));
 const Workspace = lazy(() => import("./pages/Workspace"));
 const StudyWorkspacePage = lazy(() => import("./pages/StudyWorkspacePage"));
+const OAuthCallback = lazy(() => import("./pages/OAuthCallback"));
 import ThemeProvider from "./components/ThemeProvider";
 import TimerManager from "./components/TimerManager";
 import AudioController from "./components/AudioController";
@@ -31,20 +32,38 @@ import QuickAddModal from "./components/QuickAddModal";
 import PostSessionModal from "./components/PostSessionModal";
 import DemoSandboxBanner from "./components/DemoSandboxBanner";
 import { seedDemoSandbox, isDemoModeActive } from "./lib/demoMode";
+import LiveRegion from "./components/LiveRegion";
 import { useLibraryStore } from "./store/useLibraryStore";
 import { toast } from "sonner";
+import Onboarding from "./components/Onboarding";
+import { hasCompletedOnboarding } from "./lib/onboardingProfile";
 
 export default function App() {
   const { needsAuth, setNeedsAuth, setUser, setAccessToken, enterDemoMode } = useAuthStore();
   const hydrateLibrary = useLibraryStore((s) => s.hydrate);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isEnteringDemo, setIsEnteringDemo] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [onboardingChecked, setOnboardingChecked] = useState(false);
 
   useLayoutEffect(() => {
     if (isDemoModeActive() && useAuthStore.getState().needsAuth) {
       enterDemoMode();
     }
   }, [enterDemoMode]);
+
+  // Check onboarding status after auth resolves
+  useEffect(() => {
+    if (needsAuth) return;
+    hasCompletedOnboarding().then((completed) => {
+      setShowOnboarding(!completed);
+      setOnboardingChecked(true);
+    });
+  }, [needsAuth]);
+
+  const handleOnboardingComplete = useCallback(() => {
+    setShowOnboarding(false);
+  }, []);
 
   useEffect(() => {
     if (isDemoModeActive()) {
@@ -174,9 +193,18 @@ export default function App() {
     );
   }
 
+  if (!needsAuth && showOnboarding && onboardingChecked) {
+    return (
+      <ThemeProvider>
+        <Onboarding onComplete={handleOnboardingComplete} />
+      </ThemeProvider>
+    );
+  }
+
   return (
     <ThemeProvider>
       <SearchProvider>
+        <LiveRegion />
         <Toaster position="bottom-right" />
         <OfflineIndicator />
         <PwaInstallBanner />
@@ -234,6 +262,14 @@ export default function App() {
                 }
               />
             </Route>
+            <Route
+              path="oauth/callback"
+              element={
+                <Suspense fallback={null}>
+                  <OAuthCallback />
+                </Suspense>
+              }
+            />
           </Routes>
         </BrowserRouter>
       </SearchProvider>

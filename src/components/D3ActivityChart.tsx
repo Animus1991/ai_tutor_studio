@@ -13,6 +13,14 @@ export default function D3ActivityChart() {
     [studySessionsHistory, dailyGoal],
   );
 
+  const chartSummary = useMemo(() => {
+    if (chartData.length === 0) return 'Weekly activity chart. No study sessions recorded yet.';
+    const total = chartData.reduce((sum, d) => sum + d.studyTime, 0);
+    const daysMet = chartData.filter((d) => d.studyTime >= d.goalTime).length;
+    const perDay = chartData.map((d) => `${d.day}: ${d.studyTime} minutes`).join(', ');
+    return `Weekly activity chart. Total ${total} minutes studied across ${chartData.length} days, meeting the daily goal on ${daysMet} of them. Breakdown — ${perDay}.`;
+  }, [chartData]);
+
   useEffect(() => {
     if (!chartRef.current) return;
 
@@ -135,7 +143,8 @@ export default function D3ActivityChart() {
     <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800 p-6 rounded-3xl shadow-sm mb-8">
       <h3 className="font-display font-bold text-xl text-slate-900 dark:text-white mb-2">Weekly Activity</h3>
       <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">Time spent studying vs your daily goals.</p>
-      <div ref={chartRef} className="w-full h-[300px] relative" />
+      <div ref={chartRef} className="w-full h-[300px] relative" role="img" aria-label={chartSummary} />
+      <p className="sr-only">{chartSummary}</p>
     </div>
   );
 }
