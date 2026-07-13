@@ -22,7 +22,9 @@ import {
 import {
   assertPublicHttpUrl,
   createFirebaseAuthMiddleware,
+  HttpError,
 } from './server/security.js';
+import { detectAndSanitizePii } from './src/lib/piiSanitizer.js';
 import {
   geminiChatModel,
   geminiEmbedModel,
