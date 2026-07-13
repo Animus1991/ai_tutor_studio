@@ -1,3 +1,5 @@
+import { apiRequest } from './apiClient';
+
 export type AuditAction = 
   | 'USER_LOGIN'
   | 'USER_LOGOUT'
@@ -64,7 +66,7 @@ class AuditLogger {
     events.push(event);
     localStorage.setItem('memora-audit-logs', JSON.stringify(events));
 
-    void fetch('/api/audit', {
+    void apiRequest('/api/audit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(event),
@@ -79,7 +81,7 @@ class AuditLogger {
 
   async fetchServerLogs(limit = 50): Promise<AuditEvent[]> {
     try {
-      const res = await fetch(`/api/admin/audit?limit=${limit}`);
+      const res = await apiRequest(`/api/admin/audit?limit=${limit}`);
       if (!res.ok) return [];
       const data = (await res.json()) as { logs?: AuditEvent[] };
       return data.logs ?? [];

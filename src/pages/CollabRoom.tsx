@@ -30,6 +30,7 @@ import { useStore } from "../store/useStore";
 import { useLanguage } from "../lib/i18n";
 import { cn } from "../lib/utils";
 import { chatWithAgent } from "../lib/api";
+import { apiRequest } from "../lib/apiClient";
 import { auth, db } from "../lib/firebase";
 import {
   collection,
@@ -328,7 +329,7 @@ export default function CollabRoom() {
         let formUrl = 'https://docs.google.com/forms/create';
         let realFormId: string = quizId;
         try {
-          const res = await fetch('/api/google/forms', {
+          const res = await apiRequest('/api/google/forms', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ title, accessToken: googleOAuth.token ?? undefined }),
@@ -383,7 +384,7 @@ export default function CollabRoom() {
       // configured; otherwise it returns the universal "new meeting" URL.
       let meetUri = "https://meet.google.com/new";
       try {
-        const res = await fetch('/api/google/meet', {
+        const res = await apiRequest('/api/google/meet', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ accessToken: googleOAuth.token ?? undefined }),

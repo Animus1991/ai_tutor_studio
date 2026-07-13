@@ -1,3 +1,5 @@
+import { apiRequest } from './apiClient';
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -28,7 +30,7 @@ export async function chatWithAgent(
   systemInstruction: string,
   model = 'gemini-3.5-flash',
 ) {
-  const response = await fetch('/api/agent/chat', {
+  const response = await apiRequest('/api/agent/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ messages, systemInstruction, model }),
@@ -64,7 +66,7 @@ export async function streamChatWithAgent(
   const handlers: StreamAgentHandlers =
     typeof onChunkOrHandlers === 'function' ? { onChunk: onChunkOrHandlers } : onChunkOrHandlers;
 
-  const response = await fetch('/api/agent/chat/stream', {
+  const response = await apiRequest('/api/agent/chat/stream', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ messages, systemInstruction, model }),
@@ -110,7 +112,7 @@ export async function streamChatWithAgent(
 }
 
 export async function batchIngestYoutube(urls: string[]) {
-  const response = await fetch('/api/ingest/youtube/batch', {
+  const response = await apiRequest('/api/ingest/youtube/batch', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ urls }),
@@ -123,7 +125,7 @@ export async function batchIngestYoutube(urls: string[]) {
 }
 
 export async function generateImage(prompt: string) {
-  const response = await fetch('/api/generate-image', {
+  const response = await apiRequest('/api/generate-image', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ prompt }),
@@ -132,7 +134,7 @@ export async function generateImage(prompt: string) {
 }
 
 export async function generateFlashcards(text: string) {
-  const response = await fetch('/api/generate-flashcards', {
+  const response = await apiRequest('/api/generate-flashcards', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text }),
@@ -141,7 +143,7 @@ export async function generateFlashcards(text: string) {
 }
 
 export async function summarizeNotes(text: string) {
-  const response = await fetch('/api/summarize-notes', {
+  const response = await apiRequest('/api/summarize-notes', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text }),
@@ -150,7 +152,7 @@ export async function summarizeNotes(text: string) {
 }
 
 export async function feynmanCheck(source: string, explanation: string) {
-  const response = await fetch('/api/feynman-check', {
+  const response = await apiRequest('/api/feynman-check', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ source, explanation }),

@@ -19,6 +19,8 @@ import {
 } from '../lib/agentChatStorage';
 import { useAuthStore } from '../store/useAuthStore';
 import { useLibraryStore } from '../store/useLibraryStore';
+import { useLearningProfileStore } from '../store/useLearningProfileStore';
+import type { BehaviorEvent } from '../lib/learningProfile';
 import { loadAgentCourseId, saveAgentCourseId } from '../lib/agentCourseContext';
 import { useLanguage } from '../lib/i18n';
 import { announce } from '../lib/liveAnnouncer';
@@ -70,16 +72,35 @@ const MODE_PROMPTS: Record<string, string> = {
   explorer: 'Map relationships between concepts. When the student asks about a topic, explain how it connects to related ideas, prerequisites, and advanced extensions. Build a mental knowledge graph.',
 };
 
+const agentProfileMode = (modeId: AgentModeId): BehaviorEvent['mode'] | undefined => {
+  if (modeId === 'socratic' || modeId === 'direct' || modeId === 'quiz' || modeId === 'feynman') {
+    return modeId;
+  }
+  return undefined;
+};
+
+const resolveAgentMode = (
+  savedModeId: string | null | undefined,
+  suggestedMode: string,
+) =>
+  MODES.find((m) => m.id === savedModeId) ??
+  MODES.find((m) => m.id === suggestedMode) ??
+  MODES[0];
+
 export default function Agent() {
   const { t } = useLanguage();
   const isDemoMode = useAuthStore((s) => s.isDemoMode);
   const { courses, hydrate: hydrateLibrary } = useLibraryStore();
+  const profile = useLearningProfileStore((state) => state.profile);
+  const trackEvent = useLearningProfileStore((state) => state.trackEvent);
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [chatHydrated, setChatHydrated] = useState(false);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [activeMode, setActiveMode] = useState(MODES[0]);
+  const [activeMode, setActiveMode] = useState(() =>
+    resolveAgentMode(null, profile.parameters.suggestedMode),
+  );
   const [isModeOpen, setIsModeOpen] = useState(false);
   const [hasSelectedMode, setHasSelectedMode] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -88,6 +109,7 @@ export default function Agent() {
   const isRecordingRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const turnStartedAtRef = useRef(Date.now());
 
   const modeName = (id: string) => t(MODE_NAMES[id]?.en ?? id, MODE_NAMES[id]?.el);
   const modeDesc = (id: string) => t(MODE_DESCS[id]?.en ?? '', MODE_DESCS[id]?.el);
@@ -114,7 +136,7 @@ export default function Agent() {
     (async () => {
       setChatHydrated(false);
       const savedModeId = await loadAgentMode();
-      const mode = MODES.find((m) => m.id === savedModeId) ?? MODES[0];
+      const mode = resolveAgentMode(savedModeId, profile.parameters.suggestedMode);
       const modeId = mode.id as AgentModeId;
       const stored = await loadAgentMessages(modeId, isDemoMode);
       if (cancelled) return;
@@ -131,7 +153,7 @@ export default function Agent() {
     return () => {
       cancelled = true;
     };
-  }, [isDemoMode]);
+  }, [isDemoMode, profile.parameters.suggestedMode]);
 
   useEffect(() => {
     if (!chatHydrated || messages.length === 0) return;
@@ -238,6 +260,7 @@ export default function Agent() {
     setInput('');
     setMessages(prev => [...prev, { id: Date.now().toString(), role: 'user', content: userMessage }]);
     setIsLoading(true);
+    turnStartedAtRef.current = Date.now();
     logActivity(`Agent session: ${modeName(activeMode.id)}`, 'study');
 
     try {
@@ -345,6 +368,17 @@ Format responses nicely using markdown structure if helpful.${ragContext}`;
         const utterance = new SpeechSynthesisUtterance(responseText);
         window.speechSynthesis.speak(utterance);
       }
+
+      trackEvent({
+        kind: 'agent_turn',
+        surface: 'agent',
+        channel: shouldSpeak ? 'voice' : 'text',
+        mode: agentProfileMode(activeMode.id as AgentModeId),
+        success: true,
+        durationSeconds: (Date.now() - turnStartedAtRef.current) / 1_000,
+        chunkSizeWords: profile.parameters.chunkSizeWords,
+      });
+      turnStartedAtRef.current = Date.now();
     } catch (error) {
       console.error('Chat error:', error);
       const msg = error instanceof ApiError
@@ -355,6 +389,15 @@ Format responses nicely using markdown structure if helpful.${ragContext}`;
         role: 'model', 
         content: msg,
       }]);
+      trackEvent({
+        kind: 'agent_turn',
+        surface: 'agent',
+        channel: shouldSpeak ? 'voice' : 'text',
+        mode: agentProfileMode(activeMode.id as AgentModeId),
+        success: false,
+        errorType:
+          error instanceof Error ? error.name.slice(0, 80) : 'unknown_error',
+      });
       toast.error('Failed to get AI response');
     } finally {
       setIsLoading(false);

@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, X, FileText, CheckCircle2, Loader2, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { useFocusTrap } from '../hooks/useFocusTrap';
+import { apiRequest } from '../lib/apiClient';
 
 export default function FlashcardGeneratorModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) {
   const [inputText, setInputText] = useState('');
@@ -20,7 +21,7 @@ export default function FlashcardGeneratorModal({ isOpen, onClose }: { isOpen: b
     setGeneratedCards([]);
     
     try {
-      const res = await fetch('/api/generate-flashcards', {
+      const res = await apiRequest('/api/generate-flashcards', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: inputText })

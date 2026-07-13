@@ -51,6 +51,7 @@ import { FSRS, Card, Rating } from 'fsrs.js';
 import DashboardStats from "../components/DashboardStats";
 import PageShell, { PageHeader } from "../components/layout/PageShell";
 import { useAuthStore } from "../store/useAuthStore";
+import { useLearningProfileStore } from "../store/useLearningProfileStore";
 import {
   DEMO_USER,
   loadDemoTasks,
@@ -74,6 +75,7 @@ export default function Tasks() {
   const { t } = useLanguage();
   const { pomodoroSessions, studySessionsHistory } = useStore();
   const isDemoMode = useAuthStore((s) => s.isDemoMode);
+  const trackLearningEvent = useLearningProfileStore((state) => state.trackEvent);
   const [isSyncingTasks, setIsSyncingTasks] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [tasks, setTasks] = useState<any[]>([]);
@@ -221,6 +223,15 @@ export default function Tasks() {
         if (quality >= 3) {
           confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
         }
+        trackLearningEvent({
+          kind: 'task_review',
+          surface: 'tasks',
+          channel: 'retrieval',
+          taskType: task.type,
+          success: quality >= 3,
+          quality: quality / 5,
+          errorType: quality < 3 ? `${task.type || 'task'}:retrieval-gap` : undefined,
+        });
       } catch (e) {
         console.error(e);
         toast.error("Failed to update task review.");
@@ -269,6 +280,15 @@ export default function Tasks() {
           origin: { y: 0.6 }
         });
       }
+      trackLearningEvent({
+        kind: 'task_review',
+        surface: 'tasks',
+        channel: 'retrieval',
+        taskType: task.type,
+        success: quality >= 3,
+        quality: quality / 5,
+        errorType: quality < 3 ? `${task.type || 'task'}:retrieval-gap` : undefined,
+      });
     } catch (e) {
       console.error(e);
       toast.error("Failed to update task review.");
@@ -287,6 +307,13 @@ export default function Tasks() {
       await persistDemoTasks(nextTasks as DemoTask[]);
       await logActivity(`Completed "${task.title}"`, 'task');
       confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+      trackLearningEvent({
+        kind: 'task_complete',
+        surface: 'tasks',
+        channel: task.type === 'Reading' ? 'text' : 'retrieval',
+        taskType: task.type,
+        success: true,
+      });
       return;
     }
     if (!user) return;
@@ -298,6 +325,13 @@ export default function Tasks() {
         particleCount: 100,
         spread: 70,
         origin: { y: 0.6 }
+      });
+      trackLearningEvent({
+        kind: 'task_complete',
+        surface: 'tasks',
+        channel: task.type === 'Reading' ? 'text' : 'retrieval',
+        taskType: task.type,
+        success: true,
       });
     } catch (e) {
       console.error(e);

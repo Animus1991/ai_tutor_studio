@@ -2,6 +2,8 @@ import { auth } from "./firebase";
 import { useAuthStore } from "../store/useAuthStore";
 import { DemoModeError, errorFromResponse } from "./apiErrors";
 
+const isApiAuthRequired = import.meta.env.VITE_REQUIRE_API_AUTH === "true";
+
 function getApiPath(input: RequestInfo | URL): string | null {
   if (typeof input === "string") {
     return input.startsWith("/api/")
@@ -40,14 +42,15 @@ async function withAuthentication(
 }
 
 /**
- * Same API as fetch, with a Firebase ID token attached to local API calls.
- * A single forced token refresh is attempted when the server reports 401.
+ * fetch wrapper that attaches Firebase auth when a user is signed in.
+ * Does not throw on non-OK responses — callers handle status themselves.
  */
-export async function apiFetch(
+export async function apiRequest(
   input: RequestInfo | URL,
   init: RequestInit = {},
 ): Promise<Response> {
   if (
+    isApiAuthRequired &&
     useAuthStore.getState().isDemoMode &&
     isProtectedApiRequest(input)
   ) {
@@ -62,6 +65,19 @@ export async function apiFetch(
       await withAuthentication(input, init, true),
     );
   }
+
+  return response;
+}
+
+/**
+ * Same API as fetch, with a Firebase ID token attached to local API calls.
+ * A single forced token refresh is attempted when the server reports 401.
+ */
+export async function apiFetch(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+): Promise<Response> {
+  const response = await apiRequest(input, init);
 
   if (!response.ok) {
     throw await errorFromResponse(response);

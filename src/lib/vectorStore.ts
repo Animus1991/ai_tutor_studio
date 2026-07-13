@@ -1,5 +1,6 @@
 import { openDB, IDBPDatabase } from 'idb';
 import { chunkDocument } from './rag';
+import { apiRequest } from './apiClient';
 
 const dbName = 'memora-vector-store';
 const storeName = 'embeddings';
@@ -69,7 +70,7 @@ export function cosineSimilarity(vecA: number[], vecB: number[]) {
 }
 
 export async function generateEmbedding(text: string): Promise<number[]> {
-  const res = await fetch('/api/embed', {
+  const res = await apiRequest('/api/embed', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text: text.slice(0, 8000) }),

@@ -3,6 +3,7 @@ import * as d3 from 'd3';
 import { useOntologyStore, OntologyNode, OntologyLink } from '../store/useOntologyStore';
 import { BrainCircuit, X, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { apiRequest } from '../lib/apiClient';
 
 export default function KnowledgeGraph() {
   const { nodes, links } = useOntologyStore();
@@ -146,7 +147,7 @@ export default function KnowledgeGraph() {
     setIsFetchingDefinition(true);
     setNodeDefinition('');
     try {
-      const res = await fetch('/api/agent/chat', {
+      const res = await apiRequest('/api/agent/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

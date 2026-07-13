@@ -4,18 +4,24 @@ import express from 'express';
 import http from 'http';
 import path from 'path';
 import cors from 'cors';
+import helmet from 'helmet';
+import { rateLimit, ipKeyGenerator } from 'express-rate-limit';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import multer from 'multer';
 import { YoutubeTranscript } from 'youtube-transcript';
 import { createRequire } from 'module';
 import { appendPersistedAudit, loadPersistedAudit } from './auditStore.js';
+import firebaseConfig from './firebase-applet-config.json';
 import {
   fetchPlatformAuditFromFirestore,
   fetchTenantMetricsFromFirestore,
   persistAuditToFirestore,
 } from './firebaseAdmin.js';
-import { assertPublicHttpUrl } from './server/security.js';
+import {
+  assertPublicHttpUrl,
+  createFirebaseAuthMiddleware,
+} from './server/security.js';
 const _require = createRequire(typeof import.meta !== 'undefined' && import.meta.url ? import.meta.url : 'file://' + process.cwd() + '/server.ts');
 const pdfParse = _require('pdf-parse');
 
@@ -47,6 +53,57 @@ function createRateLimiter(maxRequests: number, windowMs: number) {
 }
 
 const aiRateLimit = createRateLimiter(30, 60_000);
+
+const PUBLIC_API_PATHS = new Set([
+  '/api/health',
+  '/api/logs',
+  '/api/logs/batch',
+]);
+
+function buildContentSecurityPolicy(isProduction: boolean) {
+  const devWsSources = isProduction ? [] : ['ws:', 'wss:'];
+  let yjsWsSource: string | null = null;
+  try {
+    if (process.env.APP_URL) {
+      yjsWsSource = new URL(process.env.APP_URL.replace(/^http/i, 'ws')).origin;
+    }
+  } catch {
+    yjsWsSource = null;
+  }
+
+  return {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: [
+        "'self'",
+        "'unsafe-inline'",
+        ...(isProduction ? [] : ["'unsafe-eval'"]),
+        'https://cdn.jsdelivr.net',
+        'https://apis.google.com',
+      ],
+      styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+      imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
+      connectSrc: [
+        "'self'",
+        'https://*.googleapis.com',
+        'https://*.google.com',
+        'https://*.firebaseio.com',
+        'https://*.firebaseapp.com',
+        'wss://*.firebaseio.com',
+        'wss://demos.yjs.dev',
+        ...(yjsWsSource ? [yjsWsSource] : []),
+        ...devWsSources,
+      ],
+      workerSrc: ["'self'", 'blob:', 'https://cdn.jsdelivr.net'],
+      fontSrc: ["'self'", 'data:', 'https:', 'https://fonts.gstatic.com'],
+      frameSrc: ["'self'", 'https://accounts.google.com', 'https://meet.google.com'],
+      objectSrc: ["'none'"],
+      frameAncestors: ["'none'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
+    },
+  };
+}
 
 /** Audit events: hydrated from disk, appended on each client POST. */
 let serverAuditLogs: Array<Record<string, unknown>> = loadPersistedAudit();
@@ -175,9 +232,81 @@ async function expandYoutubePlaylist(url: string, max = 500): Promise<string[]> 
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3010;
+  const isProduction = process.env.NODE_ENV === 'production';
 
+  app.disable('x-powered-by');
+  app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS || 1));
+  app.use(
+    helmet({
+      contentSecurityPolicy: buildContentSecurityPolicy(isProduction),
+      crossOriginEmbedderPolicy: false,
+    }),
+  );
   app.use(cors());
   app.use(express.json({ limit: '50mb' }));
+
+  app.get('/api/health', (_req, res) => {
+    res.json({ status: 'ok' });
+  });
+
+  const generalApiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 300,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+  });
+  const logLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    limit: 10,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+  });
+  const requireApiAuth = process.env.REQUIRE_API_AUTH === 'true';
+  const firebaseProjectId =
+    process.env.FIREBASE_PROJECT_ID ||
+    (firebaseConfig as { projectId?: string }).projectId ||
+    '';
+  const firebaseAuth = createFirebaseAuthMiddleware(
+    firebaseProjectId,
+    requireApiAuth,
+  );
+  const protectedApiLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    limit: 60,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    keyGenerator: (req, res) =>
+      (res.locals.user as { uid?: string } | undefined)?.uid ||
+      ipKeyGenerator(req.ip || '127.0.0.1'),
+  });
+
+  app.post('/api/logs', logLimiter, (req, res) => {
+    console.error('[Client Log]', JSON.stringify(req.body));
+    res.status(202).json({ status: 'accepted' });
+  });
+
+  app.post('/api/logs/batch', logLimiter, (req, res) => {
+    const errors = req.body?.errors ?? [];
+    console.error('[Client Log Batch]', errors.length, 'entries');
+    res.status(202).json({ status: 'accepted', received: errors.length });
+  });
+
+  app.use('/api', generalApiLimiter);
+
+  app.use('/api', (req, res, next) => {
+    if (PUBLIC_API_PATHS.has(req.path)) {
+      next();
+      return;
+    }
+    firebaseAuth(req, res, (authErr) => {
+      if (authErr) {
+        next(authErr);
+        return;
+      }
+      protectedApiLimiter(req, res, next);
+    });
+  });
+
   app.use((req, res, next) => {
     if (
       req.path.startsWith('/api/agent') ||
@@ -1047,27 +1176,12 @@ Question: ${query}`
     });
   });
 
-  app.post('/api/logs', express.json(), (req, res) => {
-    console.error('[Client Log]', JSON.stringify(req.body));
-    res.json({ status: 'ok' });
-  });
-
-  app.post('/api/logs/batch', express.json(), (req, res) => {
-    const errors = req.body?.errors ?? [];
-    console.error('[Client Log Batch]', errors.length, 'entries');
-    res.json({ status: 'ok', received: errors.length });
-  });
-
-  // Health route
-  app.post('/api/health', express.json({type: '*/*'}), (req, res) => {
+  // Client error report (public — no auth required)
+  app.post('/api/health', express.json({ type: '*/*' }), (req, res) => {
     _require('fs').writeFileSync('client-error.log', JSON.stringify(req.body));
     console.error("CLIENT ERROR REPORT:", req.body);
     res.json({ status: 'ok' });
   });
-  app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok' });
-  });
-
   // Vite middleware for development
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({

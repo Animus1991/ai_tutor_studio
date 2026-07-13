@@ -1,4 +1,5 @@
 import localforage from 'localforage';
+import { apiRequest } from './apiClient';
 import { summarizeAudio } from './services/audioService';
 
 export async function transcribeMediaFile(file: File): Promise<string> {
@@ -10,7 +11,7 @@ export async function analyzeMediaFile(
 ): Promise<{ summary: string; text?: string }> {
   const form = new FormData();
   form.append('media', file);
-  const res = await fetch('/api/analyze-media', { method: 'POST', body: form });
+  const res = await apiRequest('/api/analyze-media', { method: 'POST', body: form });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error((err as { error?: string }).error ?? 'Media analysis failed');

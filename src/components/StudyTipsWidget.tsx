@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Lightbulb, ExternalLink } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { apiRequest } from '../lib/apiClient';
 
 export default function StudyTipsWidget() {
   const [tip, setTip] = useState('');
@@ -10,7 +11,7 @@ export default function StudyTipsWidget() {
   useEffect(() => {
     const fetchTip = async () => {
       try {
-        const response = await fetch('/api/study-tips');
+        const response = await apiRequest('/api/study-tips');
         const data = await response.json();
         setTip(data.tip || "Failed to fetch tip.");
         setUrls(data.urls || []);

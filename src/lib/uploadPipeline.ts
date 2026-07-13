@@ -4,6 +4,8 @@ import type { Course, CourseOutline, UploadedFile } from './courseTypes';
 
 export const PIPELINE_VERSION = '2.0.0';
 
+import { apiRequest } from './apiClient';
+
 export async function extractFileContent(file: File): Promise<string> {
   const mime = file.type || 'application/octet-stream';
 
@@ -14,7 +16,7 @@ export async function extractFileContent(file: File): Promise<string> {
   if (mime === 'application/pdf' || file.name.endsWith('.pdf')) {
     const form = new FormData();
     form.append('file', file);
-    const res = await fetch('/api/ingest/file', { method: 'POST', body: form });
+    const res = await apiRequest('/api/ingest/file', { method: 'POST', body: form });
     if (!res.ok) throw new Error('Failed to extract PDF text');
     const data = await res.json();
     return normalizeDocumentText(data.text ?? '');
@@ -23,7 +25,7 @@ export async function extractFileContent(file: File): Promise<string> {
   if (mime.startsWith('image/')) {
     const form = new FormData();
     form.append('image', file);
-    const res = await fetch('/api/ocr', { method: 'POST', body: form });
+    const res = await apiRequest('/api/ocr', { method: 'POST', body: form });
     if (!res.ok) throw new Error('Failed to extract text from image (OCR)');
     const data = await res.json();
     return normalizeDocumentText(data.text ?? '');

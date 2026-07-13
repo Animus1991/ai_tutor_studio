@@ -1,4 +1,6 @@
 // A simplified xAPI standard structure
+import { apiRequest } from './apiClient';
+
 export interface XapiStatement {
   actor: {
     mbox: string;
@@ -46,7 +48,7 @@ class XapiTracker {
     stmts.push(fullStatement);
     localStorage.setItem('memora-xapi-statements', JSON.stringify(stmts));
 
-    void fetch('/api/xapi/statements', {
+    void apiRequest('/api/xapi/statements', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(fullStatement),

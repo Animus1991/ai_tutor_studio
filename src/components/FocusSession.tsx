@@ -2,8 +2,10 @@ import { useState, useEffect, useRef } from 'react';
 import { Play, Square, Timer } from 'lucide-react';
 import localforage from 'localforage';
 import { toast } from 'sonner';
+import { useLearningProfileStore } from '../store/useLearningProfileStore';
 
 export default function FocusSession() {
+  const trackLearningEvent = useLearningProfileStore((state) => state.trackEvent);
   const [isActive, setIsActive] = useState(false);
   const [seconds, setSeconds] = useState(0);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -39,6 +41,13 @@ export default function FocusSession() {
           icon: 'Timer'
         });
         await localforage.setItem('memora-ai-logs', logs);
+        trackLearningEvent({
+          kind: 'focus_session',
+          surface: 'dashboard',
+          channel: 'text',
+          success: true,
+          durationSeconds: seconds,
+        });
         toast.success(`Session logged! You focused for ${minutes} minutes.`);
       } catch (e) {
         console.error('Failed to save session log', e);

@@ -616,7 +616,7 @@ export default function Library() {
           <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/20 to-transparent pointer-events-none" />
           <div>
             <h3 className="text-slate-400 font-medium mb-1 text-sm">{t('Total Mastery', 'Συνολική Εξοικείωση')}</h3>
-            <div className="text-[20px] leading-none font-display font-bold tracking-tight">
+            <div className="text-[19px] leading-none font-display font-bold tracking-tight">
               38
               <span className="text-slate-500 dark:text-slate-400 ml-1 text-sm">
                 %

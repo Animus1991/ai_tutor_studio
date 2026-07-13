@@ -1,4 +1,5 @@
 import { auditLogger, type AuditEvent } from './auditLogger';
+import { apiRequest } from './apiClient';
 import { loadLibrary } from './libraryStorage';
 import { useStore } from '../store/useStore';
 
@@ -50,7 +51,7 @@ function countUniqueUsersLast7d(events: AuditEvent[]): number {
 
 export async function fetchServerAdminMetrics(): Promise<ServerAdminMetrics | null> {
   try {
-    const res = await fetch('/api/admin/metrics');
+    const res = await apiRequest('/api/admin/metrics');
     if (!res.ok) return null;
     return (await res.json()) as ServerAdminMetrics;
   } catch {
@@ -60,7 +61,7 @@ export async function fetchServerAdminMetrics(): Promise<ServerAdminMetrics | nu
 
 export async function fetchTenantMetrics(): Promise<TenantMetrics | null> {
   try {
-    const res = await fetch('/api/admin/tenant-metrics');
+    const res = await apiRequest('/api/admin/tenant-metrics');
     if (!res.ok) return null;
     const data = (await res.json()) as TenantMetrics;
     return data.firestoreEnabled ? data : null;

@@ -33,9 +33,11 @@ import { useStore } from "../store/useStore";
 import { useYjsText, globalCrdtStore } from "../lib/crdt";
 import { useDocumentStore } from "../store/useDocumentStore";
 import { useMasteryStore } from "../store/useMasteryStore";
+import { useLearningProfileStore } from "../store/useLearningProfileStore";
 import { useOntologyStore } from "../store/useOntologyStore";
 import { xapi } from "../lib/xapiTracker";
 import { initializeFSRS, reviewFSRS, FSRSData, FSRSRating } from "../lib/fsrs";
+import { apiRequest } from "../lib/apiClient";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 
@@ -83,6 +85,7 @@ export default function DocumentWorkspace({
   const [isSummarizing, setIsSummarizing] = useState(false);
   const [flashcards, setFlashcards] = useState<{question: string, answer: string, fsrs?: FSRSData}[]>([]);
   const { addFlashcardReview, updateFeynmanScore } = useMasteryStore();
+  const trackLearningEvent = useLearningProfileStore((state) => state.trackEvent);
   
   const handleReviewFlashcard = (index: number, rating: FSRSRating) => {
     addFlashcardReview();
@@ -99,6 +102,15 @@ export default function DocumentWorkspace({
       };
       return newCards;
     });
+    const quality = { again: 0, hard: 0.4, good: 0.75, easy: 1 }[rating];
+    trackLearningEvent({
+      kind: 'flashcard_review',
+      surface: 'document',
+      channel: 'retrieval',
+      quality,
+      success: quality >= 0.75,
+      errorType: quality < 0.75 ? 'flashcard:retrieval-gap' : undefined,
+    });
   };
   const [summary, setSummary] = useState<string | null>(null);
   const [showSaveToast, setShowSaveToast] = useState(false);
@@ -111,7 +123,7 @@ export default function DocumentWorkspace({
     setGlossaryDefinition({ term, definition: '', loading: true });
     try {
       const source = notes.replace(/<[^>]*>?/gm, '');
-      const response = await fetch('/api/agent/rag', {
+      const response = await apiRequest('/api/agent/rag', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -195,7 +207,7 @@ export default function DocumentWorkspace({
         console.error("Vector search failed", err);
       }
 
-      const response = await fetch('/api/agent/rag', {
+      const response = await apiRequest('/api/agent/rag', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ context, query: agentQuery })
@@ -218,7 +230,7 @@ export default function DocumentWorkspace({
     setIsCheckingFeynman(true);
     try {
       const source = notes.replace(/<[^>]*>?/gm, '');
-      const response = await fetch('/api/feynman-check', {
+      const response = await apiRequest('/api/feynman-check', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ source, explanation: feynmanText })
@@ -229,6 +241,16 @@ export default function DocumentWorkspace({
       if (data.gaps) {
         const score = Math.max(1, 10 - data.gaps.length * 2);
         updateFeynmanScore(score);
+        trackLearningEvent({
+          kind: 'feynman_check',
+          surface: 'document',
+          channel: 'explanation',
+          mode: 'feynman',
+          quality: score / 10,
+          success: data.gaps.length === 0,
+          errorType:
+            data.gaps.length > 0 ? 'feynman:knowledge-gap' : undefined,
+        });
       }
     } catch (e) {
       console.error(e);
@@ -261,7 +283,7 @@ export default function DocumentWorkspace({
     try {
       // Strip HTML tags for the prompt
       const text = notes.replace(/<[^>]*>?/gm, '');
-      const response = await fetch('/api/generate-flashcards', {
+      const response = await apiRequest('/api/generate-flashcards', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text })
@@ -294,7 +316,7 @@ export default function DocumentWorkspace({
     setIsSummarizing(true);
     try {
       const text = notes.replace(/<[^>]*>?/gm, '');
-      const response = await fetch('/api/generate-blueprint', {
+      const response = await apiRequest('/api/generate-blueprint', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text })
@@ -363,7 +385,7 @@ export default function DocumentWorkspace({
         const formData = new FormData();
         formData.append('file', selectedFile);
         
-        const res = await fetch('/api/ingest/file', {
+        const res = await apiRequest('/api/ingest/file', {
           method: 'POST',
           body: formData
         });
@@ -384,7 +406,7 @@ export default function DocumentWorkspace({
           setGlossary(extractGlossary(sanitized.sanitizedText));
 
           // Also trigger ontology extraction
-          fetch('/api/extract-ontology', {
+          apiRequest('/api/extract-ontology', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ text: sanitized.sanitizedText.slice(0, 50000) })
@@ -438,7 +460,7 @@ export default function DocumentWorkspace({
     
     setIsIngestingUrl(true);
     try {
-      const res = await fetch('/api/ingest/url', {
+      const res = await apiRequest('/api/ingest/url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: urlInput })
@@ -457,7 +479,7 @@ export default function DocumentWorkspace({
         setGlossary(extractGlossary(sanitized.sanitizedText));
         
         // Also trigger ontology extraction
-        fetch('/api/extract-ontology', {
+        apiRequest('/api/extract-ontology', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text: sanitized.sanitizedText.slice(0, 50000) })
