@@ -73,11 +73,47 @@ Configure Secret Manager for `GEMINI_API_KEY` and `FIREBASE_SERVICE_ACCOUNT_JSON
 | `GEMINI_API_KEY` | Yes (AI) | Agent, OCR, embeddings |
 | `PORT` | No | Default `3010` |
 | `NODE_ENV` | Prod | Set to `production` for static SPA |
+| `APP_URL` | Prod | Public origin (CSP Yjs WebSocket, OAuth callbacks) |
+| `REQUIRE_API_AUTH` | Prod | Set `true` to require Firebase JWT on `/api/*` (except health/logs) |
+| `VITE_REQUIRE_API_AUTH` | Prod build | Set `true` when running `npm run build` so the SPA attaches Bearer tokens |
+| `FIREBASE_PROJECT_ID` | No | Overrides `firebase-applet-config.json` projectId for JWT verification |
+| `TRUST_PROXY_HOPS` | Prod | Default `1` behind reverse proxy / Cloud Run |
 | `AUDIT_STORE_PATH` | No | Default `data/audit-log.jsonl` |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | No | Platform audit + tenant admin metrics |
 | `XAPI_LRS_ENDPOINT` | No | xAPI forwarding |
 | `XAPI_LRS_KEY` | No | LRS basic auth key |
 | `VITE_YJS_WS_URL` | No | Override collab WebSocket URL |
+
+### Production API auth (Firebase JWT)
+
+Enable only when you want every `/api/*` call (except `/api/health` and `/api/logs*`) to require a signed-in Firebase user.
+
+**Local (`.env.local`):**
+
+```env
+REQUIRE_API_AUTH=true
+VITE_REQUIRE_API_AUTH=true
+# FIREBASE_PROJECT_ID=gen-lang-client-0906422890  # optional override
+```
+
+Restart `npm run dev` after changing `VITE_*` variables. Use Google sign-in — demo mode (`?demo=1`) will block AI routes when `VITE_REQUIRE_API_AUTH=true`.
+
+**Docker / Cloud Run:**
+
+1. **Runtime (server):** `REQUIRE_API_AUTH=true`
+2. **Build time (client):** `VITE_REQUIRE_API_AUTH=true` must be present when `npm run build` runs (Vite inlines it into the SPA). Set as a Docker build-arg or in the builder stage env before `npm run build`.
+
+```bash
+docker build \
+  --build-arg VITE_REQUIRE_API_AUTH=true \
+  -t memora-ai-tutor .
+docker run -p 3010:3010 \
+  -e GEMINI_API_KEY=... \
+  -e NODE_ENV=production \
+  -e REQUIRE_API_AUTH=true \
+  -e APP_URL=https://your-domain.example \
+  memora-ai-tutor
+```
 
 ## CI / release checklist
 
