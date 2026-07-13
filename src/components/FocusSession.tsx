@@ -2,10 +2,12 @@ import { useState, useEffect, useRef } from 'react';
 import { Play, Square, Timer } from 'lucide-react';
 import localforage from 'localforage';
 import { toast } from 'sonner';
-import { useLearningProfileStore } from '../store/useLearningProfileStore';
+import { useLearningProfileStore } from "../store/useLearningProfileStore";
 
 export default function FocusSession() {
-  const trackLearningEvent = useLearningProfileStore((state) => state.trackEvent);
+  const trackLearningEvent = useLearningProfileStore(
+    (state) => state.trackEvent,
+  );
   const [isActive, setIsActive] = useState(false);
   const [seconds, setSeconds] = useState(0);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -33,18 +35,19 @@ export default function FocusSession() {
     if (seconds > 60) { // Only log if longer than 1 min
       const minutes = Math.floor(seconds / 60);
       try {
-        const logs = await localforage.getItem<any[]>('memora-ai-logs') || [];
+        const logs =
+          (await localforage.getItem<any[]>("memora-focus-sessions")) || [];
         logs.push({
           id: Date.now().toString(),
           title: `Completed ${minutes} min Focus Session`,
           time: new Date().toLocaleString(),
           icon: 'Timer'
         });
-        await localforage.setItem('memora-ai-logs', logs);
+        await localforage.setItem("memora-focus-sessions", logs);
         trackLearningEvent({
-          kind: 'focus_session',
-          surface: 'dashboard',
-          channel: 'text',
+          kind: "focus_session",
+          surface: "dashboard",
+          channel: "text",
           success: true,
           durationSeconds: seconds,
         });

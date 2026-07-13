@@ -1,4 +1,4 @@
-import { useState, useEffect, FormEvent, useMemo } from "react";
+import { useState, useEffect, FormEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   Calendar,
@@ -38,8 +38,16 @@ import {
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
-import { format } from "date-fns";
+import { format, subDays } from "date-fns";
 import { toast } from "sonner";
+
+const mockAnalyticsData = Array.from({ length: 7 }).map((_, i) => ({
+  date: format(subDays(new Date(), 6 - i), 'EEE'),
+  focusTime: Math.floor(Math.random() * 120) + 30, // mins
+  mastery: Math.floor(Math.random() * 40) + 50, // %
+  completionRate: Math.floor(Math.random() * 30) + 70, // %
+}));
+
 import ActivityFeed from "../components/ActivityFeed";
 
 import { useMicrophone } from '../hooks/useMicrophone';
@@ -47,35 +55,25 @@ import { summarizeAudio } from '../lib/services/audioService';
 import confetti from 'canvas-confetti';
 import { Sparkles, Loader2 } from 'lucide-react';
 import { FSRS, Card, Rating } from 'fsrs.js';
+import { useAuthStore } from "../store/useAuthStore";
+import {
+  LOCAL_TASKS_UPDATED_EVENT,
+  readLocalTasks,
+  writeLocalTasks,
+} from "../lib/localTasks";
+import { useLearningProfileStore } from "../store/useLearningProfileStore";
 
 import DashboardStats from "../components/DashboardStats";
-import PageShell, { PageHeader } from "../components/layout/PageShell";
-import { useAuthStore } from "../store/useAuthStore";
-import { useLearningProfileStore } from "../store/useLearningProfileStore";
-import {
-  DEMO_USER,
-  loadDemoTasks,
-  saveDemoTasks,
-  type DemoTask,
-} from "../lib/demoStorage";
-import { logActivity } from "../lib/activity";
-import { buildTaskAnalytics } from "../lib/taskAnalytics";
-import { useLanguage } from "../lib/i18n";
 
 const fsrs = new FSRS();
 
-const priorityBorder = (task: any) => {
-  if (task.urgent) return 'bg-rose-500';
-  if (task.type === 'Review') return 'bg-amber-500';
-  if (task.type === 'Quiz Prep') return 'bg-violet-500';
-  return 'bg-indigo-500';
-};
-
 export default function Tasks() {
-  const { t } = useLanguage();
-  const { pomodoroSessions, studySessionsHistory } = useStore();
-  const isDemoMode = useAuthStore((s) => s.isDemoMode);
-  const trackLearningEvent = useLearningProfileStore((state) => state.trackEvent);
+  const { pomodoroSessions } = useStore();
+  const isDemoMode = useAuthStore((state) => state.isDemoMode);
+  const learningProfile = useLearningProfileStore((state) => state.profile);
+  const trackLearningEvent = useLearningProfileStore(
+    (state) => state.trackEvent,
+  );
   const [isSyncingTasks, setIsSyncingTasks] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [tasks, setTasks] = useState<any[]>([]);
@@ -85,6 +83,18 @@ export default function Tasks() {
   const [selectedTasks, setSelectedTasks] = useState<string[]>([]);
   const [isSelectionMode, setIsSelectionMode] = useState(false);
 
+  const updateLocalTask = async (
+    taskId: string,
+    updates: Record<string, unknown>,
+  ) => {
+    const localTasks = await readLocalTasks();
+    await writeLocalTasks(
+      localTasks.map((task) =>
+        task.id === taskId ? { ...task, ...updates } : task,
+      ),
+    );
+  };
+
   const toggleTaskSelection = (taskId: string) => {
     setSelectedTasks(prev => 
       prev.includes(taskId) ? prev.filter(id => id !== taskId) : [...prev, taskId]
@@ -93,22 +103,21 @@ export default function Tasks() {
 
   const handleBulkDelete = async () => {
     if (selectedTasks.length === 0) return;
-    if (isDemoMode) {
-      const remaining = tasks.filter((t) => !selectedTasks.includes(t.id));
-      await saveDemoTasks(remaining as DemoTask[]);
-      setTasks(remaining);
-      toast.success(`${selectedTasks.length} tasks deleted`);
-      setSelectedTasks([]);
-      setIsSelectionMode(false);
-      return;
-    }
-    if (!user) return;
     try {
-      const batch = writeBatch(db);
-      selectedTasks.forEach(taskId => {
-        batch.delete(doc(db, "users", user.uid, "tasks", taskId));
-      });
-      await batch.commit();
+      if (user) {
+        const batch = writeBatch(db);
+        selectedTasks.forEach(taskId => {
+          batch.delete(doc(db, "users", user.uid, "tasks", taskId));
+        });
+        await batch.commit();
+      } else if (isDemoMode) {
+        const localTasks = await readLocalTasks();
+        await writeLocalTasks(
+          localTasks.filter((task) => !selectedTasks.includes(task.id)),
+        );
+      } else {
+        return;
+      }
       toast.success(`${selectedTasks.length} tasks deleted`);
       setSelectedTasks([]);
       setIsSelectionMode(false);
@@ -135,19 +144,24 @@ export default function Tasks() {
 
   useEffect(() => {
     if (isDemoMode) {
-      setUser(DEMO_USER);
-      void loadDemoTasks().then((demoTasks) => {
-        demoTasks.sort((a, b) => (a.order || 0) - (b.order || 0));
-        setTasks(demoTasks);
-      });
-      return;
+      setUser(null);
+      const loadLocalTasks = () => {
+        void readLocalTasks().then(setTasks);
+      };
+      loadLocalTasks();
+      window.addEventListener(LOCAL_TASKS_UPDATED_EVENT, loadLocalTasks);
+      return () =>
+        window.removeEventListener(LOCAL_TASKS_UPDATED_EVENT, loadLocalTasks);
     }
 
+    let unsubscribeTasks: (() => void) | undefined;
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+      unsubscribeTasks?.();
+      unsubscribeTasks = undefined;
       setUser(currentUser);
       if (currentUser) {
         const q = query(collection(db, "users", currentUser.uid, "tasks"));
-        const unsubscribeTasks = onSnapshot(
+        unsubscribeTasks = onSnapshot(
           q,
           (snapshot) => {
             let tasksData = snapshot.docs.map((doc) => ({
@@ -162,18 +176,15 @@ export default function Tasks() {
             console.error("Error fetching tasks:", error);
           },
         );
-        return () => unsubscribeTasks();
       } else {
         setTasks([]);
       }
     });
-    return () => unsubscribeAuth();
+    return () => {
+      unsubscribeTasks?.();
+      unsubscribeAuth();
+    };
   }, [isDemoMode]);
-
-  const persistDemoTasks = async (nextTasks: DemoTask[]) => {
-    await saveDemoTasks(nextTasks);
-    setTasks(nextTasks);
-  };
 
   const handleSyncGoogleTasks = async () => {
     try {
@@ -192,53 +203,7 @@ export default function Tasks() {
   const [reviewTask, setReviewTask] = useState<any>(null);
 
   const handleReviewTask = async (task: any, quality: number) => {
-    if (isDemoMode) {
-      try {
-        let cardObj = new Card();
-        if (task.fsrsCard) {
-          Object.assign(cardObj, task.fsrsCard);
-          if (typeof cardObj.due === 'string') cardObj.due = new Date(cardObj.due);
-          if (typeof cardObj.last_review === 'string') cardObj.last_review = new Date(cardObj.last_review);
-        }
-        const now = new Date();
-        const scheduling_cards = fsrs.repeat(cardObj, now);
-        let ratingValue = Rating.Good;
-        if (quality <= 1) ratingValue = Rating.Again;
-        else if (quality === 2) ratingValue = Rating.Hard;
-        else if (quality === 3 || quality === 4) ratingValue = Rating.Good;
-        else if (quality >= 5) ratingValue = Rating.Easy;
-        const newFsrsCard = scheduling_cards[ratingValue].card;
-        const nextTasks = tasks.map((t) =>
-          t.id === task.id
-            ? {
-                ...t,
-                fsrsCard: Object.assign({}, newFsrsCard),
-                nextReviewDate: newFsrsCard.due.toISOString(),
-                completed: quality >= 3,
-              }
-            : t,
-        );
-        await persistDemoTasks(nextTasks as DemoTask[]);
-        setReviewTask(null);
-        if (quality >= 3) {
-          confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
-        }
-        trackLearningEvent({
-          kind: 'task_review',
-          surface: 'tasks',
-          channel: 'retrieval',
-          taskType: task.type,
-          success: quality >= 3,
-          quality: quality / 5,
-          errorType: quality < 3 ? `${task.type || 'task'}:retrieval-gap` : undefined,
-        });
-      } catch (e) {
-        console.error(e);
-        toast.error("Failed to update task review.");
-      }
-      return;
-    }
-    if (!user) return;
+    if (!user && !isDemoMode) return;
     try {
       let cardObj = new Card();
       if (task.fsrsCard) {
@@ -257,13 +222,30 @@ export default function Tasks() {
       else if (quality >= 5) ratingValue = Rating.Easy;
 
       const newFsrsCard = scheduling_cards[ratingValue].card;
-      const nextReview = newFsrsCard.due;
+      const baseReviewDelay = Math.max(
+        60_000,
+        newFsrsCard.due.getTime() - now.getTime(),
+      );
+      const nextReview = new Date(
+        now.getTime() +
+          baseReviewDelay *
+            learningProfile.parameters.retrievalIntervalMultiplier,
+      );
+      const adaptiveFsrsCard = { ...newFsrsCard, due: nextReview };
 
-      await updateDoc(doc(db, "users", user.uid, "tasks", task.id.toString()), {
-        fsrsCard: Object.assign({}, newFsrsCard),
+      const updates = {
+        fsrsCard: adaptiveFsrsCard,
         nextReviewDate: nextReview.toISOString(),
-        completed: quality >= 3 ? true : false,
-      });
+        completed: quality >= 3,
+      };
+      if (user) {
+        await updateDoc(
+          doc(db, "users", user.uid, "tasks", task.id.toString()),
+          updates,
+        );
+      } else {
+        await updateLocalTask(task.id.toString(), updates);
+      }
       setReviewTask(null);
 
       // Track via xAPI
@@ -281,13 +263,13 @@ export default function Tasks() {
         });
       }
       trackLearningEvent({
-        kind: 'task_review',
-        surface: 'tasks',
-        channel: 'retrieval',
+        kind: "task_review",
+        surface: "tasks",
+        channel: "retrieval",
         taskType: task.type,
         success: quality >= 3,
         quality: quality / 5,
-        errorType: quality < 3 ? `${task.type || 'task'}:retrieval-gap` : undefined,
+        errorType: quality < 3 ? `${task.type || "task"}:retrieval-gap` : undefined,
       });
     } catch (e) {
       console.error(e);
@@ -300,42 +282,24 @@ export default function Tasks() {
       setReviewTask(task);
       return;
     }
-    if (isDemoMode) {
-      const nextTasks = tasks.map((t) =>
-        t.id === task.id ? { ...t, completed: true } : t,
-      );
-      await persistDemoTasks(nextTasks as DemoTask[]);
-      await logActivity(`Completed "${task.title}"`, 'task');
-      confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
-      trackLearningEvent({
-        kind: 'task_complete',
-        surface: 'tasks',
-        channel: task.type === 'Reading' ? 'text' : 'retrieval',
-        taskType: task.type,
-        success: true,
-      });
-      return;
-    }
-    if (!user) return;
+    if (!user && !isDemoMode) return;
     try {
-      await updateDoc(doc(db, "users", user.uid, "tasks", task.id.toString()), {
-        completed: true,
-      });
+      if (user) {
+        await updateDoc(doc(db, "users", user.uid, "tasks", task.id.toString()), {
+          completed: true,
+        });
+      } else {
+        await updateLocalTask(task.id.toString(), { completed: true });
+      }
       confetti({
         particleCount: 100,
         spread: 70,
         origin: { y: 0.6 }
       });
-      trackLearningEvent({
-        kind: 'task_complete',
-        surface: 'tasks',
-        channel: task.type === 'Reading' ? 'text' : 'retrieval',
-        taskType: task.type,
-        success: true,
-      });
     } catch (e) {
       console.error(e);
       toast.error("Failed to complete task.");
+      return;
     }
 
     // Track via xAPI
@@ -354,6 +318,13 @@ export default function Tasks() {
         true,
       );
     }
+    trackLearningEvent({
+      kind: "task_complete",
+      surface: "tasks",
+      channel: task.type === "Reading" ? "text" : "retrieval",
+      taskType: task.type,
+      success: true,
+    });
 
     // Audit Log
     auditLogger.log(
@@ -382,11 +353,6 @@ export default function Tasks() {
 
   const [activeFilter, setActiveFilter] = useState("All");
   const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
-
-  const analyticsData = useMemo(
-    () => buildTaskAnalytics(tasks, studySessionsHistory),
-    [tasks, studySessionsHistory],
-  );
   const [isNewTaskModalOpen, setIsNewTaskModalOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
@@ -409,7 +375,9 @@ export default function Tasks() {
 
   const handleCreateTask = async (e: FormEvent) => {
     e.preventDefault();
-    if (!isDemoMode && !user) return toast.info("Please sign in to create a task.");
+    if (!user && !isDemoMode) {
+      return toast.info("Please sign in to create a task.");
+    }
 
     const formData = new FormData(e.target as HTMLFormElement);
     const title = formData.get("title") as string;
@@ -423,7 +391,8 @@ export default function Tasks() {
         const nextReviewDate = new Date();
         nextReviewDate.setDate(nextReviewDate.getDate() + 1);
 
-        const newTask = {
+        const taskData = {
+          id: taskId,
           title,
           notes: taskNotes,
           course: "New Course",
@@ -435,26 +404,25 @@ export default function Tasks() {
           color: "text-indigo-500",
           bg: "bg-indigo-50",
           completed: false,
-          userId: isDemoMode ? DEMO_USER.uid : user.uid,
-          createdAt: new Date().toISOString(),
           repetition: 0,
           interval: 1,
           easeFactor: 2.5,
           nextReviewDate: nextReviewDate.toISOString(),
-          order: tasks.length,
         };
-
-        if (isDemoMode) {
-          await persistDemoTasks([...tasks, { id: taskId, ...newTask }] as DemoTask[]);
-          setIsNewTaskModalOpen(false);
-          setTaskNotes("");
-          return;
+        if (user) {
+          const { id: _localId, ...firestoreTask } = taskData;
+          await setDoc(doc(db, "users", user.uid, "tasks", taskId), {
+            ...firestoreTask,
+            userId: user.uid,
+            createdAt: serverTimestamp(),
+          });
+        } else {
+          const localTasks = await readLocalTasks();
+          await writeLocalTasks([
+            ...localTasks,
+            { ...taskData, createdAt: new Date().toISOString() },
+          ]);
         }
-
-        await setDoc(doc(db, "users", user.uid, "tasks", taskId), {
-          ...newTask,
-          createdAt: serverTimestamp(),
-        });
         setIsNewTaskModalOpen(false);
         setTaskNotes("");
       } catch (e) {
@@ -483,29 +451,34 @@ export default function Tasks() {
   };
 
   return (
-    <PageShell className="pb-16">
-      <PageHeader
-        title={t('Command Center', 'Κέντρο Ελέγχου')}
-        description={t('Your adaptive study plan based on retention curves and upcoming goals.', 'Αδαπτιυτικό πλάνο μελέτης βασισμένο στις καμπύλες μνήμης.')}
-        actions={
-          <>
-            <button
-              onClick={exportSessionData}
-              className="hidden sm:flex items-center gap-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 px-3 py-1.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors font-medium text-xs shadow-sm"
-            >
-              <Download className="w-3.5 h-3.5" />
-              {t('Export', 'Εξαγωγή')}
-            </button>
-            <button
-              onClick={() => setIsNewTaskModalOpen(true)}
-              className="flex items-center gap-1.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white px-3 py-1.5 rounded-xl font-semibold text-sm transition-all shadow-md shadow-indigo-500/20"
-            >
-              <Plus className="w-4 h-4" />
-              <span className="hidden sm:inline">{t('New Task', 'Νέα Εργασία')}</span>
-            </button>
-          </>
-        }
-      />
+    <div className="pb-16">
+      <header className="mb-6 flex items-end justify-between">
+        <div>
+          <h2 className="text-xl md:text-2xl font-display font-bold text-slate-900 dark:text-white tracking-tight">
+            Command Center
+          </h2>
+          <p className="text-slate-500 dark:text-slate-400 mt-1.5 text-sm max-w-xl leading-relaxed">
+            Your adaptive study plan based on retention curves and upcoming
+            goals.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={exportSessionData}
+            className="hidden sm:flex items-center gap-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 px-3 py-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors font-medium text-xs shadow-sm"
+          >
+            <Download className="w-3.5 h-3.5" />
+            Export
+          </button>
+          <button
+            onClick={() => setIsNewTaskModalOpen(true)}
+            className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg font-semibold text-sm transition-all shadow-sm"
+          >
+            <Plus className="w-4 h-4" />
+            <span className="hidden sm:inline">New Task</span>
+          </button>
+        </div>
+      </header>
 
       <DashboardStats />
 
@@ -516,10 +489,10 @@ export default function Tasks() {
           <Zap className="w-6 h-6 mb-3 text-indigo-400 dark:text-white relative z-10" />
           <div className="relative z-10">
             <h3 className="font-display font-bold text-base mb-1">
-              {t('Quick Session', 'Γρήγορη Συνεδρία')}
+              Quick Session
             </h3>
             <p className="text-slate-400 dark:text-indigo-100 text-xs">
-              {t('15 min rapid review', '15 λεπτά γρήγορη επανάληψη')}
+              15 min rapid review
             </p>
           </div>
         </button>
@@ -528,10 +501,10 @@ export default function Tasks() {
           <Target className="w-6 h-6 mb-3 text-emerald-500 dark:text-emerald-400 group-hover:scale-110 transition-transform duration-300" />
           <div>
             <h3 className="font-display font-bold text-base text-slate-900 dark:text-white mb-1">
-              {t('Deep Focus', 'Βαθιά Εστίαση')}
+              Deep Focus
             </h3>
             <p className="text-slate-500 dark:text-slate-400 text-xs">
-              {t('50 min deep learning', '50 λεπτά βαθιά μάθηση')}
+              50 min deep learning
             </p>
           </div>
         </button>
@@ -540,10 +513,10 @@ export default function Tasks() {
           <AlertTriangle className="w-6 h-6 mb-3 text-amber-500 group-hover:scale-110 transition-transform duration-300" />
           <div>
             <h3 className="font-display font-bold text-base text-slate-900 dark:text-white mb-1">
-              {t('Danger Zone', 'Ζώνη Κινδύνου')}
+              Danger Zone
             </h3>
             <p className="text-slate-500 dark:text-slate-400 text-xs">
-              {t('Review struggling concepts', 'Επανάληψη αδύνατων εννοιών')}
+              Review struggling concepts
             </p>
           </div>
         </button>
@@ -552,21 +525,21 @@ export default function Tasks() {
           <Calendar className="w-6 h-6 mb-3 text-blue-500 group-hover:scale-110 transition-transform duration-300" />
           <div>
             <h3 className="font-display font-bold text-base text-slate-900 dark:text-white mb-1">
-              {t('Exam Cram', 'Προετοιμασία Εξέτασης')}
+              Exam Cram
             </h3>
             <p className="text-slate-500 dark:text-slate-400 text-xs">
-              {t('Prepare for upcoming test', 'Προετοιμάσου για επερχόμενο διαγωνισμό')}
+              Prepare for upcoming test
             </p>
           </div>
         </button>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-        <div className="xl:col-span-8">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <div className="xl:col-span-2">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 border-b border-slate-200/60 dark:border-slate-800/60 pb-3 gap-3">
             <div className="flex items-center gap-2">
               <h3 className="text-lg font-display font-bold text-slate-900 dark:text-white tracking-tight">
-                {t('Up Next', 'Επόμενα')}
+                Up Next
               </h3>
               <button
                 onClick={handleSyncGoogleTasks}
@@ -574,7 +547,7 @@ export default function Tasks() {
                 className="px-3 py-1.5 bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-500/20 rounded-xl text-xs font-semibold hover:bg-blue-100 dark:hover:bg-blue-500/20 transition-colors flex items-center gap-2 disabled:opacity-50"
               >
                 <CheckCircle2 className="w-3 h-3" />{" "}
-                {isSyncingTasks ? t('Syncing...', 'Συγχρονισμός...') : t('Sync to Google Tasks', 'Συγχρονισμός με Google Tasks')}
+                {isSyncingTasks ? "Syncing..." : "Sync to Google Tasks"}
               </button>
               
               {isSelectionMode ? (
@@ -584,13 +557,13 @@ export default function Tasks() {
                     disabled={selectedTasks.length === 0}
                     className="px-3 py-1.5 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-500/20 rounded-xl text-xs font-semibold hover:bg-rose-100 dark:hover:bg-rose-500/20 transition-colors disabled:opacity-50"
                   >
-                    {t('Delete Selected', 'Διαγραφή Επιλεγμένων')} ({selectedTasks.length})
+                    Delete Selected ({selectedTasks.length})
                   </button>
                   <button
                     onClick={() => { setIsSelectionMode(false); setSelectedTasks([]); }}
                     className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
                   >
-                    {t('Cancel', 'Ακύρωση')}
+                    Cancel
                   </button>
                 </>
               ) : (
@@ -598,7 +571,7 @@ export default function Tasks() {
                   onClick={() => setIsSelectionMode(true)}
                   className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
                 >
-                  {t('Select', 'Επιλογή')}
+                  Select
                 </button>
               )}
             </div>
@@ -613,7 +586,7 @@ export default function Tasks() {
                       : "text-slate-500 hover:text-slate-700",
                   )}
                 >
-                  {t('List', 'Λίστα')}
+                  List
                 </button>
                 <button
                   onClick={() => setViewMode("calendar")}
@@ -624,7 +597,7 @@ export default function Tasks() {
                       : "text-slate-500 hover:text-slate-700",
                   )}
                 >
-                  {t('Calendar', 'Ημερολόγιο')}
+                  Calendar
                 </button>
               </div>
               {categories.map((category) => (
@@ -647,11 +620,11 @@ export default function Tasks() {
             <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 overflow-hidden">
               <div className="flex items-center justify-between mb-6">
                 <h4 className="font-bold text-slate-700 dark:text-slate-200">
-                  {t('This Week', 'Αυτή η Εβδομάδα')}
+                  This Week
                 </h4>
                 <div className="flex gap-2">
                   <span className="w-2 h-2 rounded-full bg-amber-500 mt-1.5"></span>
-                  <span className="text-xs text-slate-500">{t('Urgent', 'Επείγον')}</span>
+                  <span className="text-xs text-slate-500">Urgent</span>
                 </div>
               </div>
               <div className="relative border-l-2 border-slate-100 dark:border-slate-800 ml-4 pl-6 pb-4 space-y-8">
@@ -717,9 +690,7 @@ export default function Tasks() {
               
               setTasks(newTasks.sort((a, b) => (a.order || 0) - (b.order || 0)));
 
-              if (isDemoMode) {
-                await saveDemoTasks(newTasks.sort((a, b) => (a.order || 0) - (b.order || 0)) as DemoTask[]);
-              } else if (user) {
+              if (user) {
                 const batch = writeBatch(db);
                 newOrder.forEach((task, index) => {
                   batch.update(doc(db, "users", user.uid, "tasks", task.id.toString()), {
@@ -727,8 +698,10 @@ export default function Tasks() {
                   });
                 });
                 await batch.commit();
+              } else if (isDemoMode) {
+                await writeLocalTasks(newTasks);
               }
-            }} className="space-y-4 w-full">
+            }} className="space-y-4 max-w-4xl">
               {filteredTasks.map((task, i) => {
                 const Icon = getIcon(task.icon);
                 if (task.completed) {
@@ -737,21 +710,21 @@ export default function Tasks() {
                       value={task}
                       dragListener={false}
                       key={task.id}
-                      className="bg-slate-50/50 dark:bg-slate-900/20 border border-slate-100/60 dark:border-slate-800/40 p-4 rounded-2xl flex items-center justify-between opacity-50 hover:opacity-70 transition-opacity"
+                      className="bg-slate-50/50 dark:bg-slate-900/30 border border-slate-200/40 dark:border-slate-800/40 p-4 rounded-2xl flex items-center justify-between opacity-60"
                     >
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-emerald-50 dark:bg-emerald-900/20 shrink-0">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center bg-slate-100 dark:bg-slate-800 shrink-0">
                           <CheckCircle2
-                            className="w-4 h-4 text-emerald-500"
-                            strokeWidth={2}
+                            className="w-5 h-5 md:w-6 md:h-6 text-slate-400 dark:text-slate-500"
+                            strokeWidth={1.5}
                           />
                         </div>
                         <div>
-                          <h4 className="font-medium text-slate-400 dark:text-slate-500 text-sm line-through">
+                          <h4 className="font-display font-bold text-slate-500 dark:text-slate-400 text-base line-through">
                             {task.title}
                           </h4>
-                          <p className="text-xs font-semibold text-emerald-500 dark:text-emerald-600 mt-0.5 uppercase tracking-wide">
-                            {t('Completed', 'Ολοκληρώθηκε')}
+                          <p className="text-xs font-medium text-slate-400 dark:text-slate-500 mt-1">
+                            Completed
                           </p>
                         </div>
                       </div>
@@ -762,14 +735,19 @@ export default function Tasks() {
                 return (
                   <Reorder.Item
                     value={task}
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.2, ease: 'easeOut' }}
-                    whileDrag={{ scale: 1.02, zIndex: 50, boxShadow: '0 20px 40px -12px rgba(0,0,0,0.15)' }}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{
+                      duration: 0.2,
+                      ease: "easeOut",
+                    }}
+                    whileDrag={{ scale: 1.02, zIndex: 50 }}
                     key={task.id}
-                    className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800 p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between hover:shadow-lg hover:shadow-slate-200/50 dark:hover:shadow-slate-900/50 hover:border-slate-300 dark:hover:border-slate-700 transition-all duration-300 group relative overflow-hidden"
+                    className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800 p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between hover:shadow-md hover:border-slate-300 dark:hover:border-slate-700 transition-all duration-300 group relative overflow-hidden"
                   >
-                    <div className={`absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl ${priorityBorder(task)}`} />
+                    {task.urgent && (
+                      <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500" />
+                    )}
 
                     <div className="flex items-start sm:items-center gap-4 mb-3 sm:mb-0">
                       {isSelectionMode ? (
@@ -803,37 +781,33 @@ export default function Tasks() {
                         </div>
                       </button>
                       <div>
-                        <h4 className="font-display font-bold text-slate-900 dark:text-white text-sm leading-tight group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                        <h4 className="font-display font-bold text-slate-900 dark:text-white text-base leading-tight group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
                           {task.title}
                         </h4>
-                        <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-                          <span className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-100/60 dark:border-indigo-800/50 px-2 py-0.5 rounded-lg">
+                        <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                          <span className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-100/50 dark:border-indigo-800/50 px-2 py-0.5 rounded-md">
                             {task.course}
                           </span>
-                          <span className="text-xs font-medium text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60 px-2 py-0.5 rounded-lg">
+                          <span className="w-1 h-1 bg-slate-300 dark:bg-slate-600 rounded-full hidden sm:block"></span>
+                          <span className="text-xs font-medium text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60 px-2 py-0.5 rounded-md">
                             {task.type}
                           </span>
-                          {task.urgent && (
-                            <span className="text-xs font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 border border-rose-200/60 dark:border-rose-800/50 px-2 py-0.5 rounded-lg uppercase tracking-wide">
-                              {t('Urgent', 'Επείγον')}
-                            </span>
-                          )}
                         </div>
                       </div>
                     </div>
 
                     <div className="flex items-center justify-between sm:justify-end gap-4 w-full sm:w-auto mt-3 sm:mt-0 pl-14 sm:pl-0">
                       {task.nextReviewDate ? (
-                        <div className={cn('flex flex-col items-end gap-0.5 px-2.5 py-1 rounded-xl border', new Date(task.nextReviewDate) <= new Date() ? 'bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-900/50 text-amber-700 dark:text-amber-400' : 'bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700/50 text-slate-500 dark:text-slate-400')}>
-                          <span className="text-xs font-bold uppercase tracking-wider">
-                            {new Date(task.nextReviewDate) <= new Date() ? t('Review Due', 'Εκκρεμή Επανάληψη') : t('Next Review', 'Επόμενη Επανάληψη')}
+                        <div className={cn("flex flex-col items-end gap-0.5 px-2.5 py-1 rounded-lg border", new Date(task.nextReviewDate) <= new Date() ? "bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-900/50 text-amber-700 dark:text-amber-400" : "bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700/50 text-slate-500 dark:text-slate-400")}>
+                          <span className="text-[9px] font-bold uppercase tracking-wider">
+                            {new Date(task.nextReviewDate) <= new Date() ? 'Review Due' : 'Next Review'}
                           </span>
                           <span className="text-xs font-bold font-mono">
-                            {format(new Date(task.nextReviewDate), 'MMM d, HH:mm')}
+                            {format(new Date(task.nextReviewDate), "MMM d, HH:mm")}
                           </span>
                         </div>
                       ) : (
-                        <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800 px-2.5 py-1 rounded-xl border border-slate-100 dark:border-slate-700/50">
+                        <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-100 dark:border-slate-700/50">
                           <Clock className="w-3.5 h-3.5" />
                           <span className="text-xs font-bold font-mono">
                             {task.time}
@@ -844,7 +818,7 @@ export default function Tasks() {
                       <button 
                         onClick={() => handleCompleteTask(task)}
                         aria-label={`Start task ${task.title}`}
-                        className="bg-gradient-to-br from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 hover:scale-105 active:scale-95 text-white w-10 h-10 rounded-xl flex items-center justify-center transition-all shadow-md shadow-indigo-500/25 shrink-0"
+                        className="bg-slate-900 dark:bg-indigo-600 hover:bg-slate-800 dark:hover:bg-indigo-700 hover:scale-105 active:scale-95 text-white w-10 h-10 rounded-xl flex items-center justify-center transition-all shadow-[0_4px_14px_0_rgba(15,23,42,0.39)] dark:shadow-[0_4px_14px_0_rgba(79,70,229,0.39)] shrink-0"
                       >
                         <Play className="w-4 h-4 ml-0.5" fill="currentColor" />
                       </button>
@@ -857,7 +831,7 @@ export default function Tasks() {
         </div>
 
         {/* Focus Timer & Stats Column */}
-        <div className="xl:col-span-4 space-y-6 xl:sticky xl:top-6 xl:self-start xl:max-h-[calc(100vh-5rem)] xl:overflow-y-auto">
+        <div className="space-y-6">
           <PomodoroTimer />
 
           <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800 p-6 rounded-3xl shadow-sm transition-colors duration-300">
@@ -866,19 +840,19 @@ export default function Tasks() {
                 <Target className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
               </div>
               <h3 className="font-display font-bold text-lg text-slate-900 dark:text-white">
-                {t('Learning Analytics', 'Αναλυτικά Μάθησης')}
+                Learning Analytics
               </h3>
             </div>
             
             <div className="space-y-6">
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium text-slate-500 dark:text-slate-400">{t('Focus Time (Last 7 Days)', 'Χρόνος Εστίασης (7 ημέρες)')}</span>
+                  <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Focus Time (Last 7 Days)</span>
                   <span className="text-xs font-bold text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 px-2 py-1 rounded-md">+14%</span>
                 </div>
                 <div className="h-32 w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={analyticsData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
+                    <AreaChart data={mockAnalyticsData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
                       <defs>
                         <linearGradient id="colorFocus" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
@@ -897,12 +871,12 @@ export default function Tasks() {
 
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium text-slate-500 dark:text-slate-400">{t('Knowledge Retention', 'Διατήρηση Γνώσης')}</span>
-                  <span className="text-xs font-bold text-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 px-2 py-1 rounded-md">{t('High', 'Υψηλή')}</span>
+                  <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Knowledge Retention</span>
+                  <span className="text-xs font-bold text-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 px-2 py-1 rounded-md">High</span>
                 </div>
                 <div className="h-32 w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={analyticsData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
+                    <AreaChart data={mockAnalyticsData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
                       <defs>
                         <linearGradient id="colorMastery" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
@@ -926,7 +900,7 @@ export default function Tasks() {
                 </div>
                 <div className="h-32 w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={analyticsData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
+                    <AreaChart data={mockAnalyticsData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
                       <defs>
                         <linearGradient id="colorCompletion" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.3}/>
@@ -1137,6 +1111,6 @@ export default function Tasks() {
           </motion.div>
         )}
       </AnimatePresence>
-    </PageShell>
+    </div>
   );
 }

@@ -15,7 +15,6 @@ describe("implicit learning profile", () => {
       ragTopK: 4,
       chunkSizeWords: 500,
       theoryPracticeRatio: 0.5,
-      retrievalIntervalMultiplier: 1,
     });
   });
 
