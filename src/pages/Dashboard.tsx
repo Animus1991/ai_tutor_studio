@@ -12,6 +12,7 @@ import Flashcards from "../components/Flashcards";
 import StudyTimeChart from "../components/StudyTimeChart";
 import StudyRoadmap from "../components/StudyRoadmap";
 import ContinueStudyingCard from "../components/ContinueStudyingCard";
+import LearningProfileInsights from "../components/LearningProfileInsights";
 import { useState, useEffect } from "react";
 import { auth, db } from "../lib/firebase";
 import { collection, query, getDocs, limit, orderBy } from "firebase/firestore";
@@ -311,6 +312,7 @@ export default function Dashboard() {
       </div>
     ),
     tools: (
+      <>
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
         <div className="h-[420px] lg:col-span-1 print-expand print-break-inside-avoid">
           <StudyRoadmap />
@@ -325,6 +327,10 @@ export default function Dashboard() {
           <OptimalStudyTimes />
         </div>
       </div>
+      <div className="mt-4 print-expand print-break-inside-avoid">
+        <LearningProfileInsights />
+      </div>
+      </>
     )
   };
 

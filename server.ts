@@ -15,6 +15,7 @@ import {
   fetchTenantMetricsFromFirestore,
   persistAuditToFirestore,
 } from './firebaseAdmin.js';
+import { assertPublicHttpUrl } from './server/security.js';
 const _require = createRequire(typeof import.meta !== 'undefined' && import.meta.url ? import.meta.url : 'file://' + process.cwd() + '/server.ts');
 const pdfParse = _require('pdf-parse');
 
@@ -62,7 +63,8 @@ function pushServerAudit(event: Record<string, unknown>) {
 }
 
 async function extractArticleText(url: string): Promise<string> {
-  const res = await fetch(url, {
+  const parsed = await assertPublicHttpUrl(url);
+  const res = await fetch(parsed.href, {
     headers: { 'User-Agent': 'MemoraStudyBot/1.0 (+https://memora.app)' },
     redirect: 'follow',
   });
@@ -968,8 +970,9 @@ Question: ${query}`
     try {
       const { url } = req.body;
       if (!url) return res.status(400).json({ error: 'URL is required' });
-      
-      const response = await fetch(url);
+
+      const parsed = await assertPublicHttpUrl(url);
+      const response = await fetch(parsed.href);
       const html = await response.text();
       const $ = cheerio.load(html);
       
