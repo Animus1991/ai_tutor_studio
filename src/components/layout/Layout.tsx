@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { BookOpen, CheckSquare, MessageSquare, Settings, BrainCircuit, Bell, User as UserIcon, Sun, Moon, Menu, Users, Shield, LayoutDashboard, Calendar as CalendarIcon, HelpCircle, Type, Sparkles, Upload, Zap } from 'lucide-react';
+import { BookOpen, CheckSquare, MessageSquare, Settings, BrainCircuit, Bell, Menu, Users, Shield, LayoutDashboard, Calendar as CalendarIcon, HelpCircle, Type, Sparkles, Upload, Zap, Sun, Moon } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../../store/useStore';
@@ -19,6 +19,7 @@ import { toast } from 'sonner';
 import { isFullBleedRoute, CONTENT_GUTTER } from './pageLayout';
 import SkipLink from '../SkipLink';
 import { useLanguage } from '../../lib/i18n';
+import AuthUserMenu from '../AuthUserMenu';
 
 export default function Layout() {
   useKeyboardShortcuts();
@@ -32,8 +33,11 @@ export default function Layout() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
 
-  // Track page navigation with auditLogger
+  // Track page navigation once per path per browser session (StrictMode-safe)
   useEffect(() => {
+    const key = `memora-audit-path:${location.pathname}`;
+    if (sessionStorage.getItem(key)) return;
+    sessionStorage.setItem(key, '1');
     auditLogger.log('APP_ACCESSED', 'current_user', undefined, { path: location.pathname });
   }, [location.pathname]);
 
@@ -192,18 +196,7 @@ export default function Layout() {
             </div>
           </div>
 
-          <div className="flex items-center justify-center lg:justify-start gap-2 p-2 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer transition-colors border border-transparent hover:border-slate-100 dark:hover:border-slate-700/50">
-            <div className="relative">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-100 to-violet-100 dark:from-indigo-900/40 dark:to-violet-900/40 flex items-center justify-center text-indigo-600 dark:text-indigo-400 border border-indigo-200/60 dark:border-indigo-800/50 shrink-0">
-                <UserIcon className="w-4 h-4" />
-              </div>
-              <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white dark:border-slate-900" />
-            </div>
-            <div className="hidden lg:block overflow-hidden">
-              <p className="text-xs font-semibold text-slate-900 dark:text-white truncate">Alex Learner</p>
-              <p className="text-xs text-indigo-500 dark:text-indigo-400 truncate font-medium">Pro Plan</p>
-            </div>
-          </div>
+          <AuthUserMenu variant="sidebar" />
         </div>
       </aside>
       )}
@@ -248,6 +241,7 @@ export default function Layout() {
             </div>
 
             <SyncIndicator />
+            <AuthUserMenu />
             <div className="hidden sm:flex items-center gap-2 bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700">
               <Shield className="w-3.5 h-3.5 text-indigo-500" />
               <select 
@@ -403,13 +397,7 @@ export default function Layout() {
                   <span>{t('Settings', 'Ρυθμίσεις')}</span>
                 </button>
                 <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700/50 mt-2">
-                  <div className="w-10 h-10 rounded-full bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shrink-0">
-                    <UserIcon className="w-5 h-5" />
-                  </div>
-                  <div className="overflow-hidden">
-                    <p className="text-sm font-semibold text-slate-900 dark:text-white truncate">Alex Learner</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 truncate">Pro Plan</p>
-                  </div>
+                  <AuthUserMenu variant="sidebar" />
                 </div>
               </div>
             </motion.div>

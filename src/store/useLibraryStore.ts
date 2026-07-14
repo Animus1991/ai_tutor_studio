@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { extractFileContent, mergeOutlineIntoCourse, processTextToCourse } from '../lib/uploadPipeline';
 import { loadLibrary, persistLibraryCourse, saveLibrary, type LibraryState } from '../lib/libraryStorage';
-import { chunkText, generateEmbedding, saveEmbedding, deleteEmbeddingsForDoc } from '../lib/vectorStore';
+import { indexDocumentForRag } from '../lib/vectorStore';
 import type { Course, UploadedFile } from '../lib/courseTypes';
 import { logActivity } from '../lib/activity';
 import { batchIngestYoutube } from '../lib/api';
@@ -17,22 +17,7 @@ interface LibraryStore extends LibraryState {
 }
 
 async function indexFileForRag(file: UploadedFile) {
-  await deleteEmbeddingsForDoc(file.id);
-  const chunks = chunkText(file.extractedText);
-  for (let i = 0; i < chunks.length; i++) {
-    try {
-      const embedding = await generateEmbedding(chunks[i]);
-      await saveEmbedding({
-        id: `${file.id}_chunk_${i}`,
-        docId: file.id,
-        docTitle: file.name,
-        text: chunks[i],
-        embedding,
-      });
-    } catch {
-      /* embedding optional */
-    }
-  }
+  await indexDocumentForRag(file.id, file.name, file.extractedText);
 }
 
 export const useLibraryStore = create<LibraryStore>((set, get) => ({

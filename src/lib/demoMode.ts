@@ -1,6 +1,6 @@
 import { processTextToCourse } from './uploadPipeline';
 import { persistLibraryCourse, loadLibrary } from './libraryStorage';
-import { chunkText, generateEmbedding, saveEmbedding, deleteEmbeddingsForDoc } from './vectorStore';
+import { indexDocumentForRag, getEmbeddingsByDocId } from './vectorStore';
 import { useStore } from '../store/useStore';
 import {
   seedDemoTasks,
@@ -8,100 +8,60 @@ import {
   setDemoModeFlag,
   isDemoModeActive,
 } from './demoStorage';
+import {
+  DEMO_DATA_ANALYSIS_TEXT,
+  DEMO_MICROECONOMICS_TEXT,
+  DEMO_RAG_SOURCES,
+} from './demoCorpus';
 
-const DEMO_TEXT = `
-# Introduction to Microeconomics
+async function ensureDemoCourse(
+  courseId: string,
+  fileId: string,
+  fileName: string,
+  text: string,
+) {
+  const lib = await loadLibrary();
+  let course = lib.courses.find((c) => c.id === courseId);
+  let file = lib.uploadedFiles.find((f) => f.id === fileId);
 
-Market equilibrium occurs where supply equals demand. The price mechanism allocates scarce resources.
+  const needsPersist =
+    !course ||
+    !file ||
+    !file.extractedText?.trim() ||
+    file.extractedText.length < 80;
 
-## Cournot vs Bertrand Competition
+  if (needsPersist) {
+    const built = processTextToCourse(text, fileName, fileId);
+    course = built.course;
+    course.id = courseId;
+    file = built.file;
+    file.id = fileId;
+    file.courseId = courseId;
+    file.name = fileName;
+    file.extractedText = text;
+    await persistLibraryCourse(course, file);
+  }
 
-Cournot competition vs Bertrand competition: firms choose quantities versus prices respectively.
-In Cournot models, firms simultaneously choose output levels. In Bertrand models, firms compete on price.
-
-## Elasticity
-
-Price elasticity of demand measures responsiveness of quantity demanded to price changes.
-Elastic demand means |E| > 1. Inelastic demand means |E| < 1.
-
-Definition: Consumer surplus is the area between the demand curve and the market price.
-Definition: Producer surplus is the area between the supply curve and the market price.
-
-The marginal cost equation is MC = 2q + 5 for a representative firm.
-Total revenue TR = p * q where p is market price and q is quantity sold.
-`.trim();
-
-const DEMO_DATA_ANALYSIS_TEXT = `
-# Introduction to Data Analysis
-
-Data analysis is the process of inspecting, cleansing, transforming, and modeling data to discover useful information.
-
-## Descriptive Statistics
-
-Mean, median, and mode summarize central tendency. Standard deviation measures spread.
-Definition: A histogram visualizes the frequency distribution of numeric data.
-
-## Inferential Statistics
-
-Hypothesis testing evaluates claims about population parameters using sample data.
-The p-value indicates the probability of observing results at least as extreme under the null hypothesis.
-Correlation does not imply causation — confounding variables must be controlled.
-
-## Regression
-
-Linear regression models the relationship Y = beta0 + beta1 * X + epsilon.
-R-squared measures the proportion of variance explained by the model.
-`.trim();
+  await indexDocumentForRag(file!.id, file!.name, file!.extractedText);
+  return course!;
+}
 
 export async function seedDemoCourse() {
-  const fileId = 'demo-file-cournot';
-  const lib = await loadLibrary();
-  const existing = lib.courses.find((c) => c.id === 'demo-course-micro');
-  if (existing) return existing;
-
-  const { course, file } = processTextToCourse(DEMO_TEXT, 'Demo: Microeconomics.pdf', fileId);
-  course.id = 'demo-course-micro';
-  file.id = fileId;
-  file.courseId = course.id;
-  file.name = 'Demo: Microeconomics.pdf';
-  await persistLibraryCourse(course, file);
-  await indexDemoFileForRag(file.id, file.name, file.extractedText);
-  return course;
+  return ensureDemoCourse(
+    'demo-course-micro',
+    'demo-file-cournot',
+    'Demo: Microeconomics.pdf',
+    DEMO_MICROECONOMICS_TEXT,
+  );
 }
 
 export async function seedDemoDataAnalysisCourse() {
-  const fileId = 'demo-file-data-analysis';
-  const lib = await loadLibrary();
-  const existing = lib.courses.find((c) => c.id === 'demo-course-data');
-  if (existing) return existing;
-
-  const { course, file } = processTextToCourse(DEMO_DATA_ANALYSIS_TEXT, 'Introduction to Data Analysis.pdf', fileId);
-  course.id = 'demo-course-data';
-  file.id = fileId;
-  file.courseId = course.id;
-  file.name = 'Introduction to Data Analysis.pdf';
-  await persistLibraryCourse(course, file);
-  await indexDemoFileForRag(file.id, file.name, file.extractedText);
-  return course;
-}
-
-async function indexDemoFileForRag(fileId: string, fileName: string, text: string) {
-  await deleteEmbeddingsForDoc(fileId);
-  const chunks = chunkText(text);
-  for (let i = 0; i < chunks.length; i++) {
-    try {
-      const embedding = await generateEmbedding(chunks[i]);
-      await saveEmbedding({
-        id: `${fileId}_chunk_${i}`,
-        docId: fileId,
-        docTitle: fileName,
-        text: chunks[i],
-        embedding,
-      });
-    } catch {
-      /* embedding optional without API key */
-    }
-  }
+  return ensureDemoCourse(
+    'demo-course-data',
+    'demo-file-data-analysis',
+    'Introduction to Data Analysis.pdf',
+    DEMO_DATA_ANALYSIS_TEXT,
+  );
 }
 
 export function seedDemoStoreStats() {
@@ -141,8 +101,29 @@ export async function seedDemoSandbox() {
   seedDemoStoreStats();
 }
 
+/** Repair demo library + RAG index on every demo session (idempotent). */
+export async function ensureDemoSandboxReady(): Promise<void> {
+  if (!isDemoModeActive()) return;
+  setDemoModeFlag(true);
+  await seedDemoCourse();
+  await seedDemoDataAnalysisCourse();
+  await seedDemoTasks();
+  await seedDemoActivities();
+  seedDemoStoreStats();
+}
+
 export function isDemoCourseId(id: string) {
   return id.startsWith('demo-');
 }
 
-export { isDemoModeActive, setDemoModeFlag };
+export async function ensureDemoRagIndexed(): Promise<void> {
+  await ensureDemoSandboxReady();
+  for (const source of DEMO_RAG_SOURCES) {
+    const existing = await getEmbeddingsByDocId(source.fileId);
+    if (existing.length === 0) {
+      await indexDocumentForRag(source.fileId, source.fileName, source.text);
+    }
+  }
+}
+
+export { isDemoModeActive, setDemoModeFlag, DEMO_RAG_SOURCES };

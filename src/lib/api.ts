@@ -1,34 +1,34 @@
 import { apiRequest } from './apiClient';
+import {
+  ApiError,
+  DemoModeError,
+  errorFromResponse,
+} from './apiErrors';
 
-export class ApiError extends Error {
-  constructor(
-    message: string,
-    public status: number,
-    public code?: string,
-  ) {
-    super(message);
-    this.name = 'ApiError';
-  }
-}
+export { ApiError, DemoModeError };
 
 async function parseResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
-    let message = 'Network response was not ok';
-    try {
-      const body = await response.json();
-      message = body.error ?? body.message ?? message;
-    } catch {
-      /* ignore parse errors */
-    }
-    throw new ApiError(message, response.status);
+    throw await errorFromResponse(response);
   }
   return response.json();
+}
+
+export function isGeminiUnavailable(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    (error.status === 429 ||
+      error.status === 401 ||
+      error.code === 'gemini_quota_exhausted' ||
+      error.code === 'gemini_api_key_invalid' ||
+      error.code === 'gemini_model_not_found')
+  );
 }
 
 export async function chatWithAgent(
   messages: { role: string; parts: { text: string }[] }[],
   systemInstruction: string,
-  model = 'gemini-3.5-flash',
+  model = 'gemini-2.0-flash',
 ) {
   const response = await apiRequest('/api/agent/chat', {
     method: 'POST',
@@ -61,7 +61,7 @@ export async function streamChatWithAgent(
   messages: { role: string; parts: { text: string }[] }[],
   systemInstruction: string,
   onChunkOrHandlers: ((text: string) => void) | StreamAgentHandlers,
-  model = 'gemini-3.5-flash',
+  model = 'gemini-2.0-flash',
 ): Promise<void> {
   const handlers: StreamAgentHandlers =
     typeof onChunkOrHandlers === 'function' ? { onChunk: onChunkOrHandlers } : onChunkOrHandlers;
@@ -96,11 +96,18 @@ export async function streamChatWithAgent(
         const payload = JSON.parse(line.slice(6)) as {
           text?: string;
           error?: string;
+          code?: string;
           done?: boolean;
           citation?: AgentCitation;
           urls?: string[];
         };
-        if (payload.error) throw new ApiError(payload.error, 500);
+        if (payload.error) {
+          throw new ApiError(
+            payload.error,
+            payload.code === 'gemini_quota_exhausted' ? 429 : 500,
+            payload.code,
+          );
+        }
         if (payload.text) handlers.onChunk(payload.text);
         if (payload.citation) handlers.onCitation?.(payload.citation);
         if (payload.done) handlers.onDone?.(payload.urls ?? []);

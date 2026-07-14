@@ -1,11 +1,15 @@
 import {
   assembleRetrieval,
   blendScores,
+  chunkDocument,
   CorpusDoc,
   RetrievalResult,
   retrieveLexical,
   ScoredChunk,
 } from './rag';
+import { loadLibrary } from './libraryStorage';
+import { isDemoModeActive } from './demoStorage';
+import { buildDemoCorpusDocs } from './demoCorpus';
 import {
   cosineSimilarity,
   generateEmbedding,
@@ -68,6 +72,30 @@ export interface RetrieveOptions {
   docIds?: string[];
 }
 
+async function corpusFromLibrary(docIds?: string[]): Promise<CorpusDoc[]> {
+  const lib = await loadLibrary();
+  const files =
+    docIds && docIds.length > 0
+      ? lib.uploadedFiles.filter((f) => docIds.includes(f.id))
+      : lib.uploadedFiles;
+
+  const corpus: CorpusDoc[] = [];
+  for (const file of files) {
+    if (!file.extractedText?.trim()) continue;
+    const chunks = chunkDocument(file.extractedText);
+    chunks.forEach((text, chunkIndex) => {
+      corpus.push({
+        id: `${file.id}_chunk_${chunkIndex}`,
+        docId: file.id,
+        docTitle: file.name,
+        text,
+        chunkIndex,
+      });
+    });
+  }
+  return corpus;
+}
+
 /**
  * Hybrid retrieval: BM25 lexical search blended with optional semantic rerank.
  * Falls back to pure BM25 when embeddings are unavailable.
@@ -82,7 +110,15 @@ export async function retrieveForQueryHybrid(
     const allowed = new Set(docIds);
     allDocs = allDocs.filter((d) => allowed.has(d.docId));
   }
-  const corpus = allDocs.map(toCorpusDoc);
+  let corpus = allDocs.map(toCorpusDoc);
+
+  if (corpus.length === 0) {
+    corpus = await corpusFromLibrary(docIds);
+  }
+
+  if (corpus.length === 0 && isDemoModeActive()) {
+    corpus = buildDemoCorpusDocs(docIds);
+  }
 
   if (corpus.length === 0) {
     return { excerpt: '', citations: [], chunks: [] };
@@ -97,7 +133,13 @@ export async function retrieveForQueryHybrid(
   try {
     const semantic = await retrieveSemantic(query, corpus, topK);
     const blended = blendScores(lexical, semantic, topK);
-    return assembleRetrieval(blended.length > 0 ? blended : lexical);
+    const chosen =
+      blended.length > 0
+        ? blended
+        : lexical.length > 0
+          ? lexical
+          : semantic;
+    return assembleRetrieval(chosen);
   } catch {
     return assembleRetrieval(lexical);
   }

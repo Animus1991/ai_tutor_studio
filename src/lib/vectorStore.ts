@@ -80,6 +80,31 @@ export async function generateEmbedding(text: string): Promise<number[]> {
   return data.embedding;
 }
 
+/** Index document chunks for hybrid RAG. Always stores text; embeddings optional. */
+export async function indexDocumentForRag(
+  docId: string,
+  docTitle: string,
+  text: string,
+): Promise<void> {
+  await deleteEmbeddingsForDoc(docId);
+  const chunks = chunkText(text);
+  for (let i = 0; i < chunks.length; i++) {
+    let embedding: number[] = [];
+    try {
+      embedding = await generateEmbedding(chunks[i]);
+    } catch {
+      /* lexical-only when embed API unavailable (e.g. Gemini quota) */
+    }
+    await saveEmbedding({
+      id: `${docId}_chunk_${i}`,
+      docId,
+      docTitle,
+      text: chunks[i],
+      embedding,
+    });
+  }
+}
+
 /** Character-based chunking with overlap (900 chars / 160 overlap by default). */
 export function chunkText(text: string, chunkSize = 900, overlap = 160): string[] {
   return chunkDocument(text, chunkSize, overlap);

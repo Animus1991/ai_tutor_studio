@@ -3,7 +3,14 @@ import { useState, useRef, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Send, Bot, User, Sparkles, BookOpen, ChevronDown, Activity, Mic, Square, Trash2, Copy, Check, Globe, HelpCircle, Layers, FlaskConical, Brain, Zap, GraduationCap, FileText, Swords, Compass } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { chatWithAgent, streamChatWithAgent, ApiError, checkHealth } from '../lib/api';
+import {
+  chatWithAgent,
+  streamChatWithAgent,
+  ApiError,
+  DemoModeError,
+  checkHealth,
+  isGeminiUnavailable,
+} from '../lib/api';
 import { retrieveForQueryHybrid, offlineAnswerFromExcerpt } from '../lib/sourceContext';
 import { formatCitation, type Citation } from '../lib/rag';
 import { logActivity } from '../lib/activity';
@@ -24,7 +31,7 @@ import type { BehaviorEvent } from '../lib/learningProfile';
 import { loadAgentCourseId, saveAgentCourseId } from '../lib/agentCourseContext';
 import { useLanguage } from '../lib/i18n';
 import { announce } from '../lib/liveAnnouncer';
-import MarkdownMessage from '../components/MarkdownMessage';
+import { ensureDemoSandboxReady } from '../lib/demoMode';
 
 type Message = AgentMessage;
 
@@ -264,6 +271,11 @@ export default function Agent() {
     logActivity(`Agent session: ${modeName(activeMode.id)}`, 'study');
 
     try {
+      if (isDemoMode) {
+        await ensureDemoSandboxReady();
+        await hydrateLibrary();
+      }
+
       const geminiMessages = messages.map(m => ({
         role: m.role === 'user' ? 'user' : 'model',
         parts: [{ text: m.content }]
@@ -333,10 +345,24 @@ Format responses nicely using markdown structure if helpful.${ragContext}`;
               announce('Response received.', 'polite');
             },
           });
-        } catch {
-          const response = await chatWithAgent(geminiMessages, systemInstruction);
-          responseText = response.text;
-          responseUrls = response.urls;
+        } catch (streamErr) {
+          try {
+            const response = await chatWithAgent(geminiMessages, systemInstruction);
+            responseText = response.text;
+            responseUrls = response.urls;
+          } catch (chatErr) {
+            if (isGeminiUnavailable(streamErr) || isGeminiUnavailable(chatErr)) {
+              const offlineErr = isGeminiUnavailable(chatErr) ? chatErr : streamErr;
+              responseText = `${offlineAnswerFromExcerpt(userMessage, retrievalResult)}\n\n---\n*Gemini unavailable (${offlineErr instanceof ApiError ? offlineErr.message : 'API error'}). Showing offline excerpt from your documents.*`;
+              toast.warning(
+                offlineErr instanceof ApiError
+                  ? offlineErr.message
+                  : 'Gemini unavailable — using offline mode',
+              );
+            } else {
+              throw chatErr;
+            }
+          }
         }
 
         setMessages((prev) =>
@@ -381,9 +407,14 @@ Format responses nicely using markdown structure if helpful.${ragContext}`;
       turnStartedAtRef.current = Date.now();
     } catch (error) {
       console.error('Chat error:', error);
-      const msg = error instanceof ApiError
-        ? `Service error (${error.status}): ${error.message}`
-        : 'Network interruption. Re-establishing Memora connection...';
+      const msg =
+        error instanceof DemoModeError
+          ? `${error.message} Use “Sign in with Google” in the banner, or set VITE_REQUIRE_API_AUTH=false in .env.local and restart npm run dev.`
+          : error instanceof ApiError
+            ? error.status === 429
+              ? error.message
+              : `Service error (${error.status}): ${error.message}`
+            : 'Network interruption. Re-establishing Memora connection...';
       setMessages(prev => [...prev, { 
         id: (Date.now() + 1).toString(), 
         role: 'model', 
@@ -398,7 +429,13 @@ Format responses nicely using markdown structure if helpful.${ragContext}`;
         errorType:
           error instanceof Error ? error.name.slice(0, 80) : 'unknown_error',
       });
-      toast.error('Failed to get AI response');
+      toast.error(
+        error instanceof DemoModeError
+          ? 'Sign in with Google to use AI in demo mode'
+          : error instanceof ApiError && error.status === 429
+            ? error.message
+            : 'Failed to get AI response',
+      );
     } finally {
       setIsLoading(false);
     }

@@ -4,7 +4,7 @@
  */
 
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import Layout from "./components/layout/Layout";
 import Dashboard from "./pages/Dashboard";
 import Tasks from "./pages/Tasks";
@@ -20,7 +20,7 @@ const OAuthCallback = lazy(() => import("./pages/OAuthCallback"));
 import ThemeProvider from "./components/ThemeProvider";
 import TimerManager from "./components/TimerManager";
 import AudioController from "./components/AudioController";
-import { initAuth, googleSignIn } from "./lib/auth";
+import { bootstrapAuth, googleSignIn, describeAuthError, isCancelledAuthError } from "./lib/auth";
 import { useAuthStore } from "./store/useAuthStore";
 import { motion } from "framer-motion";
 import { Sparkles } from "lucide-react";
@@ -31,7 +31,7 @@ import { Toaster } from "sonner";
 import QuickAddModal from "./components/QuickAddModal";
 import PostSessionModal from "./components/PostSessionModal";
 import DemoSandboxBanner from "./components/DemoSandboxBanner";
-import { seedDemoSandbox, isDemoModeActive } from "./lib/demoMode";
+import { seedDemoSandbox, isDemoModeActive, ensureDemoSandboxReady } from "./lib/demoMode";
 import LiveRegion from "./components/LiveRegion";
 import { useLibraryStore } from "./store/useLibraryStore";
 import { toast } from "sonner";
@@ -43,14 +43,53 @@ export default function App() {
   const hydrateLibrary = useLibraryStore((s) => s.hydrate);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isEnteringDemo, setIsEnteringDemo] = useState(false);
+  const [authBootstrapping, setAuthBootstrapping] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [onboardingChecked, setOnboardingChecked] = useState(false);
 
-  useLayoutEffect(() => {
-    if (isDemoModeActive() && useAuthStore.getState().needsAuth) {
-      enterDemoMode();
-    }
-  }, [enterDemoMode]);
+  useEffect(() => {
+    let unsubscribe = () => {};
+
+    void bootstrapAuth({
+      onRedirectSuccess: (session) => {
+        void session.user.getIdToken().then((idToken) => {
+          setUser(session.user);
+          setAccessToken(idToken);
+          setNeedsAuth(false);
+          toast.success('Signed in with Google');
+        });
+      },
+      onRedirectError: (err) => {
+        if (isCancelledAuthError(err)) return;
+        toast.error(describeAuthError(err));
+      },
+      onAuthSuccess: (user, token) => {
+        setUser(user);
+        setAccessToken(token);
+        setNeedsAuth(false);
+      },
+      onAuthFailure: () => {
+        // Demo flag may live in storage before enterDemoMode() runs in .then()
+        if (isDemoModeActive() || useAuthStore.getState().isDemoMode) return;
+        setUser(null);
+        setAccessToken(null);
+        setNeedsAuth(true);
+      },
+    }).then((unsub) => {
+      unsubscribe = unsub;
+      if (isDemoModeActive() && useAuthStore.getState().needsAuth) {
+        enterDemoMode();
+      } else if (isDemoModeActive()) {
+        useAuthStore.setState({ isDemoMode: true, needsAuth: false });
+      }
+      if (isDemoModeActive()) {
+        void ensureDemoSandboxReady().then(() => hydrateLibrary());
+      }
+      setAuthBootstrapping(false);
+    });
+
+    return () => unsubscribe();
+  }, [enterDemoMode, setUser, setAccessToken, setNeedsAuth]);
 
   // Check onboarding status after auth resolves
   useEffect(() => {
@@ -67,27 +106,9 @@ export default function App() {
 
   useEffect(() => {
     if (isDemoModeActive()) {
-      void hydrateLibrary();
+      void ensureDemoSandboxReady().then(() => hydrateLibrary());
     }
   }, [hydrateLibrary]);
-
-  useEffect(() => {
-    const unsubscribe = initAuth(
-      (user, token) => {
-        if (useAuthStore.getState().isDemoMode) return;
-        setUser(user);
-        setAccessToken(token);
-        setNeedsAuth(false);
-      },
-      () => {
-        if (useAuthStore.getState().isDemoMode) return;
-        setUser(null);
-        setAccessToken(null);
-        setNeedsAuth(true);
-      },
-    );
-    return () => unsubscribe();
-  }, [setUser, setAccessToken, setNeedsAuth]);
 
   const handleLogin = async () => {
     setIsLoggingIn(true);
@@ -95,17 +116,14 @@ export default function App() {
       const result = await googleSignIn();
       if (result) {
         setUser(result.user);
-        setAccessToken(result.accessToken);
+        if (result.accessToken) setAccessToken(result.accessToken);
         setNeedsAuth(false);
       }
+      // null → redirect in progress on localhost
     } catch (err: unknown) {
+      if (isCancelledAuthError(err)) return;
       console.error("Login failed:", err);
-      const code = (err as { code?: string })?.code;
-      if (code === 'auth/unauthorized-domain') {
-        toast.error('Firebase: localhost is not authorized. Use "Try Demo" or add localhost in Firebase Console → Authentication → Settings → Authorized domains.');
-      } else {
-        toast.error('Google sign-in failed. Try Demo mode for local development.');
-      }
+      toast.error(describeAuthError(err));
     } finally {
       setIsLoggingIn(false);
     }
@@ -133,6 +151,14 @@ export default function App() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot deep link
   }, []);
+
+  if (authBootstrapping) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-slate-50 dark:bg-slate-900">
+        <p className="text-sm text-slate-500 dark:text-slate-400">Loading Memora…</p>
+      </div>
+    );
+  }
 
   if (needsAuth) {
     return (

@@ -12,6 +12,7 @@
     "lint": "eslint . --max-warnings 9999 && tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "verify:gemini": "node scripts/verify-gemini-key.mjs",
     "test:rules": "firebase emulators:exec --only firestore \"vitest run --config vitest.rules.config.ts\"",
     "test:e2e": "playwright test",
     "test:e2e:prod": "npm run build && cross-env NODE_ENV=production PLAYWRIGHT_PROD=1 PORT=3011 playwright test",

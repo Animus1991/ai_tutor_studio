@@ -65,7 +65,21 @@ class ErrorBoundary extends Component<{children: ReactNode}, {hasError: boolean,
   }
 }
 
-createRoot(document.getElementById("root")!).render(
+const rootElement = document.getElementById("root")!;
+
+type AppRoot = ReturnType<typeof createRoot>;
+const appRoot: { current: AppRoot | null } = (
+  import.meta.hot?.data as { appRoot?: { current: AppRoot | null } } | undefined
+)?.appRoot ?? { current: null };
+
+if (!appRoot.current) {
+  appRoot.current = createRoot(rootElement);
+  if (import.meta.hot) {
+    import.meta.hot.data.appRoot = appRoot;
+  }
+}
+
+appRoot.current.render(
   <StrictMode>
     <ErrorBoundary>
       <LanguageProvider>

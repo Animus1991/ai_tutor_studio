@@ -4,6 +4,18 @@ import { DemoModeError, errorFromResponse } from "./apiErrors";
 
 const isApiAuthRequired = import.meta.env.VITE_REQUIRE_API_AUTH === "true";
 
+let authReadyPromise: Promise<void> | null = null;
+
+function ensureAuthReady(): Promise<void> {
+  if (!authReadyPromise) {
+    authReadyPromise =
+      typeof auth.authStateReady === "function"
+        ? auth.authStateReady()
+        : Promise.resolve();
+  }
+  return authReadyPromise;
+}
+
 function getApiPath(input: RequestInfo | URL): string | null {
   if (typeof input === "string") {
     return input.startsWith("/api/")
@@ -23,7 +35,12 @@ function isApiRequest(input: RequestInfo | URL): boolean {
 
 function isProtectedApiRequest(input: RequestInfo | URL): boolean {
   const path = getApiPath(input);
-  return path !== null && !["/api/health", "/api/logs", "/api/logs/batch"].includes(path);
+  return path !== null && ![
+    "/api/health",
+    "/api/logs",
+    "/api/logs/batch",
+    "/api/audit",
+  ].includes(path);
 }
 
 async function withAuthentication(
@@ -49,9 +66,12 @@ export async function apiRequest(
   input: RequestInfo | URL,
   init: RequestInit = {},
 ): Promise<Response> {
+  await ensureAuthReady();
+
   if (
     isApiAuthRequired &&
     useAuthStore.getState().isDemoMode &&
+    !auth.currentUser &&
     isProtectedApiRequest(input)
   ) {
     throw new DemoModeError();

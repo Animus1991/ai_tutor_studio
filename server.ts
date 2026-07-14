@@ -1,8 +1,8 @@
 import * as cheerio from "cheerio";
-import 'dotenv/config';
+import dotenv from 'dotenv';
+import path from 'path';
 import express from 'express';
 import http from 'http';
-import path from 'path';
 import cors from 'cors';
 import helmet from 'helmet';
 import { rateLimit, ipKeyGenerator } from 'express-rate-limit';
@@ -22,19 +22,37 @@ import {
   assertPublicHttpUrl,
   createFirebaseAuthMiddleware,
 } from './server/security.js';
+import {
+  geminiChatModel,
+  geminiEmbedModel,
+  formatGeminiApiError,
+  generateChatWithFallback,
+  sendGeminiError,
+  streamChatWithFallback,
+} from './server/gemini.js';
+import { geminiKeyFingerprint, resolveGeminiApiKey } from './server/geminiEnv.js';
 const _require = createRequire(typeof import.meta !== 'undefined' && import.meta.url ? import.meta.url : 'file://' + process.cwd() + '/server.ts');
 const pdfParse = _require('pdf-parse');
 
-if (!process.env.GEMINI_API_KEY) {
+const projectRoot = process.cwd();
+dotenv.config({ path: path.join(projectRoot, '.env') });
+dotenv.config({ path: path.join(projectRoot, '.env.local'), override: true });
+
+const geminiApiKey = resolveGeminiApiKey();
+
+if (!geminiApiKey) {
   console.warn('[Memora] GEMINI_API_KEY is not set — AI endpoints will fail until configured.');
+} else if (process.env.NODE_ENV !== 'production') {
+  console.log(`[Memora] Gemini key loaded: ${geminiKeyFingerprint(geminiApiKey)}`);
+  console.log(`[Memora] Gemini chat model: ${geminiChatModel}, embed: ${geminiEmbedModel}`);
 }
 
 // Initialize Gemini
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY ?? '' });
+const ai = new GoogleGenAI({ apiKey: geminiApiKey });
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
 
 /** Simple in-memory rate limiter per IP for AI routes. */
-function createRateLimiter(maxRequests: number, windowMs: number) {
+function createRateLimiter(maxRequests: number, windowMs: number, code = 'local_rate_limit') {
   const hits = new Map<string, { count: number; resetAt: number }>();
   return (req: express.Request, res: express.Response, next: express.NextFunction) => {
     const ip = req.ip ?? req.socket.remoteAddress ?? 'unknown';
@@ -45,20 +63,33 @@ function createRateLimiter(maxRequests: number, windowMs: number) {
       return next();
     }
     if (entry.count >= maxRequests) {
-      return res.status(429).json({ error: 'Too many requests. Please wait a moment and try again.' });
+      return res.status(429).json({
+        error: 'Too many AI requests from this device. Wait a minute and try again.',
+        code,
+      });
     }
     entry.count++;
     return next();
   };
 }
 
-const aiRateLimit = createRateLimiter(30, 60_000);
+const isDev = process.env.NODE_ENV !== 'production';
+const aiRateLimit = createRateLimiter(isDev ? 500 : 30, 60_000);
 
 const PUBLIC_API_PATHS = new Set([
-  '/api/health',
-  '/api/logs',
-  '/api/logs/batch',
+  '/health',
+  '/health/gemini',
+  '/logs',
+  '/logs/batch',
+  '/audit',
 ]);
+
+/** Paths as seen inside app.use('/api', …) — mount-relative, not /api/… */
+function isPublicApiRoute(req: express.Request): boolean {
+  if (PUBLIC_API_PATHS.has(req.path)) return true;
+  const full = `${req.baseUrl}${req.path}`.replace(/\/+/g, '/');
+  return PUBLIC_API_PATHS.has(full.replace(/^\/api/, '') || full);
+}
 
 function buildContentSecurityPolicy(isProduction: boolean) {
   const devWsSources = isProduction ? [] : ['ws:', 'wss:'];
@@ -96,7 +127,14 @@ function buildContentSecurityPolicy(isProduction: boolean) {
       ],
       workerSrc: ["'self'", 'blob:', 'https://cdn.jsdelivr.net'],
       fontSrc: ["'self'", 'data:', 'https:', 'https://fonts.gstatic.com'],
-      frameSrc: ["'self'", 'https://accounts.google.com', 'https://meet.google.com'],
+      mediaSrc: ["'self'", 'blob:', 'https://cdn.pixabay.com'],
+      frameSrc: [
+        "'self'",
+        'https://accounts.google.com',
+        'https://meet.google.com',
+        'https://*.firebaseapp.com',
+        'https://*.google.com',
+      ],
       objectSrc: ["'none'"],
       frameAncestors: ["'none'"],
       baseUri: ["'self'"],
@@ -249,6 +287,41 @@ async function startServer() {
     res.json({ status: 'ok' });
   });
 
+  app.get('/api/health/gemini', async (_req, res) => {
+    if (!geminiApiKey) {
+      res.status(503).json({
+        ok: false,
+        code: 'missing_key',
+        message:
+          'Set GEMINI_API_KEY in .env.local (also accepts GOOGLE_API_KEY / GOOGLE_GENERATIVE_AI_API_KEY).',
+      });
+      return;
+    }
+
+    try {
+      const response = await ai.models.generateContent({
+        model: geminiChatModel,
+        contents: 'Reply with exactly: OK',
+      });
+      res.json({
+        ok: true,
+        model: geminiChatModel,
+        embedModel: geminiEmbedModel,
+        key: geminiKeyFingerprint(geminiApiKey),
+        sample: (response.text ?? '').trim().slice(0, 80),
+      });
+    } catch (error) {
+      const formatted = formatGeminiApiError(error);
+      res.status(formatted.status).json({
+        ok: false,
+        code: formatted.code,
+        message: formatted.message,
+        model: geminiChatModel,
+        key: geminiKeyFingerprint(geminiApiKey),
+      });
+    }
+  });
+
   const generalApiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     limit: 300,
@@ -257,11 +330,14 @@ async function startServer() {
   });
   const logLimiter = rateLimit({
     windowMs: 60 * 1000,
-    limit: 10,
+    limit: isProduction ? 10 : 500,
     standardHeaders: 'draft-8',
     legacyHeaders: false,
   });
   const requireApiAuth = process.env.REQUIRE_API_AUTH === 'true';
+  if (process.env.NODE_ENV !== 'production') {
+    console.log(`[Memora] API auth required: ${requireApiAuth}`);
+  }
   const firebaseProjectId =
     process.env.FIREBASE_PROJECT_ID ||
     (firebaseConfig as { projectId?: string }).projectId ||
@@ -272,12 +348,16 @@ async function startServer() {
   );
   const protectedApiLimiter = rateLimit({
     windowMs: 60 * 1000,
-    limit: 60,
+    limit: isDev ? 500 : 60,
     standardHeaders: 'draft-8',
     legacyHeaders: false,
     keyGenerator: (req, res) =>
       (res.locals.user as { uid?: string } | undefined)?.uid ||
       ipKeyGenerator(req.ip || '127.0.0.1'),
+    message: {
+      error: 'Too many API requests. Wait a moment and try again.',
+      code: 'local_rate_limit',
+    },
   });
 
   app.post('/api/logs', logLimiter, (req, res) => {
@@ -291,10 +371,18 @@ async function startServer() {
     res.status(202).json({ status: 'accepted', received: errors.length });
   });
 
+  // Client audit beacons — always public (registered before auth middleware)
+  app.post('/api/audit', (req, res) => {
+    if (req.body?.id && req.body?.action) {
+      pushServerAudit(req.body);
+    }
+    res.status(204).end();
+  });
+
   app.use('/api', generalApiLimiter);
 
   app.use('/api', (req, res, next) => {
-    if (PUBLIC_API_PATHS.has(req.path)) {
+    if (isPublicApiRoute(req)) {
       next();
       return;
     }
@@ -369,7 +457,7 @@ async function startServer() {
 
       const base64Image = req.file.buffer.toString('base64');
       const response = await ai.models.generateContent({
-        model: 'gemini-3.5-flash',
+        model: geminiChatModel,
         contents: [
           {
             role: 'user',
@@ -405,7 +493,7 @@ async function startServer() {
 
       const base64 = req.file.buffer.toString('base64');
       const response = await ai.models.generateContent({
-        model: 'gemini-3.5-flash',
+        model: geminiChatModel,
         contents: [
           {
             role: 'user',
@@ -492,14 +580,13 @@ async function startServer() {
       if (!text) return res.status(400).json({ error: 'Text is required' });
 
       const response = await ai.models.embedContent({
-        model: 'text-embedding-004',
+        model: geminiEmbedModel,
         contents: text
       });
       
       res.json({ embedding: response.embeddings[0].values });
     } catch (error) {
-      console.error('Embed Error:', error);
-      res.status(500).json({ error: 'Failed to generate embedding' });
+      sendGeminiError(res, error, 'Embed Error');
     }
   });
 
@@ -507,8 +594,8 @@ async function startServer() {
   app.post('/api/agent/chat', async (req, res) => {
     try {
       const { messages, systemInstruction, model } = req.body;
-      const response = await ai.models.generateContent({
-        model: model || 'gemini-3.5-flash',
+      const response = await generateChatWithFallback(ai, {
+        model: model || geminiChatModel,
         contents: messages,
         config: {
           systemInstruction,
@@ -526,8 +613,7 @@ async function startServer() {
       
       res.json({ text, urls });
     } catch (error) {
-      console.error('Gemini API Error:', error);
-      res.status(500).json({ error: 'Failed to generate response' });
+      sendGeminiError(res, error, 'Gemini API Error');
     }
   });
 
@@ -540,8 +626,8 @@ async function startServer() {
 
     try {
       const { messages, systemInstruction, model } = req.body;
-      const stream = await ai.models.generateContentStream({
-        model: model || 'gemini-3.5-flash',
+      const stream = await streamChatWithFallback(ai, {
+        model: model || geminiChatModel,
         contents: messages,
         config: {
           systemInstruction,
@@ -579,8 +665,11 @@ async function startServer() {
       res.write(`data: ${JSON.stringify({ done: true, urls: groundingUrls })}\n\n`);
       res.end();
     } catch (error) {
+      const formatted = formatGeminiApiError(error);
       console.error('Gemini Stream Error:', error);
-      res.write(`data: ${JSON.stringify({ error: 'Failed to stream response' })}\n\n`);
+      res.write(
+        `data: ${JSON.stringify({ error: formatted.message, code: formatted.code })}\n\n`,
+      );
       res.end();
     }
   });
@@ -801,7 +890,7 @@ async function startServer() {
     try {
       const { context, query } = req.body;
       const response = await ai.models.generateContent({
-        model: 'gemini-3.5-flash',
+        model: geminiChatModel,
         contents: `You are an AI assistant answering a student's question based strictly on their notes below.
 Do not use outside knowledge. If the answer is not in the notes, say so.
 Include citations to the notes in the format [Citation: Chunk X] to point out where you found the information.
@@ -823,7 +912,7 @@ Question: ${query}`
     try {
       const { text } = req.body;
       const response = await ai.models.generateContent({
-        model: 'gemini-3.5-flash',
+        model: geminiChatModel,
         contents: `Generate 5 flashcards from the following study notes:\n\n${text}`,
         config: {
           responseMimeType: "application/json",
@@ -857,7 +946,7 @@ Question: ${query}`
       const mimeType = req.file.mimetype;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3.5-flash',
+        model: geminiChatModel,
         contents: [
           {
             role: 'user',
@@ -886,7 +975,7 @@ Question: ${query}`
     try {
       const { text } = req.body;
       const response = await ai.models.generateContent({
-        model: 'gemini-3.5-flash',
+        model: geminiChatModel,
         contents: `Summarize the following study notes into concise bullet-point highlights:\n\n${text}`
       });
       
@@ -902,7 +991,7 @@ Question: ${query}`
     try {
       const { source, explanation } = req.body;
       const response = await ai.models.generateContent({
-        model: 'gemini-3.5-flash',
+        model: geminiChatModel,
         contents: `You are an expert tutor using the Feynman technique. 
         Original source text: ${source}
         
@@ -934,7 +1023,7 @@ Question: ${query}`
     try {
       const { text } = req.body;
       const response = await ai.models.generateContent({
-        model: 'gemini-3.5-flash',
+        model: geminiChatModel,
         contents: `Analyze the following text and generate a structured course blueprint. Break it into manageable study modules (Pomodoro sized). Identify key terms for a glossary. Extract core concepts for a knowledge graph ontology. Return JSON.\n\n${text}`,
         config: {
           responseMimeType: "application/json",
@@ -1011,7 +1100,7 @@ Question: ${query}`
     try {
       const { text } = req.body;
       const response = await ai.models.generateContent({
-        model: 'gemini-3.5-flash',
+        model: geminiChatModel,
         contents: `Extract a knowledge graph ontology (core concepts and their relationships) from the following text:\n\n${text}\n\nGroup related concepts numerically (e.g. 1, 2, 3) and assign radii based on importance (10 to 30). Return JSON.`,
         config: {
           responseMimeType: "application/json",
@@ -1067,7 +1156,7 @@ Question: ${query}`
 
     try {
       const response = await ai.models.generateContent({
-        model: 'gemini-3.5-flash',
+        model: geminiChatModel,
         contents: "Find a highly effective, scientifically-backed daily productivity or study tip from a trusted academic source.",
         config: {
           tools: [{ googleSearch: {} }],
@@ -1131,14 +1220,6 @@ Question: ${query}`
       console.error('Image Occlusion Error:', error);
       res.status(500).json({ error: 'Failed to process image occlusion' });
     }
-  });
-
-  // Client logging (used by src/utils/logger.ts)
-  app.post('/api/audit', express.json(), (req, res) => {
-    if (req.body?.id && req.body?.action) {
-      pushServerAudit(req.body);
-    }
-    res.status(204).end();
   });
 
   app.get('/api/admin/audit', async (req, res) => {

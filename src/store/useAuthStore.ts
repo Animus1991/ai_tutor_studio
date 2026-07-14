@@ -48,13 +48,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isDemoMode: false,
   enterDemoMode: () => {
     setDemoModeFlag(true);
-    set({
+    set((state) => ({
       isDemoMode: true,
       needsAuth: false,
-      user: null,
-      accessToken: 'demo-token',
+      accessToken: state.user ? state.accessToken : 'demo-token',
       userRole: 'student',
-    });
+    }));
   },
   exitDemoMode: () => {
     setDemoModeFlag(false);

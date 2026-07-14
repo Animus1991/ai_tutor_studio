@@ -1,6 +1,6 @@
 import { apiRequest } from './apiClient';
 
-export type AuditAction = 
+export type AuditAction =
   | 'USER_LOGIN'
   | 'USER_LOGOUT'
   | 'DOCUMENT_UPLOADED'
@@ -66,15 +66,20 @@ class AuditLogger {
     events.push(event);
     localStorage.setItem('memora-audit-logs', JSON.stringify(events));
 
-    void apiRequest('/api/audit', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(event),
-    }).catch(() => {
-      /* server audit optional */
-    });
+    const skipServerInDev =
+      import.meta.env.DEV && action === 'PERFORMANCE_METRIC';
 
-    if (import.meta.env.DEV) {
+    if (!skipServerInDev) {
+      void fetch('/api/audit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(event),
+      }).catch(() => {
+        /* server audit optional */
+      });
+    }
+
+    if (import.meta.env.DEV && action !== 'PERFORMANCE_METRIC') {
       console.log('[Audit Log]', event);
     }
   }
