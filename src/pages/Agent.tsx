@@ -28,6 +28,10 @@ import { useAuthStore } from '../store/useAuthStore';
 import { useLibraryStore } from '../store/useLibraryStore';
 import { useLearningProfileStore } from '../store/useLearningProfileStore';
 import type { BehaviorEvent } from '../lib/learningProfile';
+import {
+  deriveDomainKey,
+  deriveDomainParameters,
+} from '../lib/learningProfile';
 import { loadAgentCourseId, saveAgentCourseId } from '../lib/agentCourseContext';
 import { useLanguage } from '../lib/i18n';
 import { announce } from '../lib/liveAnnouncer';
@@ -133,6 +137,10 @@ export default function Agent() {
     });
   };
   const location = useLocation();
+  const domainKey = deriveDomainKey(
+    selectedCourseId ?? (location.state as { courseId?: string } | null)?.courseId ?? 'general-agent',
+  );
+  const adaptiveParameters = deriveDomainParameters(profile, domainKey);
 
   useEffect(() => {
     void hydrateLibrary();
@@ -290,7 +298,7 @@ export default function Agent() {
       const docIds = scopedCourse?.uploadedFileIds;
       try {
         retrievalResult = await retrieveForQueryHybrid(userMessage, {
-          topK: 4,
+          topK: adaptiveParameters.ragTopK,
           docIds: docIds && docIds.length > 0 ? docIds : undefined,
         });
         citations = retrievalResult.citations;
@@ -306,6 +314,8 @@ export default function Agent() {
         ? `\nFocus on course: "${scopedCourse.title}". Only use document context from this course when available.`
         : '';
       const systemInstruction = `You are Memora, an advanced AI tutor. Current mode: ${modeName(activeMode.id)}. ${modePrompt}${courseScope}
+Use ${adaptiveParameters.feedbackDensity} feedback density and keep each instructional chunk near ${adaptiveParameters.chunkSizeWords} words or fewer.
+The recent observed theory/practice interaction ratio is ${adaptiveParameters.theoryPracticeRatio.toFixed(2)} with confidence ${adaptiveParameters.confidence.toFixed(2)}. Treat this only as uncertain behavioral evidence, never as a fixed "learning style".
 When using document context, cite sources inline using the format [DocumentName ¶N].
 Do not hallucinate external facts if not confident. Focus on educational outcomes, mastery, and adaptive learning principles.
 Format responses nicely using markdown structure if helpful.${ragContext}`;
@@ -401,9 +411,17 @@ Format responses nicely using markdown structure if helpful.${ragContext}`;
         surface: 'agent',
         channel: shouldSpeak ? 'voice' : 'text',
         mode: agentProfileMode(activeMode.id as AgentModeId),
+        domainKey,
+        questionKind:
+          activeMode.id === 'quiz'
+            ? 'recall'
+            : activeMode.id === 'feynman'
+              ? 'explain'
+              : 'apply',
         success: true,
         durationSeconds: (Date.now() - turnStartedAtRef.current) / 1_000,
-        chunkSizeWords: profile.parameters.chunkSizeWords,
+        responseTimeMs: Date.now() - turnStartedAtRef.current,
+        chunkSizeWords: adaptiveParameters.chunkSizeWords,
       });
       turnStartedAtRef.current = Date.now();
     } catch (error) {
@@ -426,6 +444,8 @@ Format responses nicely using markdown structure if helpful.${ragContext}`;
         surface: 'agent',
         channel: shouldSpeak ? 'voice' : 'text',
         mode: agentProfileMode(activeMode.id as AgentModeId),
+        domainKey,
+        responseTimeMs: Date.now() - turnStartedAtRef.current,
         success: false,
         errorType:
           error instanceof Error ? error.name.slice(0, 80) : 'unknown_error',

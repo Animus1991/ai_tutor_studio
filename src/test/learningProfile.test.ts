@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   applyBehaviorEvent,
+  applyOverrides,
   createBehaviorEvent,
   createColdStartProfile,
   deriveAdaptiveParameters,
+  deriveDomainKey,
+  deriveDomainParameters,
+  explainLearningProfile,
 } from "../lib/learningProfile";
 
 describe("implicit learning profile", () => {
@@ -75,5 +79,70 @@ describe("implicit learning profile", () => {
     expect(event.quality).toBe(1);
     expect(event.hourOfDay).toBe(13);
     expect(event).not.toHaveProperty("content");
+  });
+
+  it("keeps per-domain evidence separate without storing course titles", () => {
+    const mathematics = deriveDomainKey("Advanced Mathematics");
+    const history = deriveDomainKey("European History");
+    expect(mathematics).not.toBe(history);
+    expect(mathematics).not.toContain("mathematics");
+
+    let profile = createColdStartProfile();
+    for (let index = 0; index < 8; index += 1) {
+      profile = applyBehaviorEvent(
+        profile,
+        createBehaviorEvent({
+          kind: "task_review",
+          surface: "tasks",
+          channel: "retrieval",
+          domainKey: mathematics,
+          quality: 0.1,
+          questionKind: "apply",
+          errorType: "conceptual",
+        }),
+      );
+    }
+    expect(profile.domains[mathematics].eventCount).toBe(8);
+    expect(profile.domains[history]).toBeUndefined();
+    expect(deriveDomainParameters(profile, mathematics).ragTopK).toBeGreaterThanOrEqual(
+      profile.parameters.ragTopK,
+    );
+  });
+
+  it("tracks response-time variance and bounded fatigue", () => {
+    let profile = createColdStartProfile();
+    for (const responseTimeMs of [2_000, 2_250, 2_000, 20_000]) {
+      profile = applyBehaviorEvent(
+        profile,
+        createBehaviorEvent({
+          kind: "agent_turn",
+          surface: "agent",
+          channel: "text",
+          responseTimeMs,
+        }),
+      );
+    }
+    expect(profile.responseTime.samples).toBe(4);
+    expect(profile.responseTime.variance).toBeGreaterThan(0);
+    expect(profile.fatigueIndex).toBeGreaterThanOrEqual(0);
+    expect(profile.fatigueIndex).toBeLessThanOrEqual(1);
+  });
+
+  it("applies explicit bounded overrides and explains their evidence", () => {
+    const profile = createColdStartProfile();
+    profile.userOverrides = {
+      chunkSizeWords: 2_000,
+      retrievalIntervalMultiplier: 0.1,
+      feedbackDensity: "detailed",
+    };
+    profile.parameters = applyOverrides(
+      profile.parameters,
+      profile.userOverrides,
+    );
+    expect(profile.parameters.chunkSizeWords).toBe(800);
+    expect(profile.parameters.retrievalIntervalMultiplier).toBe(0.6);
+    const explanation = explainLearningProfile(profile);
+    expect(explanation.activeOverrides).toContain("chunkSizeWords");
+    expect(explanation.privacyNote).toContain("not note text");
   });
 });

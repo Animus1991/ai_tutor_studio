@@ -39,6 +39,10 @@ import { initializeFSRS, reviewFSRS, FSRSData, FSRSRating } from "../lib/fsrs";
 import { apiFetch } from "../lib/apiClient";
 import { useLearningProfileStore } from "../store/useLearningProfileStore";
 import { readLocalTasks, writeLocalTasks } from "../lib/localTasks";
+import {
+  deriveDomainKey,
+  deriveDomainParameters,
+} from "../lib/learningProfile";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 
@@ -89,6 +93,7 @@ export default function DocumentWorkspace({
   const [isSummarizing, setIsSummarizing] = useState(false);
   const [isEnriching, setIsEnriching] = useState(false);
   const [flashcards, setFlashcards] = useState<{question: string, answer: string, fsrs?: FSRSData}[]>([]);
+  const flashcardStartedAtRef = useRef(Date.now());
   const { addFlashcardReview, updateFeynmanScore } = useMasteryStore();
   const learningProfile = useLearningProfileStore((state) => state.profile);
   const trackLearningEvent = useLearningProfileStore(
@@ -115,10 +120,14 @@ export default function DocumentWorkspace({
       kind: "flashcard_review",
       surface: "document",
       channel: "retrieval",
+      domainKey: deriveDomainKey(file?.name ?? "document"),
+      questionKind: "recall",
+      responseTimeMs: Date.now() - flashcardStartedAtRef.current,
       quality,
       success: quality >= 0.75,
       errorType: quality < 0.75 ? "flashcard:retrieval-gap" : undefined,
     });
+    flashcardStartedAtRef.current = Date.now();
   };
   const [summary, setSummary] = useState<string | null>(null);
   const [showSaveToast, setShowSaveToast] = useState(false);
@@ -254,6 +263,8 @@ export default function DocumentWorkspace({
           surface: "document",
           channel: "explanation",
           mode: "feynman",
+          domainKey: deriveDomainKey(file?.name ?? "document"),
+          questionKind: "explain",
           quality: score / 10,
           success: data.gaps.length === 0,
           errorType:
@@ -464,10 +475,14 @@ export default function DocumentWorkspace({
           // Save to Vector Store for RAG
           import('../lib/vectorStore').then(async ({ chunkText, generateEmbedding, saveEmbedding }) => {
             try {
+              const documentParameters = deriveDomainParameters(
+                learningProfile,
+                deriveDomainKey(selectedFile.name),
+              );
               const chunks = chunkText(
                 sanitized.sanitizedText,
-                learningProfile.parameters.chunkSizeWords,
-                learningProfile.parameters.chunkOverlapWords,
+                documentParameters.chunkSizeWords,
+                documentParameters.chunkOverlapWords,
               );
               const docId = `doc-${Date.now()}`;
               for (let i = 0; i < chunks.length; i++) {
@@ -541,10 +556,14 @@ export default function DocumentWorkspace({
         // Save to Vector Store for RAG
         import('../lib/vectorStore').then(async ({ chunkText, generateEmbedding, saveEmbedding }) => {
           try {
+            const documentParameters = deriveDomainParameters(
+              learningProfile,
+              deriveDomainKey(urlInput),
+            );
             const chunks = chunkText(
               sanitized.sanitizedText,
-              learningProfile.parameters.chunkSizeWords,
-              learningProfile.parameters.chunkOverlapWords,
+              documentParameters.chunkSizeWords,
+              documentParameters.chunkOverlapWords,
             );
             const docId = `url-${Date.now()}`;
             for (let i = 0; i < chunks.length; i++) {

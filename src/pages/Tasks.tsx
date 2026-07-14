@@ -1,4 +1,4 @@
-import { useState, useEffect, FormEvent } from "react";
+import { useState, useEffect, useRef, FormEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   Calendar,
@@ -62,6 +62,10 @@ import {
   writeLocalTasks,
 } from "../lib/localTasks";
 import { useLearningProfileStore } from "../store/useLearningProfileStore";
+import {
+  deriveDomainKey,
+  deriveDomainParameters,
+} from "../lib/learningProfile";
 
 import DashboardStats from "../components/DashboardStats";
 
@@ -82,6 +86,7 @@ export default function Tasks() {
   const [taskNotes, setTaskNotes] = useState("");
   const [selectedTasks, setSelectedTasks] = useState<string[]>([]);
   const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const reviewStartedAtRef = useRef(Date.now());
 
   const updateLocalTask = async (
     taskId: string,
@@ -213,6 +218,11 @@ export default function Tasks() {
       }
 
       const now = new Date();
+      const domainKey = deriveDomainKey(task.course ?? task.type ?? "tasks");
+      const domainParameters = deriveDomainParameters(
+        learningProfile,
+        domainKey,
+      );
       const scheduling_cards = fsrs.repeat(cardObj, now);
       
       let ratingValue = Rating.Good;
@@ -229,7 +239,7 @@ export default function Tasks() {
       const nextReview = new Date(
         now.getTime() +
           baseReviewDelay *
-            learningProfile.parameters.retrievalIntervalMultiplier,
+            domainParameters.retrievalIntervalMultiplier,
       );
       const adaptiveFsrsCard = { ...newFsrsCard, due: nextReview };
 
@@ -267,6 +277,13 @@ export default function Tasks() {
         surface: "tasks",
         channel: "retrieval",
         taskType: task.type,
+        domainKey,
+        questionKind: task.type === "Quiz Prep" ? "apply" : "recall",
+        responseTimeMs: Date.now() - reviewStartedAtRef.current,
+        itemDifficulty:
+          typeof newFsrsCard.difficulty === "number"
+            ? (newFsrsCard.difficulty - 5.5) / 2.25
+            : 0,
         success: quality >= 3,
         quality: quality / 5,
         errorType: quality < 3 ? `${task.type || "task"}:retrieval-gap` : undefined,
@@ -279,6 +296,7 @@ export default function Tasks() {
 
   const handleCompleteTask = async (task: any) => {
     if (task.type === "Review") {
+      reviewStartedAtRef.current = Date.now();
       setReviewTask(task);
       return;
     }
@@ -323,6 +341,8 @@ export default function Tasks() {
       surface: "tasks",
       channel: task.type === "Reading" ? "text" : "retrieval",
       taskType: task.type,
+      domainKey: deriveDomainKey(task.course ?? task.type ?? "tasks"),
+      questionKind: task.type === "Quiz Prep" ? "apply" : "recall",
       success: true,
     });
 

@@ -20,6 +20,12 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const resetLearningProfile = useLearningProfileStore(
     (state) => state.resetProfile,
   );
+  const setLearningOverrides = useLearningProfileStore(
+    (state) => state.setOverrides,
+  );
+  const clearLearningOverrides = useLearningProfileStore(
+    (state) => state.clearOverrides,
+  );
 
   const getExportData = async () => {
     let coursesData: Record<string, unknown>[] = [];
@@ -169,6 +175,78 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         isDyslexiaFont ? "left-7" : "left-1"
                       )}
                     />
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <h4 className="text-sm font-semibold text-slate-900 dark:text-white mb-4 uppercase tracking-wider">
+                  Adaptive Controls
+                </h4>
+                <p className="mb-4 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+                  Automatic values remain continuous and evidence-based. Manual
+                  choices override them locally and can be cleared at any time.
+                </p>
+                <div className="space-y-4">
+                  <label className="block text-sm text-slate-700 dark:text-slate-300">
+                    Information chunk: {learningProfile.parameters.chunkSizeWords} words
+                    <input
+                      type="range"
+                      min="300"
+                      max="800"
+                      step="50"
+                      value={learningProfile.parameters.chunkSizeWords}
+                      onChange={(event) =>
+                        setLearningOverrides({
+                          chunkSizeWords: Number(event.target.value),
+                        })
+                      }
+                      className="mt-2 w-full"
+                    />
+                  </label>
+                  <label className="block text-sm text-slate-700 dark:text-slate-300">
+                    Feedback detail
+                    <select
+                      value={learningProfile.parameters.feedbackDensity}
+                      onChange={(event) =>
+                        setLearningOverrides({
+                          feedbackDensity: event.target.value as
+                            | "minimal"
+                            | "balanced"
+                            | "detailed",
+                        })
+                      }
+                      className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-800"
+                    >
+                      <option value="minimal">Minimal</option>
+                      <option value="balanced">Balanced</option>
+                      <option value="detailed">Detailed</option>
+                    </select>
+                  </label>
+                  <label className="block text-sm text-slate-700 dark:text-slate-300">
+                    Review spacing: {learningProfile.parameters.retrievalIntervalMultiplier.toFixed(2)}×
+                    <input
+                      type="range"
+                      min="0.6"
+                      max="1.6"
+                      step="0.1"
+                      value={learningProfile.parameters.retrievalIntervalMultiplier}
+                      onChange={(event) =>
+                        setLearningOverrides({
+                          retrievalIntervalMultiplier: Number(
+                            event.target.value,
+                          ),
+                        })
+                      }
+                      className="mt-2 w-full"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={clearLearningOverrides}
+                    className="text-sm font-semibold text-indigo-600 hover:underline dark:text-indigo-300"
+                  >
+                    Return to automatic adaptation
                   </button>
                 </div>
               </div>
