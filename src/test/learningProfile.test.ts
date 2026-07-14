@@ -48,7 +48,7 @@ describe("implicit learning profile", () => {
     expect(profile.parameters.retrievalIntervalMultiplier).toBeLessThanOrEqual(
       1.6,
     );
-    expect(profile.errorPatterns.conceptual.count).toBe(40);
+    expect(profile.errorPatterns["task:misconception"].count).toBe(40);
   });
 
   it("lengthens review intervals only as retrieval success rises", () => {
