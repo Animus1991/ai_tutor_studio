@@ -5,6 +5,7 @@ import { auth, db } from '../lib/firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import localforage from 'localforage';
 import { toast } from 'sonner';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 export default function QuickAddModal() {
   const [isOpen, setIsOpen] = useState(false);
@@ -12,6 +13,7 @@ export default function QuickAddModal() {
   const [course, setCourse] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useFocusTrap<HTMLDivElement>(isOpen, () => setIsOpen(false));
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -81,6 +83,10 @@ export default function QuickAddModal() {
             className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100]"
           />
           <motion.div
+            ref={dialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="quickadd-modal-title"
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -88,13 +94,14 @@ export default function QuickAddModal() {
           >
             <form onSubmit={handleSubmit} className="p-4">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                <h2 id="quickadd-modal-title" className="text-lg font-semibold text-slate-900 dark:text-white flex items-center gap-2">
                   <Plus className="w-5 h-5 text-indigo-500" />
                   Quick Add Task
                 </h2>
                 <button
                   type="button"
                   onClick={() => setIsOpen(false)}
+                  aria-label="Close quick add"
                   className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400"
                 >
                   <X className="w-5 h-5" />

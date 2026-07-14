@@ -46,7 +46,13 @@ export default function StudyProgressChart() {
       <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
         Study hours over the last 7 days compared to daily goals
       </p>
-      <div className="flex-1 w-full min-h-0 relative">
+      <div
+        className="flex-1 w-full min-h-0 relative"
+        role="img"
+        aria-label={`Study progress versus goal over 7 days. ${data
+          .map((d) => `${d.day}: ${d.hours} hours studied, goal ${d.goal} hours`)
+          .join('; ')}.`}
+      >
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
             <defs>

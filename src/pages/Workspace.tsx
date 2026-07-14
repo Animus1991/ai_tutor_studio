@@ -1,14 +1,17 @@
 import { useState, useEffect } from "react";
 import { useAuthStore } from "../store/useAuthStore";
 import { Calendar, Users, GraduationCap, Clock, ExternalLink, Target } from "lucide-react";
+import { Link } from "react-router-dom";
 import { contactsService } from "../lib/services/DemoContactsService";
 import { calendarService } from "../lib/services/DemoCalendarService";
 import VoiceNotesWidget from "../components/VoiceNotesWidget";
 import FocusModeOverlay from "../components/FocusModeOverlay";
 import { useStore } from "../store/useStore";
+import { useLibraryStore } from "../store/useLibraryStore";
 
 export default function Workspace() {
-  const { accessToken } = useAuthStore();
+  const { accessToken, isDemoMode } = useAuthStore();
+  const { courses: libraryCourses } = useLibraryStore();
   const { toggleFocusMode } = useStore();
   const [events, setEvents] = useState<any[]>([]);
   const [courses, setCourses] = useState<any[]>([]);
@@ -16,7 +19,10 @@ export default function Workspace() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!accessToken) return;
+    if (!accessToken && !isDemoMode) {
+      setLoading(false);
+      return;
+    }
 
     const fetchWorkspaceData = async () => {
       setLoading(true);
@@ -28,22 +34,21 @@ export default function Workspace() {
         
         setEvents(fetchedEvents);
 
-        // Mock Classroom Courses
-        const mockCourses = [
-          {
-            name: "Advanced Mathematics",
-            section: "Spring 2024",
-            alternateLink: "#"
-          },
-          {
-            name: "Computer Science 101",
-            section: "Fall 2024",
-            alternateLink: "#"
-          }
-        ];
-        setCourses(mockCourses);
+        if (isDemoMode && libraryCourses.length > 0) {
+          setCourses(
+            libraryCourses.map((c) => ({
+              name: c.title,
+              section: `${c.topics.length} modules · ${c.glossary.length} terms`,
+              studyLink: `/study/${c.id}`,
+            })),
+          );
+        } else {
+          setCourses([
+            { name: "Advanced Mathematics", section: "Spring 2024", alternateLink: "#" },
+            { name: "Computer Science 101", section: "Fall 2024", alternateLink: "#" },
+          ]);
+        }
 
-        // Map contacts to the expected format
         setContacts(fetchedContacts.map(c => ({ names: [{ displayName: c.name }] })));
       } catch (err) {
         console.error("Failed to fetch workspace data:", err);
@@ -53,7 +58,7 @@ export default function Workspace() {
     };
 
     fetchWorkspaceData();
-  }, [accessToken]);
+  }, [accessToken, isDemoMode, libraryCourses]);
 
   return (
     <div className="flex-1 overflow-y-auto">
@@ -76,7 +81,7 @@ export default function Workspace() {
         </button>
       </header>
 
-      <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6">
+      <div className="w-full space-y-6">
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <div className="animate-spin w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full" />
@@ -138,21 +143,38 @@ export default function Workspace() {
                 
                 {courses.length > 0 ? (
                   <div className="space-y-3">
-                    {courses.map((course, i) => (
-                      <a 
-                        key={i} 
-                        href={course.alternateLink} 
-                        target="_blank" 
-                        rel="noreferrer"
-                        className="flex items-center justify-between p-3 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors group"
-                      >
-                        <div className="truncate pr-4">
-                          <h3 className="font-medium text-sm text-slate-900 dark:text-white truncate">{course.name}</h3>
-                          <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{course.section || "Active Course"}</p>
-                        </div>
-                        <ExternalLink className="w-4 h-4 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-                      </a>
-                    ))}
+                    {courses.map((course, i) => {
+                      const href = course.studyLink ?? course.alternateLink ?? '#';
+                      const isInternal = href.startsWith('/');
+                      const inner = (
+                        <>
+                          <div className="truncate pr-4">
+                            <h3 className="font-medium text-sm text-slate-900 dark:text-white truncate">{course.name}</h3>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{course.section || "Active Course"}</p>
+                          </div>
+                          <ExternalLink className="w-4 h-4 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                        </>
+                      );
+                      return isInternal ? (
+                        <Link
+                          key={i}
+                          to={href}
+                          className="flex items-center justify-between p-3 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors group"
+                        >
+                          {inner}
+                        </Link>
+                      ) : (
+                        <a
+                          key={i}
+                          href={href}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex items-center justify-between p-3 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors group"
+                        >
+                          {inner}
+                        </a>
+                      );
+                    })}
                   </div>
                 ) : (
                   <div className="text-center py-4">
@@ -184,7 +206,7 @@ export default function Workspace() {
                               {name.charAt(0)}
                             </div>
                           )}
-                          <span className="text-[10px] text-slate-600 dark:text-slate-400 max-w-[60px] truncate">{name.split(' ')[0]}</span>
+                          <span className="text-xs text-slate-600 dark:text-slate-400 max-w-[4.5rem] truncate">{name.split(' ')[0]}</span>
                         </div>
                       );
                     })}

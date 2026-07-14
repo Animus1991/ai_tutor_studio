@@ -6,6 +6,7 @@ import { BookOpen, Volume2, Type, BrainCircuit, X } from 'lucide-react';
 import { useStore } from '../store/useStore';
 
 import { SmartCodeBlock } from '../lib/tiptap-extensions';
+import { apiRequest } from '../lib/apiClient';
 
 // Simple bionic reading formatter (bolds first half of words)
 function applyBionicReading(html: string) {
@@ -120,7 +121,7 @@ export default function NotesEditor({ initialContent, onChange }: { initialConte
     setExplanation({ text: 'Thinking...', visible: true });
 
     try {
-      const response = await fetch('/api/agent/rag', {
+      const response = await apiRequest('/api/agent/rag', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 

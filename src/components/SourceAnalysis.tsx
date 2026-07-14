@@ -45,7 +45,7 @@ const Gauge = ({ value, label, color }: { value: number; label: string; color: s
         <span className="text-xl font-display font-bold text-slate-900 dark:text-white leading-none mb-1">
           {value}%
         </span>
-        <span className="text-[10px] uppercase font-bold text-slate-500">
+        <span className="text-xs uppercase font-bold text-slate-500">
           {label}
         </span>
       </div>

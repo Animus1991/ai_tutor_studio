@@ -5,9 +5,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { useAuthStore } from '../store/useAuthStore';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 export default function FeedbackModal() {
   const [isOpen, setIsOpen] = useState(false);
+  const dialogRef = useFocusTrap<HTMLDivElement>(isOpen, () => setIsOpen(false));
   const [type, setType] = useState<'bug' | 'feature'>('bug');
   const [description, setDescription] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -64,15 +66,20 @@ export default function FeedbackModal() {
               className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50"
             />
             <motion.div
+              ref={dialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="feedback-modal-title"
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               className="fixed bottom-24 right-6 md:right-10 z-50 w-[90vw] max-w-sm bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden"
             >
               <div className="flex items-center justify-between p-4 border-b border-slate-100 dark:border-slate-800">
-                <h3 className="font-bold text-slate-900 dark:text-white">Give Feedback</h3>
+                <h3 id="feedback-modal-title" className="font-bold text-slate-900 dark:text-white">Give Feedback</h3>
                 <button
                   onClick={() => setIsOpen(false)}
+                  aria-label="Close feedback"
                   className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
                 >
                   <X className="w-5 h-5" />

@@ -2,8 +2,10 @@ import { useState, useEffect } from 'react';
 import { Flame } from 'lucide-react';
 import { calculateStreak, getRecentActivity } from '../lib/activity';
 import { Timestamp } from 'firebase/firestore';
+import { useLanguage } from '../lib/i18n';
 
 export default function DailyStreak() {
+  const { t } = useLanguage();
   const [streakCount, setStreakCount] = useState(0);
   const [streakDays, setStreakDays] = useState<{day: string, active: boolean}[]>([]);
 
@@ -51,24 +53,26 @@ export default function DailyStreak() {
       <div className="relative z-10">
         <div className="flex items-center gap-2 mb-2">
           <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center backdrop-blur-sm">
-            <Flame className="w-4 h-4 text-orange-100" />
+            <Flame className="w-4 h-4 text-orange-100" style={{ animation: 'streak-flame 1.8s ease-in-out infinite' }} />
           </div>
-          <h3 className="text-lg font-display font-bold tracking-tight">Daily Streak</h3>
+          <h3 className="text-lg font-display font-bold tracking-tight">{t('Daily Streak', 'Ημερήσια Σειρά')}</h3>
         </div>
         <div className="text-3xl font-display font-bold tracking-tight mt-4">
           {streakCount} <span className="text-xl font-medium opacity-80">{streakCount === 1 ? 'Day' : 'Days'}</span>
         </div>
         <p className="text-orange-100 mt-1 text-xs">
-          {streakCount > 0 ? "You are on fire! Keep it up to build strong retention." : "Start studying today to build your streak!"}
+          {streakCount > 0
+            ? t('You are on fire! Keep it up to build strong retention.', 'Μπράβο! Συνέχισε για ισχυρή μνήμη.')
+            : t('Start studying today to build your streak!', 'Μελέτησε σήμερα για να χτίσεις τη σειρά σου!')}
         </p>
       </div>
       <div className="relative z-10 flex items-center justify-between mt-6 gap-1">
         {streakDays.map((d, i) => (
           <div key={i} className="flex flex-col items-center gap-1.5">
-            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-all ${d.active ? 'bg-white text-orange-600 shadow-md scale-110' : 'bg-white/20 text-white/60'}`}>
-              {d.active ? <Flame className="w-3 h-3" /> : null}
+            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${d.active ? 'bg-white text-orange-600 shadow-md scale-110' : 'bg-white/20 text-white/60'}`}>
+              {d.active ? <Flame className="w-3.5 h-3.5" /> : <span className="text-xs">{d.day[0]}</span>}
             </div>
-            <span className="text-[10px] font-medium text-orange-100">{d.day}</span>
+            <span className="text-xs font-medium text-orange-100">{d.day}</span>
           </div>
         ))}
       </div>

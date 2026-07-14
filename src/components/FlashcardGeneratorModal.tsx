@@ -2,11 +2,14 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, X, FileText, CheckCircle2, Loader2, Save } from 'lucide-react';
 import { toast } from 'sonner';
+import { useFocusTrap } from '../hooks/useFocusTrap';
+import { apiRequest } from '../lib/apiClient';
 
 export default function FlashcardGeneratorModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) {
   const [inputText, setInputText] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedCards, setGeneratedCards] = useState<{question: string, answer: string}[]>([]);
+  const dialogRef = useFocusTrap<HTMLDivElement>(isOpen, onClose);
 
   const handleGenerate = async () => {
     if (!inputText.trim()) {
@@ -18,7 +21,7 @@ export default function FlashcardGeneratorModal({ isOpen, onClose }: { isOpen: b
     setGeneratedCards([]);
     
     try {
-      const res = await fetch('/api/generate-flashcards', {
+      const res = await apiRequest('/api/generate-flashcards', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: inputText })
@@ -64,18 +67,23 @@ export default function FlashcardGeneratorModal({ isOpen, onClose }: { isOpen: b
             className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100]"
           />
           <motion.div
+            ref={dialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="flashcardgen-modal-title"
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl bg-white dark:bg-slate-900 rounded-3xl shadow-2xl z-[101] overflow-hidden border border-slate-200 dark:border-slate-800 max-h-[90vh] flex flex-col"
           >
             <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-800">
-              <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <h2 id="flashcardgen-modal-title" className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <Sparkles className="w-5 h-5 text-indigo-500" />
                 AI Flashcard Generator
               </h2>
               <button
                 onClick={onClose}
+                aria-label="Close flashcard generator"
                 className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 transition-colors"
               >
                 <X className="w-5 h-5" />
@@ -112,12 +120,12 @@ export default function FlashcardGeneratorModal({ isOpen, onClose }: { isOpen: b
                     {generatedCards.map((card, idx) => (
                       <div key={idx} className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl p-4 flex flex-col gap-3">
                         <div>
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1 block">Front</span>
+                          <span className="section-eyebrow uppercase mb-1.5 block">Front</span>
                           <p className="text-sm font-medium text-slate-900 dark:text-white">{card.question}</p>
                         </div>
                         <div className="w-full h-px bg-slate-200 dark:bg-slate-700" />
                         <div>
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400 mb-1 block">Back</span>
+                          <span className="section-eyebrow uppercase mb-1.5 block text-indigo-500 dark:text-indigo-400">Back</span>
                           <p className="text-sm text-slate-600 dark:text-slate-300">{card.answer}</p>
                         </div>
                       </div>

@@ -60,7 +60,7 @@ export default function FocusModeOverlay() {
               <h2 className="text-2xl font-medium text-white/60 tracking-widest uppercase mb-4">
                 {timerMode === 'focus' ? 'Deep Focus' : 'Break Time'}
               </h2>
-              <div className="text-[12rem] leading-none font-mono font-bold text-white tracking-tighter tabular-nums drop-shadow-2xl">
+              <div className="text-[11.4rem] leading-none font-mono font-bold text-white tracking-tighter tabular-nums drop-shadow-2xl">
                 {formatTime(timerTimeLeft)}
               </div>
             </motion.div>

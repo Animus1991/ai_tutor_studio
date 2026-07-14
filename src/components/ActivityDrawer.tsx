@@ -108,7 +108,7 @@ export default function ActivityDrawer({ isOpen, onClose }: ActivityDrawerProps)
                             <h4 className="font-semibold text-sm text-slate-900 dark:text-white">
                               {activity.title}
                             </h4>
-                            <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500 shrink-0 mt-0.5">
+                            <span className="text-xs font-medium text-slate-400 dark:text-slate-500 shrink-0 mt-0.5">
                               {format(activity.timestamp, 'h:mm a')}
                             </span>
                           </div>

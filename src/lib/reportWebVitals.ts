@@ -1,20 +1,31 @@
 import { onCLS, onINP, onLCP, onFCP, onTTFB } from 'web-vitals';
 import { auditLogger } from './auditLogger';
 
+let vitalsStarted = false;
+
 export function reportWebVitals() {
-  const reportHandler = (metric: any) => {
-    // Report to console in development
-    if (process.env.NODE_ENV !== 'production') {
+  if (vitalsStarted) return;
+  vitalsStarted = true;
+
+  const reported = new Set<string>();
+
+  const reportHandler = (metric: { name: string; value: number; rating: string; id: string }) => {
+    const key = `${metric.name}:${metric.id}`;
+    if (reported.has(key)) return;
+    reported.add(key);
+
+    if (import.meta.env.DEV) {
       console.log(`[Web Vitals] ${metric.name}:`, Math.round(metric.value * 100) / 100);
     }
-    
-    // Log to our audit logger
-    auditLogger.log('PERFORMANCE_METRIC', 'system', undefined, {
-      metricName: metric.name,
-      value: metric.value,
-      rating: metric.rating, // 'good', 'needs-improvement', 'poor'
-      id: metric.id
-    });
+
+    if (!import.meta.env.DEV) {
+      auditLogger.log('PERFORMANCE_METRIC', 'system', undefined, {
+        metricName: metric.name,
+        value: metric.value,
+        rating: metric.rating,
+        id: metric.id,
+      });
+    }
   };
 
   onCLS(reportHandler);

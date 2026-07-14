@@ -1,4 +1,6 @@
 import { openDB, IDBPDatabase } from 'idb';
+import { chunkDocument } from './rag';
+import { apiRequest } from './apiClient';
 
 const dbName = 'memora-vector-store';
 const storeName = 'embeddings';
@@ -19,7 +21,7 @@ function getDB() {
 }
 
 export interface VectorDoc {
-  id: string; // docId + chunkIndex
+  id: string;
   docId: string;
   docTitle: string;
   text: string;
@@ -54,7 +56,6 @@ export async function deleteEmbeddingsForDoc(docId: string) {
   await tx.done;
 }
 
-// Cosine similarity
 export function cosineSimilarity(vecA: number[], vecB: number[]) {
   let dotProduct = 0;
   let normA = 0;
@@ -68,40 +69,82 @@ export function cosineSimilarity(vecA: number[], vecB: number[]) {
   return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
-// Generate embedding via our local server
+/** After first embed failure (quota/network), skip further embed calls this session. */
+let embeddingApiAvailable: boolean | null = null;
+
+export function resetEmbeddingAvailability(): void {
+  embeddingApiAvailable = null;
+}
+
 export async function generateEmbedding(text: string): Promise<number[]> {
-  const res = await fetch('/api/embed', {
+  if (embeddingApiAvailable === false) {
+    throw new Error('Embedding API unavailable');
+  }
+  const res = await apiRequest('/api/embed', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text })
+    body: JSON.stringify({ text: text.slice(0, 8000) }),
   });
-  if (!res.ok) throw new Error('Failed to generate embedding');
+  if (!res.ok) {
+    if (res.status === 429 || res.status === 401 || res.status === 503) {
+      embeddingApiAvailable = false;
+    }
+    throw new Error('Failed to generate embedding');
+  }
   const data = await res.json();
+  embeddingApiAvailable = true;
   return data.embedding;
 }
 
-// Simple chunking strategy
-export function chunkText(text: string, chunkSize: number = 500, overlap: number = 100): string[] {
-  const words = text.split(/\s+/);
-  const chunks: string[] = [];
-  let i = 0;
-  while (i < words.length) {
-    chunks.push(words.slice(i, i + chunkSize).join(' '));
-    i += chunkSize - overlap;
+/** Index document chunks for hybrid RAG. Always stores text; embeddings optional. */
+export async function indexDocumentForRag(
+  docId: string,
+  docTitle: string,
+  text: string,
+  opts?: { skipEmbeddings?: boolean },
+): Promise<void> {
+  const existing = await getEmbeddingsByDocId(docId);
+  if (
+    existing.length > 0 &&
+    existing.every((d) => d.text?.trim().length >= 40)
+  ) {
+    return;
   }
-  return chunks;
+
+  await deleteEmbeddingsForDoc(docId);
+  for (let i = 0; i < chunks.length; i++) {
+    let embedding: number[] = [];
+    if (!opts?.skipEmbeddings && embeddingApiAvailable !== false) {
+      try {
+        embedding = await generateEmbedding(chunks[i]);
+      } catch {
+        /* lexical-only when embed API unavailable (e.g. Gemini quota) */
+      }
+    }
+    await saveEmbedding({
+      id: `${docId}_chunk_${i}`,
+      docId,
+      docTitle,
+      text: chunks[i],
+      embedding,
+    });
+  }
 }
 
-// Main function to search
-export async function searchVectors(query: string, limit: number = 5): Promise<VectorDoc[]> {
-  const queryEmbedding = await generateEmbedding(query);
-  const allDocs = await getAllEmbeddings();
-  
-  const scoredDocs = allDocs.map(doc => ({
-    ...doc,
-    score: cosineSimilarity(queryEmbedding, doc.embedding)
+/** Character-based chunking with overlap (900 chars / 160 overlap by default). */
+export function chunkText(text: string, chunkSize = 900, overlap = 160): string[] {
+  return chunkDocument(text, chunkSize, overlap);
+}
+
+/** Legacy vector-only search — prefer retrieveForQueryHybrid from sourceContext. */
+export async function searchVectors(query: string, limit = 5): Promise<VectorDoc[]> {
+  const { retrieveForQueryHybrid } = await import('./sourceContext');
+  const result = await retrieveForQueryHybrid(query, { topK: limit });
+  return result.chunks.map((c) => ({
+    id: c.id,
+    docId: c.docId,
+    docTitle: c.docTitle,
+    text: c.text,
+    embedding: [],
   }));
-  
-  scoredDocs.sort((a, b) => b.score - a.score);
-  return scoredDocs.slice(0, limit);
 }

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
@@ -18,6 +19,7 @@ export default function PDFViewerModal({ isOpen, onClose, documentUrl, documentT
   const [numPages, setNumPages] = useState<number | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
   const [scale, setScale] = useState(1.0);
+  const dialogRef = useFocusTrap<HTMLDivElement>(isOpen, onClose);
 
   function onDocumentLoadSuccess({ numPages }: { numPages: number }) {
     setNumPages(numPages);
@@ -36,6 +38,10 @@ export default function PDFViewerModal({ isOpen, onClose, documentUrl, documentT
             className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60]"
           />
           <motion.div
+            ref={dialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pdfviewer-modal-title"
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -43,7 +49,7 @@ export default function PDFViewerModal({ isOpen, onClose, documentUrl, documentT
           >
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
               <div className="flex items-center gap-4">
-                <h3 className="font-bold text-slate-900 dark:text-white truncate max-w-sm">
+                <h3 id="pdfviewer-modal-title" className="font-bold text-slate-900 dark:text-white truncate max-w-sm">
                   {documentTitle}
                 </h3>
                 <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 rounded-lg p-1">
@@ -85,6 +91,7 @@ export default function PDFViewerModal({ isOpen, onClose, documentUrl, documentT
                 </div>
                 <button
                   onClick={onClose}
+                  aria-label="Close PDF viewer"
                   className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors"
                 >
                   <X className="w-5 h-5" />

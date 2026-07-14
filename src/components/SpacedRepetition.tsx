@@ -93,7 +93,7 @@ export default function SpacedRepetition() {
           return (
             <div key={topic.id} className={`p-4 rounded-2xl border transition-all hover:shadow-md cursor-pointer relative overflow-hidden ${topic.bg} ${topic.border}`}>
               {due && (
-                <div className="absolute top-0 right-0 bg-rose-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-bl-lg">
+                <div className="absolute top-0 right-0 bg-rose-500 text-white text-xs font-bold px-2 py-0.5 rounded-bl-lg">
                   DUE FOR REVIEW
                 </div>
               )}

@@ -6,11 +6,13 @@ import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import localforage from 'localforage';
 import { logActivity } from '../lib/activity';
 import { toast } from 'sonner';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 export default function PostSessionModal() {
   const [isOpen, setIsOpen] = useState(false);
   const [accomplishment, setAccomplishment] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const dialogRef = useFocusTrap<HTMLDivElement>(isOpen, () => setIsOpen(false));
 
   useEffect(() => {
     const handleShow = () => setIsOpen(true);
@@ -78,6 +80,10 @@ export default function PostSessionModal() {
             className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100]"
           />
           <motion.div
+            ref={dialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="postsession-modal-title"
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -86,6 +92,7 @@ export default function PostSessionModal() {
             <div className="bg-gradient-to-r from-indigo-500 to-purple-500 p-6 text-center relative">
               <button
                 onClick={() => setIsOpen(false)}
+                aria-label="Skip session log"
                 className="absolute top-4 right-4 p-1 rounded-full bg-white/20 text-white hover:bg-white/30 transition-colors"
               >
                 <X className="w-5 h-5" />
@@ -93,7 +100,7 @@ export default function PostSessionModal() {
               <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-3 backdrop-blur-sm shadow-inner">
                 <Award className="w-8 h-8 text-white" />
               </div>
-              <h2 className="text-2xl font-bold text-white tracking-tight">Session Complete!</h2>
+              <h2 id="postsession-modal-title" className="text-2xl font-bold text-white tracking-tight">Session Complete!</h2>
               <p className="text-indigo-100 mt-1">Time for a well-deserved break.</p>
             </div>
             

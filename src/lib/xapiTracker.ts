@@ -1,4 +1,6 @@
 // A simplified xAPI standard structure
+import { apiRequest } from './apiClient';
+
 export interface XapiStatement {
   actor: {
     mbox: string;
@@ -41,13 +43,22 @@ class XapiTracker {
       ...statement,
       timestamp: new Date().toISOString()
     };
-    
+
     const stmts = this.getStatements();
     stmts.push(fullStatement);
     localStorage.setItem('memora-xapi-statements', JSON.stringify(stmts));
-    
-    // In production, this would go to a Learning Record Store (LRS)
-    console.log('[xAPI Statement]', fullStatement);
+
+    void apiRequest('/api/xapi/statements', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(fullStatement),
+    }).catch(() => {
+      /* LRS optional — local cache remains source of truth offline */
+    });
+
+    if (import.meta.env.DEV) {
+      console.log('[xAPI Statement]', fullStatement);
+    }
   }
 
   logLessonCompletion(userId: string, lessonId: string, lessonName: string, success?: boolean, score?: number) {

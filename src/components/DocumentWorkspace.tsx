@@ -28,14 +28,18 @@ import { detectAndSanitizePii } from "../lib/piiSanitizer";
 import { analyzeSourceQuality, extractGlossary } from "../utils/nlp";
 import { SourceAnalysis } from "./SourceAnalysis";
 import { auditLogger } from "../lib/auditLogger";
+import { googleWorkspaceService } from "../lib/services/GoogleWorkspaceService";
 import { useAuthStore } from "../store/useAuthStore";
+import { getAccessToken } from "../lib/auth";
 import { useStore } from "../store/useStore";
 import { useYjsText, globalCrdtStore } from "../lib/crdt";
 import { useDocumentStore } from "../store/useDocumentStore";
 import { useMasteryStore } from "../store/useMasteryStore";
+import { useLearningProfileStore } from "../store/useLearningProfileStore";
 import { useOntologyStore } from "../store/useOntologyStore";
 import { xapi } from "../lib/xapiTracker";
 import { initializeFSRS, reviewFSRS, FSRSData, FSRSRating } from "../lib/fsrs";
+import { apiRequest } from "../lib/apiClient";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 
@@ -83,6 +87,7 @@ export default function DocumentWorkspace({
   const [isSummarizing, setIsSummarizing] = useState(false);
   const [flashcards, setFlashcards] = useState<{question: string, answer: string, fsrs?: FSRSData}[]>([]);
   const { addFlashcardReview, updateFeynmanScore } = useMasteryStore();
+  const trackLearningEvent = useLearningProfileStore((state) => state.trackEvent);
   
   const handleReviewFlashcard = (index: number, rating: FSRSRating) => {
     addFlashcardReview();
@@ -99,6 +104,15 @@ export default function DocumentWorkspace({
       };
       return newCards;
     });
+    const quality = { again: 0, hard: 0.4, good: 0.75, easy: 1 }[rating];
+    trackLearningEvent({
+      kind: 'flashcard_review',
+      surface: 'document',
+      channel: 'retrieval',
+      quality,
+      success: quality >= 0.75,
+      errorType: quality < 0.75 ? 'flashcard:retrieval-gap' : undefined,
+    });
   };
   const [summary, setSummary] = useState<string | null>(null);
   const [showSaveToast, setShowSaveToast] = useState(false);
@@ -111,7 +125,7 @@ export default function DocumentWorkspace({
     setGlossaryDefinition({ term, definition: '', loading: true });
     try {
       const source = notes.replace(/<[^>]*>?/gm, '');
-      const response = await fetch('/api/agent/rag', {
+      const response = await apiRequest('/api/agent/rag', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -195,7 +209,7 @@ export default function DocumentWorkspace({
         console.error("Vector search failed", err);
       }
 
-      const response = await fetch('/api/agent/rag', {
+      const response = await apiRequest('/api/agent/rag', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ context, query: agentQuery })
@@ -218,7 +232,7 @@ export default function DocumentWorkspace({
     setIsCheckingFeynman(true);
     try {
       const source = notes.replace(/<[^>]*>?/gm, '');
-      const response = await fetch('/api/feynman-check', {
+      const response = await apiRequest('/api/feynman-check', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ source, explanation: feynmanText })
@@ -229,6 +243,16 @@ export default function DocumentWorkspace({
       if (data.gaps) {
         const score = Math.max(1, 10 - data.gaps.length * 2);
         updateFeynmanScore(score);
+        trackLearningEvent({
+          kind: 'feynman_check',
+          surface: 'document',
+          channel: 'explanation',
+          mode: 'feynman',
+          quality: score / 10,
+          success: data.gaps.length === 0,
+          errorType:
+            data.gaps.length > 0 ? 'feynman:knowledge-gap' : undefined,
+        });
       }
     } catch (e) {
       console.error(e);
@@ -261,7 +285,7 @@ export default function DocumentWorkspace({
     try {
       // Strip HTML tags for the prompt
       const text = notes.replace(/<[^>]*>?/gm, '');
-      const response = await fetch('/api/generate-flashcards', {
+      const response = await apiRequest('/api/generate-flashcards', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text })
@@ -294,7 +318,7 @@ export default function DocumentWorkspace({
     setIsSummarizing(true);
     try {
       const text = notes.replace(/<[^>]*>?/gm, '');
-      const response = await fetch('/api/generate-blueprint', {
+      const response = await apiRequest('/api/generate-blueprint', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text })
@@ -338,6 +362,42 @@ export default function DocumentWorkspace({
     }
   };
 
+  const handleOpenGooglePicker = async () => {
+    try {
+      const accessToken = await getAccessToken();
+      if (!accessToken) {
+        toast.error("Please sign in first to use Google Drive.");
+        return;
+      }
+      
+      const pickerOrigin =
+        window.location.ancestorOrigins &&
+        window.location.ancestorOrigins.length > 0
+          ? window.location.ancestorOrigins[window.location.ancestorOrigins.length - 1]
+          : window.location.origin;
+
+      const view = new google.picker.DocsView(google.picker.ViewId.DOCS);
+      
+      const picker = new google.picker.PickerBuilder()
+        .addView(view)
+        .setOAuthToken(accessToken)
+        .setCallback((data: any) => {
+          if (data.action === google.picker.Action.PICKED) {
+            const doc = data.docs[0];
+            toast.success(`Selected file: ${doc.name}`);
+            setSourceText(`[Content from Google Drive file: ${doc.name}]\n\nTo view actual contents, implement Google Drive API file export/download.`);
+          }
+        })
+        .setOrigin(pickerOrigin)
+        .build();
+        
+      picker.setVisible(true);
+    } catch (error) {
+      console.error(error);
+      toast.error("Failed to open Google Picker.");
+    }
+  };
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const selectedFile = e.target.files[0];
@@ -363,7 +423,7 @@ export default function DocumentWorkspace({
         const formData = new FormData();
         formData.append('file', selectedFile);
         
-        const res = await fetch('/api/ingest/file', {
+        const res = await apiRequest('/api/ingest/file', {
           method: 'POST',
           body: formData
         });
@@ -384,7 +444,7 @@ export default function DocumentWorkspace({
           setGlossary(extractGlossary(sanitized.sanitizedText));
 
           // Also trigger ontology extraction
-          fetch('/api/extract-ontology', {
+          apiRequest('/api/extract-ontology', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ text: sanitized.sanitizedText.slice(0, 50000) })
@@ -438,7 +498,7 @@ export default function DocumentWorkspace({
     
     setIsIngestingUrl(true);
     try {
-      const res = await fetch('/api/ingest/url', {
+      const res = await apiRequest('/api/ingest/url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: urlInput })
@@ -457,7 +517,7 @@ export default function DocumentWorkspace({
         setGlossary(extractGlossary(sanitized.sanitizedText));
         
         // Also trigger ontology extraction
-        fetch('/api/extract-ontology', {
+        apiRequest('/api/extract-ontology', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text: sanitized.sanitizedText.slice(0, 50000) })
@@ -711,6 +771,24 @@ export default function DocumentWorkspace({
                 />
               </label>
 
+              <div className="flex items-center gap-4">
+                <div className="h-px bg-slate-200 dark:bg-slate-700 w-16"></div>
+                <span className="text-slate-400 text-sm">OR</span>
+                <div className="h-px bg-slate-200 dark:bg-slate-700 w-16"></div>
+              </div>
+              
+              <button
+                onClick={handleOpenGooglePicker}
+                className="flex items-center justify-center gap-3 w-full max-w-sm px-6 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors font-medium text-slate-700 dark:text-slate-300 shadow-sm"
+              >
+                <img
+                  src="https://upload.wikimedia.org/wikipedia/commons/1/12/Google_Drive_icon_%282020%29.svg"
+                  alt="Google Drive"
+                  className="w-5 h-5"
+                />
+                Import from Google Drive
+              </button>
+
               <div className="max-w-sm w-full relative">
                 <div className="absolute inset-0 flex items-center" aria-hidden="true">
                   <div className="w-full border-t border-slate-200 dark:border-slate-800" />
@@ -929,7 +1007,7 @@ export default function DocumentWorkspace({
                       className="w-full h-24 object-cover"
                       referrerPolicy="no-referrer"
                     />
-                    <p className="text-[10px] text-slate-500 truncate p-1">
+                    <p className="text-xs text-slate-500 truncate p-1">
                       {img.prompt}
                     </p>
                   </div>
@@ -970,8 +1048,8 @@ export default function DocumentWorkspace({
               <button
                 onClick={async () => {
                   try {
-                    await new Promise(r => setTimeout(r, 500));
-                    toast.success("Demo: Saved to virtual Google Drive!");
+                    const id = await googleWorkspaceService.saveToDrive((file?.name || 'Untitled Document') + '.txt', notes, 'text/plain');
+                    toast.success("Saved to Google Drive!");
                   } catch (e) {
                     console.error(e);
                     toast.error("Failed to save to Drive");
@@ -990,11 +1068,10 @@ export default function DocumentWorkspace({
               <button
                 onClick={async () => {
                   try {
-                    await new Promise(r => setTimeout(r, 500));
-                    window.open(
-                      `https://docs.google.com/document/d/demo-doc-id/edit`,
-                      "_blank",
-                    );
+                    toast.info("Creating Google Doc...");
+                    const url = await googleWorkspaceService.createDocument((file?.name || 'Untitled Document'), notes);
+                    window.open(url, "_blank");
+                    toast.success("Opened in Google Docs");
                   } catch (e) {
                     console.error(e);
                     toast.error("Failed to export to Google Docs");
@@ -1013,11 +1090,9 @@ export default function DocumentWorkspace({
               <button
                 onClick={async () => {
                   try {
-                    await new Promise(r => setTimeout(r, 500));
-                    window.open(
-                      `https://docs.google.com/presentation/d/demo-presentation-id/edit`,
-                      "_blank",
-                    );
+                    toast.info("Creating Google Slides presentation...");
+                    const url = await googleWorkspaceService.createPresentation((file?.name || 'Untitled Document') + " Presentation");
+                    window.open(url, "_blank");
                   } catch (e) {
                     console.error(e);
                     toast.error("Failed to generate Google Slides");
@@ -1036,11 +1111,9 @@ export default function DocumentWorkspace({
               <button
                 onClick={async () => {
                   try {
-                    await new Promise(r => setTimeout(r, 500));
-                    window.open(
-                      `https://docs.google.com/forms/d/demo-form-id/edit`,
-                      "_blank",
-                    );
+                    toast.info("Creating Google Form...");
+                    const url = await googleWorkspaceService.createForm((file?.name || 'Untitled Document') + " Quiz");
+                    window.open(url, "_blank");
                   } catch (e) {
                     console.error(e);
                     toast.error("Failed to generate Google Form");
@@ -1054,6 +1127,31 @@ export default function DocumentWorkspace({
                   alt="Forms"
                 />{" "}
                 Forms
+              </button>
+
+              <button
+                onClick={async () => {
+                  try {
+                    toast.info("Saving note to Google Keep...");
+                    const url = await googleWorkspaceService.createKeepNote(
+                      (file?.name || 'Untitled Document') + " Notes", 
+                      notes
+                    );
+                    window.open(url, "_blank");
+                    toast.success("Saved to Google Keep");
+                  } catch (e) {
+                    console.error(e);
+                    toast.error("Failed to save to Google Keep");
+                  }
+                }}
+                className="text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white flex items-center gap-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3 py-1.5 rounded-lg shadow-sm hover:shadow transition-all"
+              >
+                <img
+                  src="https://upload.wikimedia.org/wikipedia/commons/e/e5/Google_Keep_icon_%282020%29.svg"
+                  className="w-3.5 h-3.5"
+                  alt="Keep"
+                />{" "}
+                Keep
               </button>
 
               <div className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-1" />
@@ -1207,7 +1305,7 @@ export default function DocumentWorkspace({
                             </div>
                             
                             {fc.fsrs && (
-                              <div className="flex flex-wrap gap-2 text-[10px] uppercase font-bold tracking-wider text-slate-500 mt-2">
+                              <div className="flex flex-wrap gap-2 text-xs uppercase font-bold tracking-wider text-slate-500 mt-2">
                                 <span className="bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded">Difficulty: {fc.fsrs.difficulty}</span>
                                 <span className="bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded">Retrievability: {(fc.fsrs.retrievability * 100).toFixed(0)}%</span>
                                 {fc.fsrs.next_review && (
@@ -1317,7 +1415,7 @@ export default function DocumentWorkspace({
                             className="w-full bg-slate-50 dark:bg-slate-800 p-2 rounded-lg border border-slate-200 dark:border-slate-700 flex items-center justify-between hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-left"
                           >
                             <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{g.term}</span>
-                            <span className="text-[10px] bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded text-slate-500 dark:text-slate-400">{g.count}</span>
+                            <span className="text-xs bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded text-slate-500 dark:text-slate-400">{g.count}</span>
                           </button>
                         ))}
                       </div>

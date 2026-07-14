@@ -2,19 +2,25 @@ import { StrictMode, Component, ErrorInfo, ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
+import { LanguageProvider } from "./lib/i18n";
 import { Logger } from "./utils/logger";
 import { reportWebVitals } from "./lib/reportWebVitals";
 import { registerSW } from 'virtual:pwa-register';
 
-// Register service worker for offline support
-const updateSW = registerSW({
-  onNeedRefresh() {
-    console.log('New content available, please refresh.');
-  },
-  onOfflineReady() {
-    console.log('App ready to work offline');
-  },
-});
+if (import.meta.env.PROD) {
+  registerSW({
+    onNeedRefresh() {
+      console.log('New content available, please refresh.');
+    },
+    onOfflineReady() {
+      console.log('App ready to work offline');
+    },
+  });
+} else if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations().then((registrations) => {
+    registrations.forEach((registration) => registration.unregister());
+  });
+}
 
 class ErrorBoundary extends Component<{children: ReactNode}, {hasError: boolean, error: Error | null}> {
   constructor(props: {children: ReactNode}) {
@@ -24,6 +30,16 @@ class ErrorBoundary extends Component<{children: ReactNode}, {hasError: boolean,
   static getDerivedStateFromError(error: Error) { return { hasError: true, error }; }
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     Logger.error(error, errorInfo);
+    fetch('/api/health', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: error.message,
+        stack: error.stack,
+        componentStack: errorInfo.componentStack,
+        timestamp: new Date().toISOString(),
+      }),
+    }).catch(() => {});
   }
   render() {
     if (this.state.hasError) {
@@ -49,10 +65,26 @@ class ErrorBoundary extends Component<{children: ReactNode}, {hasError: boolean,
   }
 }
 
-createRoot(document.getElementById("root")!).render(
+const rootElement = document.getElementById("root")!;
+
+type AppRoot = ReturnType<typeof createRoot>;
+const appRoot: { current: AppRoot | null } = (
+  import.meta.hot?.data as { appRoot?: { current: AppRoot | null } } | undefined
+)?.appRoot ?? { current: null };
+
+if (!appRoot.current) {
+  appRoot.current = createRoot(rootElement);
+  if (import.meta.hot) {
+    import.meta.hot.data.appRoot = appRoot;
+  }
+}
+
+appRoot.current.render(
   <StrictMode>
     <ErrorBoundary>
-      <App />
+      <LanguageProvider>
+        <App />
+      </LanguageProvider>
     </ErrorBoundary>
   </StrictMode>,
 );
