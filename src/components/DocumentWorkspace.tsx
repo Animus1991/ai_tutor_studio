@@ -28,7 +28,9 @@ import { detectAndSanitizePii } from "../lib/piiSanitizer";
 import { analyzeSourceQuality, extractGlossary } from "../utils/nlp";
 import { SourceAnalysis } from "./SourceAnalysis";
 import { auditLogger } from "../lib/auditLogger";
+import { googleWorkspaceService } from "../lib/services/GoogleWorkspaceService";
 import { useAuthStore } from "../store/useAuthStore";
+import { getAccessToken } from "../lib/auth";
 import { useStore } from "../store/useStore";
 import { useYjsText, globalCrdtStore } from "../lib/crdt";
 import { useDocumentStore } from "../store/useDocumentStore";
@@ -357,6 +359,42 @@ export default function DocumentWorkspace({
       toast.error('Failed to generate blueprint');
     } finally {
       setIsSummarizing(false);
+    }
+  };
+
+  const handleOpenGooglePicker = async () => {
+    try {
+      const accessToken = await getAccessToken();
+      if (!accessToken) {
+        toast.error("Please sign in first to use Google Drive.");
+        return;
+      }
+      
+      const pickerOrigin =
+        window.location.ancestorOrigins &&
+        window.location.ancestorOrigins.length > 0
+          ? window.location.ancestorOrigins[window.location.ancestorOrigins.length - 1]
+          : window.location.origin;
+
+      const view = new google.picker.DocsView(google.picker.ViewId.DOCS);
+      
+      const picker = new google.picker.PickerBuilder()
+        .addView(view)
+        .setOAuthToken(accessToken)
+        .setCallback((data: any) => {
+          if (data.action === google.picker.Action.PICKED) {
+            const doc = data.docs[0];
+            toast.success(`Selected file: ${doc.name}`);
+            setSourceText(`[Content from Google Drive file: ${doc.name}]\n\nTo view actual contents, implement Google Drive API file export/download.`);
+          }
+        })
+        .setOrigin(pickerOrigin)
+        .build();
+        
+      picker.setVisible(true);
+    } catch (error) {
+      console.error(error);
+      toast.error("Failed to open Google Picker.");
     }
   };
 
@@ -733,6 +771,24 @@ export default function DocumentWorkspace({
                 />
               </label>
 
+              <div className="flex items-center gap-4">
+                <div className="h-px bg-slate-200 dark:bg-slate-700 w-16"></div>
+                <span className="text-slate-400 text-sm">OR</span>
+                <div className="h-px bg-slate-200 dark:bg-slate-700 w-16"></div>
+              </div>
+              
+              <button
+                onClick={handleOpenGooglePicker}
+                className="flex items-center justify-center gap-3 w-full max-w-sm px-6 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors font-medium text-slate-700 dark:text-slate-300 shadow-sm"
+              >
+                <img
+                  src="https://upload.wikimedia.org/wikipedia/commons/1/12/Google_Drive_icon_%282020%29.svg"
+                  alt="Google Drive"
+                  className="w-5 h-5"
+                />
+                Import from Google Drive
+              </button>
+
               <div className="max-w-sm w-full relative">
                 <div className="absolute inset-0 flex items-center" aria-hidden="true">
                   <div className="w-full border-t border-slate-200 dark:border-slate-800" />
@@ -992,8 +1048,8 @@ export default function DocumentWorkspace({
               <button
                 onClick={async () => {
                   try {
-                    await new Promise(r => setTimeout(r, 500));
-                    toast.success("Demo: Saved to virtual Google Drive!");
+                    const id = await googleWorkspaceService.saveToDrive((file?.name || 'Untitled Document') + '.txt', notes, 'text/plain');
+                    toast.success("Saved to Google Drive!");
                   } catch (e) {
                     console.error(e);
                     toast.error("Failed to save to Drive");
@@ -1012,11 +1068,10 @@ export default function DocumentWorkspace({
               <button
                 onClick={async () => {
                   try {
-                    await new Promise(r => setTimeout(r, 500));
-                    window.open(
-                      `https://docs.google.com/document/d/demo-doc-id/edit`,
-                      "_blank",
-                    );
+                    toast.info("Creating Google Doc...");
+                    const url = await googleWorkspaceService.createDocument((file?.name || 'Untitled Document'), notes);
+                    window.open(url, "_blank");
+                    toast.success("Opened in Google Docs");
                   } catch (e) {
                     console.error(e);
                     toast.error("Failed to export to Google Docs");
@@ -1035,11 +1090,9 @@ export default function DocumentWorkspace({
               <button
                 onClick={async () => {
                   try {
-                    await new Promise(r => setTimeout(r, 500));
-                    window.open(
-                      `https://docs.google.com/presentation/d/demo-presentation-id/edit`,
-                      "_blank",
-                    );
+                    toast.info("Creating Google Slides presentation...");
+                    const url = await googleWorkspaceService.createPresentation((file?.name || 'Untitled Document') + " Presentation");
+                    window.open(url, "_blank");
                   } catch (e) {
                     console.error(e);
                     toast.error("Failed to generate Google Slides");
@@ -1058,11 +1111,9 @@ export default function DocumentWorkspace({
               <button
                 onClick={async () => {
                   try {
-                    await new Promise(r => setTimeout(r, 500));
-                    window.open(
-                      `https://docs.google.com/forms/d/demo-form-id/edit`,
-                      "_blank",
-                    );
+                    toast.info("Creating Google Form...");
+                    const url = await googleWorkspaceService.createForm((file?.name || 'Untitled Document') + " Quiz");
+                    window.open(url, "_blank");
                   } catch (e) {
                     console.error(e);
                     toast.error("Failed to generate Google Form");
@@ -1076,6 +1127,31 @@ export default function DocumentWorkspace({
                   alt="Forms"
                 />{" "}
                 Forms
+              </button>
+
+              <button
+                onClick={async () => {
+                  try {
+                    toast.info("Saving note to Google Keep...");
+                    const url = await googleWorkspaceService.createKeepNote(
+                      (file?.name || 'Untitled Document') + " Notes", 
+                      notes
+                    );
+                    window.open(url, "_blank");
+                    toast.success("Saved to Google Keep");
+                  } catch (e) {
+                    console.error(e);
+                    toast.error("Failed to save to Google Keep");
+                  }
+                }}
+                className="text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white flex items-center gap-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3 py-1.5 rounded-lg shadow-sm hover:shadow transition-all"
+              >
+                <img
+                  src="https://upload.wikimedia.org/wikipedia/commons/e/e5/Google_Keep_icon_%282020%29.svg"
+                  className="w-3.5 h-3.5"
+                  alt="Keep"
+                />{" "}
+                Keep
               </button>
 
               <div className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-1" />

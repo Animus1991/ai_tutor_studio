@@ -43,6 +43,7 @@ import {
   orderBy,
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
+import { getAccessToken } from "../lib/auth";
 
 import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
@@ -329,10 +330,11 @@ export default function CollabRoom() {
         let formUrl = 'https://docs.google.com/forms/create';
         let realFormId: string = quizId;
         try {
+          const token = googleOAuth.token ?? (await getAccessToken());
           const res = await apiRequest('/api/google/forms', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title, accessToken: googleOAuth.token ?? undefined }),
+            body: JSON.stringify({ title, accessToken: token ?? undefined }),
           });
           if (res.ok) {
             const data = (await res.json()) as { editUrl?: string; formId?: string };
@@ -384,10 +386,11 @@ export default function CollabRoom() {
       // configured; otherwise it returns the universal "new meeting" URL.
       let meetUri = "https://meet.google.com/new";
       try {
+        const token = googleOAuth.token ?? (await getAccessToken());
         const res = await apiRequest('/api/google/meet', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ accessToken: googleOAuth.token ?? undefined }),
+          body: JSON.stringify({ accessToken: token ?? undefined }),
         });
         if (res.ok) {
           const data = (await res.json()) as { meetUrl?: string };

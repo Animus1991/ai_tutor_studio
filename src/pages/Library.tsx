@@ -60,6 +60,7 @@ import { useLibraryStore } from "../store/useLibraryStore";
 import PageShell from "../components/layout/PageShell";
 import UploadCourseModal from "../components/UploadCourseModal";
 import { useAuthStore } from "../store/useAuthStore";
+import { getAccessToken, googleSignInForClassroom } from "../lib/auth";
 import type { Course } from "../lib/courseTypes";
 import { useStore } from "../store/useStore";
 import { isDemoModeActive, loadDemoTasks } from "../lib/demoStorage";
@@ -230,8 +231,19 @@ export default function Library() {
         toast.info("Please sign in to import from Google Classroom.");
         return;
       }
+      let googleToken = accessToken ?? (await getAccessToken());
+      if (!isDemoMode && !googleToken) {
+        toast.info("Authorize Google Classroom to import courses.");
+        const session = await googleSignInForClassroom();
+        if (session === null) return;
+        googleToken = session.accessToken ?? (await getAccessToken());
+      }
+      if (!isDemoMode && !googleToken) {
+        toast.error("Please sign in with Google to authorize Google Classroom.");
+        return;
+      }
 
-      const imported = await fetchClassroomCourses(accessToken, isDemoMode);
+      const imported = await fetchClassroomCourses(googleToken, isDemoMode);
 
       if (isDemoMode) {
         for (const c of imported) {

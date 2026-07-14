@@ -8,9 +8,18 @@ import {
   type UserCredential,
 } from "firebase/auth";
 import { auth } from "./firebase";
+import {
+  GOOGLE_CLASSROOM_SCOPES,
+  GOOGLE_WORKSPACE_SCOPES,
+} from "./googleScopes";
 
 let isSigningIn = false;
 let cachedAccessToken: string | null = null;
+try {
+  cachedAccessToken = sessionStorage.getItem('memora_google_access_token');
+} catch {
+  /* ignore */
+}
 
 /** getRedirectResult() is single-use — share one promise (React StrictMode calls twice). */
 let redirectResultPromise: Promise<{
@@ -55,12 +64,28 @@ function preferRedirectSignIn(): boolean {
   return host === 'localhost' || host === '127.0.0.1';
 }
 
-function createGoogleProvider(includeClassroomScope = false): GoogleAuthProvider {
+export type GoogleSignInOptions = {
+  /** Sheets, Gmail, Docs, Meet, Tasks, Forms, etc. */
+  workspace?: boolean;
+  /** Google Classroom import and sync. */
+  classroom?: boolean;
+};
+
+function createGoogleProvider(opts: GoogleSignInOptions = {}): GoogleAuthProvider {
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: 'select_account' });
-  if (includeClassroomScope) {
-    provider.addScope('https://www.googleapis.com/auth/classroom.courses.readonly');
+
+  if (opts.workspace) {
+    for (const scope of GOOGLE_WORKSPACE_SCOPES) {
+      provider.addScope(scope);
+    }
   }
+  if (opts.classroom) {
+    for (const scope of GOOGLE_CLASSROOM_SCOPES) {
+      provider.addScope(scope);
+    }
+  }
+
   return provider;
 }
 
@@ -70,6 +95,13 @@ function sessionFromCredential(result: UserCredential): {
 } {
   const credential = GoogleAuthProvider.credentialFromResult(result);
   cachedAccessToken = credential?.accessToken ?? null;
+  try {
+    if (cachedAccessToken) {
+      sessionStorage.setItem('memora_google_access_token', cachedAccessToken);
+    }
+  } catch {
+    /* ignore */
+  }
   return { user: result.user, accessToken: cachedAccessToken };
 }
 
@@ -202,14 +234,15 @@ export const initAuth = (
 /**
  * Google sign-in. On localhost uses full-page redirect (reliable vs popup/CSP).
  * Returns null when redirect started (page will reload).
+ * Default sign-in uses profile/email only; pass workspace/classroom for API scopes.
  */
-export const googleSignIn = async (opts?: {
-  includeClassroomScope?: boolean;
-}): Promise<{
+export const googleSignIn = async (
+  opts: GoogleSignInOptions = {},
+): Promise<{
   user: User;
   accessToken: string | null;
 } | null> => {
-  const provider = createGoogleProvider(opts?.includeClassroomScope ?? false);
+  const provider = createGoogleProvider(opts);
 
   try {
     isSigningIn = true;
@@ -236,15 +269,18 @@ export const googleSignIn = async (opts?: {
   }
 };
 
+/** Re-auth with Google Workspace scopes (Sheets, Gmail, Docs, Meet, etc.). */
+export const googleSignInForWorkspace = () => googleSignIn({ workspace: true });
+
 /** Re-auth with Classroom scope (Library import). */
-export const googleSignInForClassroom = () =>
-  googleSignIn({ includeClassroomScope: true });
+export const googleSignInForClassroom = () => googleSignIn({ classroom: true });
 
 export const getAccessToken = async (): Promise<string | null> => {
   return cachedAccessToken;
 };
 
 export const logout = async () => {
-  await auth.signOut();
+  try { sessionStorage.removeItem('memora_google_access_token'); } catch { /* ignore */ }
   cachedAccessToken = null;
+  await auth.signOut();
 };

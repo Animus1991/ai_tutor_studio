@@ -1,19 +1,92 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLanguage } from '../lib/i18n';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
-import { Clock, CheckCircle2 } from 'lucide-react';
+import { Clock, CheckCircle2, Download, Mail, Loader2 } from 'lucide-react';
 import { auth, db } from '../lib/firebase';
 import { collection, query, getDocs } from 'firebase/firestore';
 import localforage from 'localforage';
 import { useStore } from '../store/useStore';
 import { buildTaskAnalytics } from '../lib/taskAnalytics';
 import { isDemoModeActive, loadDemoTasks } from '../lib/demoStorage';
+import { googleWorkspaceService } from '../lib/services/GoogleWorkspaceService';
+import { getAccessToken, googleSignInForWorkspace } from '../lib/auth';
+import { toast } from 'sonner';
 
 export default function DashboardStats() {
   const { t } = useLanguage();
   const studySessionsHistory = useStore((s) => s.studySessionsHistory);
   const [tasks, setTasks] = useState<Array<{ completed?: boolean; createdAt?: string; completedAt?: string }>>([]);
   const [loading, setLoading] = useState(true);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isEmailing, setIsEmailing] = useState(false);
+
+  const ensureWorkspaceToken = async (): Promise<string | null> => {
+    let token = await getAccessToken();
+    if (token) return token;
+
+    toast.info(t('Connect Google Workspace to export', 'Σύνδεση Google Workspace για εξαγωγή'));
+    const session = await googleSignInForWorkspace();
+    if (session === null) return null;
+    token = session.accessToken ?? (await getAccessToken());
+    return token;
+  };
+
+  const handleExportSheets = async (analyticsData: Array<{ date: string; focusTime: number; completionRate: number }>) => {
+    try {
+      setIsExporting(true);
+      const token = await ensureWorkspaceToken();
+      if (!token) {
+        toast.error(t('Google authorization required', 'Απαιτείται εξουσιοδότηση Google'));
+        return;
+      }
+
+      const data = [
+        ["Date", "Study Time (mins)", "Completion Rate (%)"],
+        ...analyticsData.map(d => [d.date, d.focusTime, d.completionRate])
+      ];
+      const url = await googleWorkspaceService.createSpreadsheet("Study Analytics Report", data);
+      window.open(url, "_blank");
+      toast.success(t('Exported to Google Sheets', 'Εξαγωγή σε Google Sheets'));
+    } catch (e) {
+      console.error(e);
+      toast.error(t('Failed to export to Google Sheets', 'Αποτυχία εξαγωγής σε Google Sheets'));
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleEmailReport = async (analyticsData: Array<{ date: string; focusTime: number; completionRate: number }>) => {
+    try {
+      setIsEmailing(true);
+      const token = await ensureWorkspaceToken();
+      if (!token) {
+        toast.error(t('Google authorization required', 'Απαιτείται εξουσιοδότηση Google'));
+        return;
+      }
+
+      const userEmail = prompt(t('Enter email address to send report to:', 'Email για αποστολή αναφοράς:'));
+      if (!userEmail) return;
+
+      let htmlBody = "<h1>Study Analytics Report</h1><table border='1'><tr><th>Date</th><th>Study Time (mins)</th><th>Completion Rate (%)</th></tr>";
+      analyticsData.forEach(d => {
+        htmlBody += `<tr><td>${d.date}</td><td>${d.focusTime}</td><td>${d.completionRate}%</td></tr>`;
+      });
+      htmlBody += "</table>";
+
+      await googleWorkspaceService.sendEmail(
+        userEmail,
+        "Your Study Analytics Report",
+        "Please view this email in an HTML compatible client.",
+        htmlBody
+      );
+      toast.success(t('Report sent to Gmail!', 'Η αναφορά στάλθηκε μέσω Gmail!'));
+    } catch (e) {
+      console.error(e);
+      toast.error(t('Failed to send email', 'Αποτυχία αποστολής email'));
+    } finally {
+      setIsEmailing(false);
+    }
+  };
 
   useEffect(() => {
     const fetchTasks = async () => {
@@ -61,14 +134,32 @@ export default function DashboardStats() {
 
   return (
     <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800 p-6 rounded-2xl shadow-sm mb-8 transition-colors duration-300 card-hover">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
         <div>
           <h3 className="font-display font-bold text-lg text-slate-900 dark:text-white">
             {t('7-Day Activity Summary', 'Σύνοψη 7 Ημερών')}
           </h3>
           <p className="text-slate-500 dark:text-slate-400 text-sm mt-0.5">{t('Study time and task completion progress.', 'Χρόνος μελέτης και πρόοδος εργασιών.')}</p>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex gap-2">
+            <button
+              onClick={() => handleExportSheets(analyticsData)}
+              disabled={isExporting}
+              className="px-3 py-1.5 bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 border border-green-200 dark:border-green-800/50 rounded-xl text-xs font-semibold hover:bg-green-100 dark:hover:bg-green-900/50 transition-colors flex items-center gap-1.5 disabled:opacity-50"
+            >
+              {isExporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+              Sheets
+            </button>
+            <button
+              onClick={() => handleEmailReport(analyticsData)}
+              disabled={isEmailing}
+              className="px-3 py-1.5 bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800/50 rounded-xl text-xs font-semibold hover:bg-rose-100 dark:hover:bg-rose-900/50 transition-colors flex items-center gap-1.5 disabled:opacity-50"
+            >
+              {isEmailing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Mail className="w-3.5 h-3.5" />}
+              Gmail
+            </button>
+          </div>
           <div className="flex items-center gap-2">
             <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center">
               <Clock className="w-4 h-4 text-indigo-500" />
