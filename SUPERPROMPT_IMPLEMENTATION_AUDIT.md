@@ -30,6 +30,10 @@ with material gaps; **Mock** = UI/demo output without production mechanism;
 | Theory/practice ratio | Implemented | profile parameters + blueprint modes | Outcome-conditioned policy |
 | Error-pattern analytics | Implemented | dashboard top recurring gaps | Domain ontology mapping |
 | Privacy / reset | Implemented | local aggregate, 500-event/90-day buffer, Settings reset | Institutional retention controls |
+| Per-domain plasticity | Implemented | opaque domain buckets, global→domain shrinkage | Validate domain boundaries/priors |
+| Response-time variance/fatigue | Implemented | 250ms buckets, online moments, bounded fatigue | Fairness/causal calibration |
+| Continuous ability estimate | Implemented experimental | local Rasch-like theta | Item calibration/CAT validation |
+| Transparency/manual override | Implemented | explanation drivers and Settings controls | Greek localization |
 
 ## 3. Notes → course architecture
 
@@ -90,11 +94,45 @@ require product/legal infrastructure.
 | Observability/SLOs | Partial |
 | Component/E2E/model evals | Partial |
 
+## 8. Data protection, privacy and ethics
+
+| Requirement | Status | Remaining |
+| --- | --- | --- |
+| Data minimization/local profile | Implemented | Institutional server policies |
+| Profile explanation/reset/export | Partial | Full account/vector/log/backup erasure |
+| GDPR lawful basis/DPIA/DPA/transfers | Missing operational/legal | DPO/legal implementation |
+| Art. 21 fixed-policy opt-out | Partial | Dedicated profiling-off control |
+| Art. 22 human contest/review | Missing | Required before high-stakes use |
+| Overreliance controls | Partial | Deterministic hint ladder/no-AI outcome trials |
+| Human escalation | Missing | Service workflow |
+
+## 9. Accessibility and multilingual coverage
+
+| Requirement | Status | Remaining |
+| --- | --- | --- |
+| Dyslexia/text preferences | Implemented preference | No efficacy claim |
+| Reduced motion/skip links/ARIA | Partial | Independent WCAG 2.2 AA audit |
+| Cognitive/ADHD personalization | Partial | Resume points, manual user studies |
+| Greek-first UI/evaluation | Missing | i18n, native prompts, benchmarks, glossary |
+| Other language packs | Missing | Native reviewers and per-language gates |
+
+## 10. Validation-gated roadmap
+
+| Gate | Status |
+| --- | --- |
+| Strict lint/type/tests/rules/build/audit | Implemented |
+| Greek grounded pipeline evaluation | Missing |
+| Delayed retention/transfer active control | Missing |
+| Overreliance/subgroup monitoring | Missing |
+| Independent WCAG/manual assistive testing | Missing |
+| DPIA/deletion/incident drills | Missing |
+| Product/economic and institutional gates | Missing |
+
 ## Objective conclusion
 
 The SUPERPROMPT is **not fully implemented**. The repository now implements a
 substantial, tested vertical slice for heterogeneous ingestion, grounded
-curriculum generation, implicit local adaptation, retrieval scheduling,
+curriculum generation, global/per-domain implicit local adaptation, retrieval scheduling,
 error analytics and secure collaboration metadata. The largest remaining
 product gaps are the dedicated theory/practice lesson runners, unified
 pedagogy/FSRS service, offline sync queue, deterministic scaffolding engine,
