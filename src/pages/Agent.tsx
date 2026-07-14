@@ -31,6 +31,7 @@ import type { BehaviorEvent } from '../lib/learningProfile';
 import { loadAgentCourseId, saveAgentCourseId } from '../lib/agentCourseContext';
 import { useLanguage } from '../lib/i18n';
 import { announce } from '../lib/liveAnnouncer';
+import MarkdownMessage from '../components/MarkdownMessage';
 import { ensureDemoSandboxReady } from '../lib/demoMode';
 
 type Message = AgentMessage;

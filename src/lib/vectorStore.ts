@@ -69,14 +69,30 @@ export function cosineSimilarity(vecA: number[], vecB: number[]) {
   return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
+/** After first embed failure (quota/network), skip further embed calls this session. */
+let embeddingApiAvailable: boolean | null = null;
+
+export function resetEmbeddingAvailability(): void {
+  embeddingApiAvailable = null;
+}
+
 export async function generateEmbedding(text: string): Promise<number[]> {
+  if (embeddingApiAvailable === false) {
+    throw new Error('Embedding API unavailable');
+  }
   const res = await apiRequest('/api/embed', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text: text.slice(0, 8000) }),
   });
-  if (!res.ok) throw new Error('Failed to generate embedding');
+  if (!res.ok) {
+    if (res.status === 429 || res.status === 401 || res.status === 503) {
+      embeddingApiAvailable = false;
+    }
+    throw new Error('Failed to generate embedding');
+  }
   const data = await res.json();
+  embeddingApiAvailable = true;
   return data.embedding;
 }
 
@@ -85,15 +101,25 @@ export async function indexDocumentForRag(
   docId: string,
   docTitle: string,
   text: string,
+  opts?: { skipEmbeddings?: boolean },
 ): Promise<void> {
+  const existing = await getEmbeddingsByDocId(docId);
+  if (
+    existing.length > 0 &&
+    existing.every((d) => d.text?.trim().length >= 40)
+  ) {
+    return;
+  }
+
   await deleteEmbeddingsForDoc(docId);
-  const chunks = chunkText(text);
   for (let i = 0; i < chunks.length; i++) {
     let embedding: number[] = [];
-    try {
-      embedding = await generateEmbedding(chunks[i]);
-    } catch {
-      /* lexical-only when embed API unavailable (e.g. Gemini quota) */
+    if (!opts?.skipEmbeddings && embeddingApiAvailable !== false) {
+      try {
+        embedding = await generateEmbedding(chunks[i]);
+      } catch {
+        /* lexical-only when embed API unavailable (e.g. Gemini quota) */
+      }
     }
     await saveEmbedding({
       id: `${docId}_chunk_${i}`,

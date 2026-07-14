@@ -102,14 +102,26 @@ export async function seedDemoSandbox() {
 }
 
 /** Repair demo library + RAG index on every demo session (idempotent). */
-export async function ensureDemoSandboxReady(): Promise<void> {
-  if (!isDemoModeActive()) return;
-  setDemoModeFlag(true);
-  await seedDemoCourse();
-  await seedDemoDataAnalysisCourse();
-  await seedDemoTasks();
-  await seedDemoActivities();
-  seedDemoStoreStats();
+let ensureDemoSandboxReadyPromise: Promise<void> | null = null;
+
+export function ensureDemoSandboxReady(): Promise<void> {
+  if (!isDemoModeActive()) return Promise.resolve();
+
+  if (!ensureDemoSandboxReadyPromise) {
+    ensureDemoSandboxReadyPromise = (async () => {
+      setDemoModeFlag(true);
+      await seedDemoCourse();
+      await seedDemoDataAnalysisCourse();
+      await seedDemoTasks();
+      await seedDemoActivities();
+      seedDemoStoreStats();
+    })().catch((err) => {
+      ensureDemoSandboxReadyPromise = null;
+      throw err;
+    });
+  }
+
+  return ensureDemoSandboxReadyPromise;
 }
 
 export function isDemoCourseId(id: string) {

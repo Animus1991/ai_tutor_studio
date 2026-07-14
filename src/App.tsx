@@ -89,7 +89,7 @@ export default function App() {
     });
 
     return () => unsubscribe();
-  }, [enterDemoMode, setUser, setAccessToken, setNeedsAuth]);
+  }, [enterDemoMode, setUser, setAccessToken, setNeedsAuth, hydrateLibrary]);
 
   // Check onboarding status after auth resolves
   useEffect(() => {
@@ -103,12 +103,6 @@ export default function App() {
   const handleOnboardingComplete = useCallback(() => {
     setShowOnboarding(false);
   }, []);
-
-  useEffect(() => {
-    if (isDemoModeActive()) {
-      void ensureDemoSandboxReady().then(() => hydrateLibrary());
-    }
-  }, [hydrateLibrary]);
 
   const handleLogin = async () => {
     setIsLoggingIn(true);
