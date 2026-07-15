@@ -39,7 +39,7 @@ import Onboarding from "./components/Onboarding";
 import { hasCompletedOnboarding } from "./lib/onboardingProfile";
 
 export default function App() {
-  const { needsAuth, setNeedsAuth, setUser, setAccessToken, enterDemoMode } = useAuthStore();
+  const { needsAuth, setNeedsAuth, setUser, setAccessToken, enterDemoMode, isDemoMode } = useAuthStore();
   const hydrateLibrary = useLibraryStore((s) => s.hydrate);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isEnteringDemo, setIsEnteringDemo] = useState(false);
@@ -77,28 +77,41 @@ export default function App() {
       },
     }).then((unsub) => {
       unsubscribe = unsub;
-      if (isDemoModeActive() && useAuthStore.getState().needsAuth) {
+
+      const wantsDemo = new URLSearchParams(window.location.search).get('demo') === '1';
+      if (wantsDemo && !useAuthStore.getState().isDemoMode) {
+        enterDemoMode();
+      } else if (isDemoModeActive() && useAuthStore.getState().needsAuth) {
         enterDemoMode();
       } else if (isDemoModeActive()) {
         useAuthStore.setState({ isDemoMode: true, needsAuth: false });
       }
-      if (isDemoModeActive()) {
-        void ensureDemoSandboxReady().then(() => hydrateLibrary());
+
+      if (useAuthStore.getState().isDemoMode || isDemoModeActive()) {
+        void ensureDemoSandboxReady()
+          .then(() => hydrateLibrary())
+          .catch((err) => console.error('Demo sandbox failed:', err));
       }
+
       setAuthBootstrapping(false);
     });
 
     return () => unsubscribe();
   }, [enterDemoMode, setUser, setAccessToken, setNeedsAuth, hydrateLibrary]);
 
-  // Check onboarding status after auth resolves
+  // Check onboarding status after auth resolves (demo sandbox skips the wizard)
   useEffect(() => {
     if (needsAuth) return;
+    if (isDemoMode || isDemoModeActive()) {
+      setShowOnboarding(false);
+      setOnboardingChecked(true);
+      return;
+    }
     hasCompletedOnboarding().then((completed) => {
       setShowOnboarding(!completed);
       setOnboardingChecked(true);
     });
-  }, [needsAuth]);
+  }, [needsAuth, isDemoMode]);
 
   const handleOnboardingComplete = useCallback(() => {
     setShowOnboarding(false);
@@ -137,14 +150,6 @@ export default function App() {
       setIsEnteringDemo(false);
     }
   };
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('demo') === '1' && useAuthStore.getState().needsAuth) {
-      void handleEnterDemo();
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot deep link
-  }, []);
 
   if (authBootstrapping) {
     return (
