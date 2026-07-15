@@ -23,6 +23,7 @@ import {
   assertPublicHttpUrl,
   createFirebaseAuthMiddleware,
   HttpError,
+  requiredString,
 } from './server/security.js';
 import { detectAndSanitizePii } from './src/lib/piiSanitizer.js';
 import {
@@ -126,6 +127,26 @@ const sanitizeAiPayload = <T,>(value: T, depth = 0): T => {
   }
   return value;
 };
+
+function sanitizeAiText(value: unknown, field: string, maxLength: number): string {
+  const trimmed = requiredString(value, field, maxLength);
+  return detectAndSanitizePii(trimmed).sanitizedText;
+}
+
+function sendRouteError(
+  res: express.Response,
+  error: unknown,
+  logLabel: string,
+  clientMessage: string,
+): void {
+  if (error instanceof HttpError) {
+    console.error(`${logLabel}:`, error.message);
+    res.status(error.status).json({ error: error.message });
+    return;
+  }
+  console.error(`${logLabel}:`, error);
+  res.status(500).json({ error: clientMessage });
+}
 
 const PUBLIC_API_PATHS = new Set([
   '/health',

@@ -70,6 +70,6 @@ export function titleCasePhrase(phrase: string): string {
 export function splitSentences(text: string): string[] {
   const n = text.replace(/\r\n/g, '\n').replace(/\s+/g, ' ').trim();
   if (!n) return [];
-  const parts = n.split(/(?<=[.!?;·])\s+(?=[""'(\[]?[\p{Lu}\p{N}])/u);
+  const parts = n.split(/(?<=[.!?;·])\s+(?=[""'([]?[\p{Lu}\p{N}])/u);
   return parts.map((s) => s.trim()).filter((s) => s.length >= 12 && /[\p{L}]/u.test(s));
 }

@@ -76,8 +76,7 @@ export default function DashboardStats() {
       await googleWorkspaceService.sendEmail(
         userEmail,
         "Your Study Analytics Report",
-        "Please view this email in an HTML compatible client.",
-        htmlBody
+        htmlBody,
       );
       toast.success(t('Report sent to Gmail!', 'Η αναφορά στάλθηκε μέσω Gmail!'));
     } catch (e) {

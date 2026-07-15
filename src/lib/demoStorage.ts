@@ -4,6 +4,13 @@ export const DEMO_MODE_KEY = 'memora-demo-mode';
 export const DEMO_TASKS_KEY = 'memora-tasks';
 export const DEMO_ACTIVITIES_KEY = 'memora-demo-activities';
 
+function hasWorkingLocalStorage(): boolean {
+  return (
+    typeof localStorage !== 'undefined' &&
+    typeof localStorage.getItem === 'function'
+  );
+}
+
 export interface DemoTask {
   id: string;
   title: string;
@@ -239,14 +246,18 @@ export async function appendDemoActivity(title: string, type: DemoActivity['type
 export async function clearDemoData(): Promise<void> {
   await localforage.removeItem(DEMO_TASKS_KEY);
   await localforage.removeItem(DEMO_ACTIVITIES_KEY);
-  localStorage.removeItem(DEMO_MODE_KEY);
+  if (hasWorkingLocalStorage()) {
+    localStorage.removeItem(DEMO_MODE_KEY);
+  }
 }
 
 export function isDemoModeActive(): boolean {
+  if (!hasWorkingLocalStorage()) return false;
   return localStorage.getItem(DEMO_MODE_KEY) === '1';
 }
 
 export function setDemoModeFlag(active: boolean): void {
+  if (!hasWorkingLocalStorage()) return;
   if (active) {
     localStorage.setItem(DEMO_MODE_KEY, '1');
   } else {

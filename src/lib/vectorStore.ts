@@ -112,6 +112,7 @@ export async function indexDocumentForRag(
   }
 
   await deleteEmbeddingsForDoc(docId);
+  const chunks = chunkDocument(text);
   for (let i = 0; i < chunks.length; i++) {
     let embedding: number[] = [];
     if (!opts?.skipEmbeddings && embeddingApiAvailable !== false) {

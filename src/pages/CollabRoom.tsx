@@ -105,7 +105,7 @@ export default function CollabRoom() {
   const [pendingOauthAction, setPendingOauthAction] = useState<(() => void) | null>(null);
 
   const [user, setUser] = useState<any>(null);
-  const [roomId] = useState(initialRoomId);
+  const [roomId, setRoomId] = useState(initialRoomId);
   const [studyRoomOpen, setStudyRoomOpen] = useState(false);
   const [selfRole, setSelfRole] = useState<'student' | 'mentor' | 'facilitator' | 'observer'>('student');
 
@@ -126,14 +126,14 @@ export default function CollabRoom() {
   }, [roomId]);
 
   useEffect(() => {
-    const doc = new Y.Doc();
-    setYdoc(doc);
+    const yCollabDoc = new Y.Doc();
+    setYdoc(yCollabDoc);
 
     const roomDocName = `memora-collab-${roomId}`;
-    const wsProvider = new WebsocketProvider(getCollabWebSocketUrl(), roomDocName, doc);
+    const wsProvider = new WebsocketProvider(getCollabWebSocketUrl(), roomDocName, yCollabDoc);
     setProvider(wsProvider);
 
-    const indexeddbProvider = new IndexeddbPersistence(roomDocName, doc);
+    const indexeddbProvider = new IndexeddbPersistence(roomDocName, yCollabDoc);
 
     const awareness = wsProvider.awareness;
 
@@ -202,7 +202,7 @@ export default function CollabRoom() {
 
         const fireProvider = new FireProvider({
           firebaseApp: app,
-          ydoc: doc,
+          ydoc: yCollabDoc,
           path: `yjs_state/${roomId}`,
         });
 
@@ -251,7 +251,7 @@ export default function CollabRoom() {
       unsubscribeAuth();
       wsProvider.disconnect();
       void indexeddbProvider.destroy();
-      doc.destroy();
+      yCollabDoc.destroy();
     };
   }, [roomId, selfRole]);
 

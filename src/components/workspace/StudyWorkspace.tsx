@@ -247,7 +247,8 @@ export default function StudyWorkspace({ onRequestUpload }: { onRequestUpload?: 
   }, [handleKeyDown]);
 
   const handleUpload = useCallback(() => {
-    onRequestUpload?.() ?? navigate('/library');
+    if (onRequestUpload) onRequestUpload();
+    else navigate('/library');
   }, [onRequestUpload, navigate]);
 
   const handleFocusConcept = useCallback((concept: string) => {

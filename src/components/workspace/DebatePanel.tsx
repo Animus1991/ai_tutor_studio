@@ -15,7 +15,12 @@ export default function DebatePanel({ debateNodes }: DebatePanelProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
 
   const toggle = useCallback((id: string) => {
-    setExpanded((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    setExpanded((p) => {
+      const n = new Set(p);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
   }, []);
 
   const addCounter = useCallback((nodeId: string) => {

@@ -13,8 +13,10 @@ export default tseslint.config(
     ignores: [
       "coverage/**",
       "dist/**",
+      "dev-dist/**",
       "node_modules/**",
       "assets/**",
+      "scripts/**",
       "test-minimap.js",
       "*.cjs",
       "*.mjs",

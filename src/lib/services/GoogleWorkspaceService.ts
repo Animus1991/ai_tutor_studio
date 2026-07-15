@@ -10,6 +10,19 @@ export class GoogleWorkspaceService {
     return GoogleWorkspaceService.instance;
   }
 
+  private async fetchWithAuth(url: string, init: RequestInit = {}): Promise<Response> {
+    const token = await getAccessToken();
+    if (!token) throw new Error("Not authenticated");
+    return fetch(url, {
+      ...init,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        ...(init.headers as Record<string, string> | undefined),
+      },
+    });
+  }
+
   public async createDocument(title: string, content: string): Promise<string> {
     const token = await getAccessToken();
     if (!token) throw new Error("Not authenticated");

@@ -81,7 +81,7 @@ export default function StudyTimerPanel() {
         setSessions((s) => s + 1);
         logActivity(`${config.label} completed`, 'study');
         // Play notification sound if available
-        try { new Audio('/notification.mp3').play().catch(() => {}); } catch {}
+        try { new Audio('/notification.mp3').play().catch(() => {}); } catch { /* optional notification sound */ }
       }
     }, 250);
 
