@@ -1,12 +1,13 @@
-import { X, Type, Database, Download, Languages } from 'lucide-react';
+import { X, Type, Database, Download } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../store/useStore';
 import { cn } from '../lib/utils';
 import { auth, db } from '../lib/firebase';
 import { collection, query, getDocs } from 'firebase/firestore';
 import localforage from 'localforage';
-import { useFocusTrap } from '../hooks/useFocusTrap';
-import { useLanguage } from '../lib/i18n';
+import { toast } from "sonner";
+import { BEHAVIOR_EVENTS_KEY } from "../lib/learningProfile";
+import { useLearningProfileStore } from "../store/useLearningProfileStore";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -15,12 +16,20 @@ interface SettingsModalProps {
 
 export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const { isDyslexiaFont, toggleDyslexiaFont } = useStore();
-  const { language, setLanguage, t } = useLanguage();
-  const dialogRef = useFocusTrap<HTMLDivElement>(isOpen, onClose);
+  const learningProfile = useLearningProfileStore((state) => state.profile);
+  const resetLearningProfile = useLearningProfileStore(
+    (state) => state.resetProfile,
+  );
+  const setLearningOverrides = useLearningProfileStore(
+    (state) => state.setOverrides,
+  );
+  const clearLearningOverrides = useLearningProfileStore(
+    (state) => state.clearOverrides,
+  );
 
   const getExportData = async () => {
-    let coursesData = [];
-    let tasksData = [];
+    let coursesData: Record<string, unknown>[] = [];
+    let tasksData: Record<string, unknown>[] = [];
     
     if (auth.currentUser) {
       const coursesQ = query(collection(db, "users", auth.currentUser.uid, "courses"));
@@ -32,16 +41,32 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       tasksData = tasksSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     }
 
-    const storedTasksStr = await localforage.getItem<string>("memora-tasks");
-    if (storedTasksStr) {
-      const localTasks = JSON.parse(storedTasksStr);
-      tasksData = [...tasksData, ...localTasks];
+    const storedTasks = await localforage.getItem<unknown>("memora-tasks");
+    if (storedTasks) {
+      try {
+        const localTasks =
+          typeof storedTasks === "string"
+            ? JSON.parse(storedTasks)
+            : storedTasks;
+        if (Array.isArray(localTasks)) {
+          tasksData = [...tasksData, ...localTasks];
+        }
+      } catch {
+        // Ignore malformed legacy task data while preserving Firestore exports.
+      }
     }
 
     return {
       courses: coursesData,
       tasks: tasksData,
+      learningProfile,
     };
+  };
+
+  const handleResetLearningProfile = async () => {
+    resetLearningProfile();
+    await localforage.removeItem(BEHAVIOR_EVENTS_KEY);
+    toast.success("Adaptive evidence reset.");
   };
 
   const handleExportJSON = async () => {
@@ -101,17 +126,16 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50"
           />
           <motion.div
-            ref={dialogRef}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="settings-modal-title"
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="settings-title"
             className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden z-50 max-h-[90vh] overflow-y-auto"
           >
             <div className="flex items-center justify-between p-4 border-b border-slate-100 dark:border-slate-800 sticky top-0 bg-white dark:bg-slate-900 z-10">
-              <h3 id="settings-modal-title" className="font-bold text-slate-900 dark:text-white">{t('Settings', 'Ρυθμίσεις')}</h3>
+              <h3 id="settings-title" className="font-bold text-slate-900 dark:text-white">Settings</h3>
               <button
                 onClick={onClose}
                 aria-label="Close settings"
@@ -123,50 +147,23 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
             <div className="p-6 flex flex-col gap-8">
               <div>
-                <h4 className="text-sm font-semibold text-slate-900 dark:text-white mb-4 uppercase tracking-wider">{t('Appearance & Accessibility', 'Εμφάνιση & Προσβασιμότητα')}</h4>
+                <h4 className="text-sm font-semibold text-slate-900 dark:text-white mb-4 uppercase tracking-wider">Appearance & Accessibility</h4>
                 
-                <div className="flex items-center justify-between mb-5">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-sky-50 dark:bg-sky-900/30 flex items-center justify-center text-sky-600 dark:text-sky-400">
-                      <Languages className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <p className="font-medium text-slate-900 dark:text-white">{t('Language', 'Γλώσσα')}</p>
-                      <p className="text-sm text-slate-500 dark:text-slate-400">{t('Interface language', 'Γλώσσα διεπαφής')}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 rounded-xl p-1" role="group" aria-label={t('Select language', 'Επιλογή γλώσσας')}>
-                    <button
-                      onClick={() => setLanguage('en')}
-                      aria-pressed={language === 'en'}
-                      className={cn('px-3 py-1 rounded-lg text-sm font-semibold transition-colors', language === 'en' ? 'bg-indigo-600 text-white' : 'text-slate-600 dark:text-slate-300')}
-                    >
-                      EN
-                    </button>
-                    <button
-                      onClick={() => setLanguage('el')}
-                      aria-pressed={language === 'el'}
-                      className={cn('px-3 py-1 rounded-lg text-sm font-semibold transition-colors', language === 'el' ? 'bg-indigo-600 text-white' : 'text-slate-600 dark:text-slate-300')}
-                    >
-                      ΕΛ
-                    </button>
-                  </div>
-                </div>
-
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
                       <Type className="w-5 h-5" />
                     </div>
                     <div>
-                      <p className="font-medium text-slate-900 dark:text-white">{t('Dyslexic Font', 'Γραμματοσειρά Δυσλεξίας')}</p>
-                      <p className="text-sm text-slate-500 dark:text-slate-400">{t('Use dyslexic-friendly font globally', 'Χρήση φιλικής προς τη δυσλεξία γραμματοσειράς παντού')}</p>
+                      <p className="font-medium text-slate-900 dark:text-white">Dyslexic Font</p>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">Use dyslexic-friendly font globally</p>
                     </div>
                   </div>
                   <button
                     onClick={toggleDyslexiaFont}
-                    aria-pressed={isDyslexiaFont}
-                    aria-label={t('Toggle dyslexic font', 'Εναλλαγή γραμματοσειράς δυσλεξίας')}
+                    role="switch"
+                    aria-checked={isDyslexiaFont}
+                    aria-label="Use dyslexic-friendly font"
                     className={cn(
                       "w-12 h-6 rounded-full transition-colors relative",
                       isDyslexiaFont ? "bg-indigo-600" : "bg-slate-200 dark:bg-slate-700"
@@ -183,7 +180,79 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               </div>
 
               <div>
-                <h4 className="text-sm font-semibold text-slate-900 dark:text-white mb-4 uppercase tracking-wider">{t('Data Management', 'Διαχείριση Δεδομένων')}</h4>
+                <h4 className="text-sm font-semibold text-slate-900 dark:text-white mb-4 uppercase tracking-wider">
+                  Adaptive Controls
+                </h4>
+                <p className="mb-4 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+                  Automatic values remain continuous and evidence-based. Manual
+                  choices override them locally and can be cleared at any time.
+                </p>
+                <div className="space-y-4">
+                  <label className="block text-sm text-slate-700 dark:text-slate-300">
+                    Information chunk: {learningProfile.parameters.chunkSizeWords} words
+                    <input
+                      type="range"
+                      min="300"
+                      max="800"
+                      step="50"
+                      value={learningProfile.parameters.chunkSizeWords}
+                      onChange={(event) =>
+                        setLearningOverrides({
+                          chunkSizeWords: Number(event.target.value),
+                        })
+                      }
+                      className="mt-2 w-full"
+                    />
+                  </label>
+                  <label className="block text-sm text-slate-700 dark:text-slate-300">
+                    Feedback detail
+                    <select
+                      value={learningProfile.parameters.feedbackDensity}
+                      onChange={(event) =>
+                        setLearningOverrides({
+                          feedbackDensity: event.target.value as
+                            | "minimal"
+                            | "balanced"
+                            | "detailed",
+                        })
+                      }
+                      className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-800"
+                    >
+                      <option value="minimal">Minimal</option>
+                      <option value="balanced">Balanced</option>
+                      <option value="detailed">Detailed</option>
+                    </select>
+                  </label>
+                  <label className="block text-sm text-slate-700 dark:text-slate-300">
+                    Review spacing: {learningProfile.parameters.retrievalIntervalMultiplier.toFixed(2)}×
+                    <input
+                      type="range"
+                      min="0.6"
+                      max="1.6"
+                      step="0.1"
+                      value={learningProfile.parameters.retrievalIntervalMultiplier}
+                      onChange={(event) =>
+                        setLearningOverrides({
+                          retrievalIntervalMultiplier: Number(
+                            event.target.value,
+                          ),
+                        })
+                      }
+                      className="mt-2 w-full"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={clearLearningOverrides}
+                    className="text-sm font-semibold text-indigo-600 hover:underline dark:text-indigo-300"
+                  >
+                    Return to automatic adaptation
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <h4 className="text-sm font-semibold text-slate-900 dark:text-white mb-4 uppercase tracking-wider">Data Management</h4>
                 
                 <div className="flex flex-col gap-3">
                   <div className="flex items-center gap-3 mb-2">
@@ -191,8 +260,8 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       <Database className="w-5 h-5" />
                     </div>
                     <div>
-                      <p className="font-medium text-slate-900 dark:text-white">{t('Export Your Data', 'Εξαγωγή Δεδομένων')}</p>
-                      <p className="text-sm text-slate-500 dark:text-slate-400">{t('Download your library and tasks', 'Κατεβάστε τη βιβλιοθήκη και τις εργασίες σας')}</p>
+                      <p className="font-medium text-slate-900 dark:text-white">Export Your Data</p>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">Download your library and tasks</p>
                     </div>
                   </div>
                   
@@ -210,6 +279,13 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       <Download className="w-4 h-4" /> CSV
                     </button>
                   </div>
+                  <button
+                    type="button"
+                    onClick={handleResetLearningProfile}
+                    className="mt-2 rounded-xl border border-rose-200 px-4 py-2 text-sm font-medium text-rose-600 transition-colors hover:bg-rose-50 dark:border-rose-900 dark:text-rose-300 dark:hover:bg-rose-950/40"
+                  >
+                    Reset adaptive evidence
+                  </button>
                 </div>
               </div>
             </div>

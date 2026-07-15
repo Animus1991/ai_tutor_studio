@@ -102,17 +102,21 @@ export default function Room({ roomId, isVideoOn, isMicOn }: { roomId: string, i
 
       const roomSnapshot = await getDoc(roomRef);
       
-      if (!roomSnapshot.exists()) {
+      if (!roomSnapshot.exists() || !roomSnapshot.data()?.offer) {
         // Create Room (Caller)
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
         
-        await setDoc(roomRef, {
-          offer: {
-            type: offer.type,
-            sdp: offer.sdp,
+        await setDoc(
+          roomRef,
+          {
+            offer: {
+              type: offer.type,
+              sdp: offer.sdp,
+            },
           },
-        });
+          { merge: true },
+        );
 
         // Listen for remote answer
         onSnapshot(roomRef, (snapshot) => {

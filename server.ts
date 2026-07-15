@@ -10,6 +10,7 @@ import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import multer from 'multer';
 import { YoutubeTranscript } from 'youtube-transcript';
+import { OfficeParser } from "officeparser";
 import { createRequire } from 'module';
 import { appendPersistedAudit, loadPersistedAudit } from './auditStore.js';
 import firebaseConfig from './firebase-applet-config.json';
@@ -21,7 +22,9 @@ import {
 import {
   assertPublicHttpUrl,
   createFirebaseAuthMiddleware,
+  HttpError,
 } from './server/security.js';
+import { detectAndSanitizePii } from './src/lib/piiSanitizer.js';
 import {
   geminiChatModel,
   geminiEmbedModel,
@@ -75,6 +78,54 @@ function createRateLimiter(maxRequests: number, windowMs: number, code = 'local_
 
 const isDev = process.env.NODE_ENV !== 'production';
 const aiRateLimit = createRateLimiter(isDev ? 500 : 30, 60_000);
+
+const extractVisualDocumentText = async (
+  buffer: Buffer,
+  mimeType: string,
+): Promise<string> => {
+  const response = await ai.models.generateContent({
+    model: geminiChatModel,
+    contents: [
+      {
+        role: "user",
+        parts: [
+          {
+            inlineData: {
+              mimeType,
+              data: buffer.toString("base64"),
+            },
+          },
+          {
+            text: `Transcribe this study material faithfully.
+Preserve headings, lists, formulas, table relationships, slide/page boundaries and uncertainty.
+Do not summarize, enrich, correct, or invent missing text.
+Mark illegible spans as [ILLEGIBLE].`,
+          },
+        ],
+      },
+    ],
+  });
+  return response.text?.trim() || "";
+};
+
+const sanitizeAiPayload = <T,>(value: T, depth = 0): T => {
+  if (depth > 8) throw new HttpError(400, "AI payload is nested too deeply");
+  if (typeof value === "string") {
+    return detectAndSanitizePii(value).sanitizedText as T;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeAiPayload(item, depth + 1)) as T;
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [
+        key,
+        sanitizeAiPayload(item, depth + 1),
+      ]),
+    ) as T;
+  }
+  return value;
+};
 
 const PUBLIC_API_PATHS = new Set([
   '/health',
@@ -557,16 +608,48 @@ async function startServer() {
       const mimeType = req.file.mimetype;
 
       let text = '';
+      let extractionMethod = "plain-text";
       if (mimeType === 'application/pdf') {
         const data = await pdfParse(buffer);
         text = data.text;
+        extractionMethod = "pdf-text";
+        if (text.trim().length < 50) {
+          text = await extractVisualDocumentText(buffer, mimeType);
+          extractionMethod = "vision-ocr";
+        }
       } else if (mimeType.startsWith('text/')) {
         text = buffer.toString('utf-8');
+      } else if (mimeType.startsWith("image/")) {
+        text = await extractVisualDocumentText(buffer, mimeType);
+        extractionMethod = "vision-ocr";
+      } else if (
+        [
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "application/vnd.oasis.opendocument.text",
+          "application/vnd.oasis.opendocument.presentation",
+          "application/rtf",
+        ].includes(mimeType)
+      ) {
+        const document = await OfficeParser.parseOffice(buffer);
+        text = (await document.to("text")).value;
+        extractionMethod = "office-parser";
       } else {
-        return res.status(400).json({ error: 'Unsupported file type. Please upload a PDF or Text file.' });
+        return res.status(400).json({
+          error:
+            "Unsupported file type. Upload text, PDF, image, Word, PowerPoint, spreadsheet, OpenDocument, or RTF material.",
+        });
       }
 
-      res.json({ text, filename: req.file.originalname });
+      if (!text.trim()) {
+        throw new HttpError(422, "No readable text was found in this file");
+      }
+      res.json({
+        text,
+        filename: req.file.originalname,
+        extractionMethod,
+      });
     } catch (error) {
       console.error('Ingest File Error:', error);
       res.status(500).json({ error: 'Failed to extract content from file' });
@@ -1024,12 +1107,21 @@ Question: ${query}`
       const { text } = req.body;
       const response = await ai.models.generateContent({
         model: geminiChatModel,
-        contents: `Analyze the following text and generate a structured course blueprint. Break it into manageable study modules (Pomodoro sized). Identify key terms for a glossary. Extract core concepts for a knowledge graph ontology. Return JSON.\n\n${text}`,
+        contents: `Build a notes-grounded course blueprint from the source below.
+1. Infer whether the overall course is theory, practice, or mixed from the tasks implied by the source—not from learner stereotypes.
+2. Order modules by explicit prerequisite relationships.
+3. Give each module measurable objectives across appropriate Bloom levels.
+4. Distinguish theory activities (explanation, comparison, retrieval) from practice activities (worked example, completion problem, sandbox, transfer task).
+5. Keep every claim faithful to the source. Do not add external facts in this endpoint.
+6. Break work into manageable, cognitively coherent sessions rather than arbitrary equal chunks.
+Return the required JSON.\n\nSOURCE:\n${text}`,
         config: {
           responseMimeType: "application/json",
           responseSchema: {
             type: "OBJECT",
             properties: {
+              courseMode: { type: "STRING" },
+              designRationale: { type: "STRING" },
               modules: {
                 type: "ARRAY",
                 items: {
@@ -1037,9 +1129,57 @@ Question: ${query}`
                   properties: {
                     title: { type: "STRING" },
                     durationMinutes: { type: "INTEGER" },
-                    description: { type: "STRING" }
+                    description: { type: "STRING" },
+                    mode: { type: "STRING" },
+                    prerequisites: {
+                      type: "ARRAY",
+                      items: { type: "STRING" }
+                    },
+                    objectives: {
+                      type: "ARRAY",
+                      items: {
+                        type: "OBJECT",
+                        properties: {
+                          bloomLevel: { type: "STRING" },
+                          objective: { type: "STRING" }
+                        },
+                        required: ["bloomLevel", "objective"]
+                      }
+                    },
+                    activities: {
+                      type: "ARRAY",
+                      items: {
+                        type: "OBJECT",
+                        properties: {
+                          type: { type: "STRING" },
+                          prompt: { type: "STRING" },
+                          successCriteria: { type: "STRING" }
+                        },
+                        required: ["type", "prompt", "successCriteria"]
+                      }
+                    }
                   },
-                  required: ["title", "durationMinutes", "description"]
+                  required: [
+                    "title",
+                    "durationMinutes",
+                    "description",
+                    "mode",
+                    "prerequisites",
+                    "objectives",
+                    "activities"
+                  ]
+                }
+              },
+              prerequisiteEdges: {
+                type: "ARRAY",
+                items: {
+                  type: "OBJECT",
+                  properties: {
+                    prerequisite: { type: "STRING" },
+                    dependent: { type: "STRING" },
+                    rationale: { type: "STRING" }
+                  },
+                  required: ["prerequisite", "dependent", "rationale"]
                 }
               },
               glossary: {
@@ -1085,17 +1225,67 @@ Question: ${query}`
                 required: ["nodes", "links"]
               }
             },
-            required: ["modules", "glossary", "ontology"]
+            required: [
+              "courseMode",
+              "designRationale",
+              "modules",
+              "prerequisiteEdges",
+              "glossary",
+              "ontology"
+            ]
           }
         }
       });
       
-      res.json(JSON.parse(response.text || '{"modules":[],"glossary":[],"ontology":{"nodes":[],"links":[]}}'));
+      res.json(JSON.parse(response.text || '{"courseMode":"mixed","designRationale":"","modules":[],"prerequisiteEdges":[],"glossary":[],"ontology":{"nodes":[],"links":[]}}'));
     } catch (error) {
       console.error('Course Blueprint Error:', error);
       res.status(500).json({ error: 'Failed to generate blueprint' });
     }
   });
+
+  app.post('/api/enrich-course', async (req, res) => {
+    try {
+      const text = sanitizeAiText(req.body?.text, "Text", 200_000);
+      const focus =
+        typeof req.body?.focus === "string"
+          ? sanitizeAiText(req.body.focus, "Focus", 2_000)
+          : "clarify important concepts and connect them to current evidence";
+      const response = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: `Enrich the user's study notes without rewriting or contradicting them.
+Clearly separate SOURCE-GROUNDED statements from EXTERNAL ENRICHMENT.
+For every external factual claim, rely only on sources returned by Google Search grounding.
+State uncertainty and disagreements. Never invent citations.
+Requested focus: ${focus}
+
+USER NOTES:
+${text}`,
+        config: {
+          tools: [{ googleSearch: {} }],
+          toolConfig: { includeServerSideToolInvocations: true },
+        },
+      });
+      const groundingChunks =
+        response.candidates?.[0]?.groundingMetadata?.groundingChunks ?? [];
+      const urls = groundingChunks
+        .map((chunk) => chunk.web?.uri)
+        .filter((url): url is string => typeof url === "string");
+      res.json({
+        enrichment: response.text || "",
+        urls: [...new Set(urls)],
+        reviewRequired: true,
+      });
+    } catch (error) {
+      sendRouteError(
+        res,
+        error,
+        "Course Enrichment Error",
+        "Failed to generate grounded enrichment",
+      );
+    }
+  });
+
   app.post('/api/extract-ontology', async (req, res) => {
     try {
       const { text } = req.body;

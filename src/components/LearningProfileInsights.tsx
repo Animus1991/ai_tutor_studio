@@ -1,8 +1,10 @@
 import { BrainCircuit, Gauge, TriangleAlert } from "lucide-react";
 import { useLearningProfileStore } from "../store/useLearningProfileStore";
+import { explainLearningProfile } from "../lib/learningProfile";
 
 export default function LearningProfileInsights() {
   const profile = useLearningProfileStore((state) => state.profile);
+  const explanation = explainLearningProfile(profile);
   const topErrors = Object.entries(profile.errorPatterns)
     .sort(([, left], [, right]) => right.count - left.count)
     .slice(0, 3);
@@ -66,6 +68,20 @@ export default function LearningProfileInsights() {
           </p>
         )}
       </div>
+      <details className="mt-4 border-t border-slate-100 pt-3 text-xs dark:border-slate-800">
+        <summary className="cursor-pointer font-semibold text-violet-700 dark:text-violet-300">
+          Why these adaptations?
+        </summary>
+        <p className="mt-2 leading-relaxed text-slate-600 dark:text-slate-300">
+          {explanation.summary}
+        </p>
+        <ul className="mt-2 list-disc space-y-1 pl-4 text-slate-500 dark:text-slate-400">
+          {explanation.drivers.map((driver) => (
+            <li key={driver}>{driver}</li>
+          ))}
+        </ul>
+        <p className="mt-2 text-slate-400">{explanation.privacyNote}</p>
+      </details>
     </section>
   );
 }

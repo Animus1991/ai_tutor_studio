@@ -19,6 +19,23 @@ export type BehaviorKind =
   | "flashcard_review"
   | "feynman_check"
   | "focus_session";
+export type QuestionKind =
+  | "recall"
+  | "recognition"
+  | "cloze"
+  | "multiple_choice"
+  | "explain"
+  | "apply"
+  | "transfer";
+export type ErrorFamily =
+  | "retrieval_gap"
+  | "misconception"
+  | "procedure"
+  | "notation"
+  | "careless"
+  | "timeout"
+  | "abandon"
+  | "unknown";
 
 export interface BehaviorEvent {
   version: 1;
@@ -34,6 +51,13 @@ export interface BehaviorEvent {
   durationSeconds?: number;
   chunkSizeWords?: number;
   errorType?: string;
+  errorFamily?: ErrorFamily;
+  questionKind?: QuestionKind;
+  domainKey?: string;
+  responseTimeMs?: number;
+  isRevisit?: boolean;
+  abandoned?: boolean;
+  itemDifficulty?: number;
   hourOfDay: number;
 }
 
@@ -45,6 +69,30 @@ export interface RunningStat {
 export interface ErrorPattern {
   count: number;
   lastSeen: number;
+}
+
+export interface RunningMoments {
+  mean: number;
+  variance: number;
+  samples: number;
+}
+
+export interface AdaptiveOverrides {
+  chunkSizeWords?: number;
+  feedbackDensity?: AdaptiveParameters["feedbackDensity"];
+  retrievalIntervalMultiplier?: number;
+  preferredMode?: AdaptiveParameters["suggestedMode"];
+}
+
+export interface DomainProfile {
+  eventCount: number;
+  lastSeen: number;
+  retrievalSuccess: RunningStat;
+  responseTime: RunningMoments;
+  revisitRate: RunningStat;
+  dropoffRate: RunningStat;
+  abilityTheta: RunningStat;
+  errorPatterns: Record<string, ErrorPattern>;
 }
 
 export interface AdaptiveParameters {
@@ -75,6 +123,13 @@ export interface LearningProfile {
   };
   hourHistogram: number[];
   errorPatterns: Record<string, ErrorPattern>;
+  responseTime: RunningMoments;
+  revisitRate: RunningStat;
+  dropoffRate: RunningStat;
+  abilityTheta: RunningStat;
+  fatigueIndex: number;
+  domains: Record<string, DomainProfile>;
+  userOverrides?: AdaptiveOverrides;
   parameters: AdaptiveParameters;
 }
 
@@ -89,6 +144,80 @@ const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
 
 const stat = (mean: number): RunningStat => ({ mean, samples: 0 });
+const moments = (mean = 8_000): RunningMoments => ({
+  mean,
+  variance: 0,
+  samples: 0,
+});
+
+export function deriveDomainKey(value: unknown): string {
+  const input =
+    typeof value === "string" && value.trim()
+      ? value.trim().toLocaleLowerCase()
+      : "_global";
+  let hash = 2_166_136_261;
+  for (const character of input.slice(0, 200)) {
+    hash ^= character.codePointAt(0) ?? 0;
+    hash = Math.imul(hash, 16_777_619);
+  }
+  return `d:${(hash >>> 0).toString(36)}`;
+}
+
+export function normalizeErrorFamily(
+  value: unknown,
+  abandoned = false,
+): ErrorFamily {
+  if (abandoned) return "abandon";
+  const text = typeof value === "string" ? value.toLowerCase() : "";
+  if (/misconcept|conceptual/.test(text)) return "misconception";
+  if (/procedure|step|algorithm/.test(text)) return "procedure";
+  if (/notation|unit|symbol/.test(text)) return "notation";
+  if (/careless|attention/.test(text)) return "careless";
+  if (/timeout|slow/.test(text)) return "timeout";
+  if (/retrieval|knowledge|recall/.test(text)) return "retrieval_gap";
+  return "unknown";
+}
+
+const updateMoments = (
+  current: RunningMoments,
+  observation: number,
+): RunningMoments => {
+  const value = Math.round(clamp(observation, 500, 120_000) / 250) * 250;
+  const samples = current.samples + 1;
+  const delta = value - current.mean;
+  const mean = current.mean + delta / samples;
+  const deltaAfter = value - mean;
+  return {
+    mean,
+    variance:
+      samples <= 1
+        ? 0
+        : (current.samples * current.variance + delta * deltaAfter) / samples,
+    samples,
+  };
+};
+
+export const applyOverrides = (
+  parameters: AdaptiveParameters,
+  overrides?: AdaptiveOverrides,
+): AdaptiveParameters => {
+  const chunkSizeWords =
+    overrides?.chunkSizeWords === undefined
+      ? parameters.chunkSizeWords
+      : Math.round(clamp(overrides.chunkSizeWords, 300, 800));
+  return {
+    ...parameters,
+    chunkSizeWords,
+    chunkOverlapWords: Math.round(clamp(chunkSizeWords * 0.2, 50, 150)),
+    feedbackDensity:
+      overrides?.feedbackDensity ?? parameters.feedbackDensity,
+    retrievalIntervalMultiplier:
+      overrides?.retrievalIntervalMultiplier === undefined
+        ? parameters.retrievalIntervalMultiplier
+        : clamp(overrides.retrievalIntervalMultiplier, 0.6, 1.6),
+    suggestedMode: overrides?.preferredMode ?? parameters.suggestedMode,
+  };
+};
 
 const updateStat = (
   current: RunningStat,
@@ -113,6 +242,7 @@ export function deriveAdaptiveParameters(
   profile: Omit<LearningProfile, "parameters">,
 ): AdaptiveParameters {
   const { stats, eventCount, hourHistogram } = profile;
+  const fatigueIndex = clamp(profile.fatigueIndex ?? 0, 0, 1);
   const confidence = clamp(eventCount / 40, 0, 1);
   const empiricalChunk = clamp(
     Math.round(
@@ -150,12 +280,19 @@ export function deriveAdaptiveParameters(
     0,
   );
 
-  return {
+  const derived: AdaptiveParameters = {
     confidence,
     ragTopK: Math.round(clamp(4 + (1 - stats.retrievalSuccess.mean) * confidence * 2, 3, 6)),
-    chunkSizeWords,
-    chunkOverlapWords: Math.round(clamp(chunkSizeWords * 0.2, 50, 150)),
-    retrievalIntervalMultiplier,
+    chunkSizeWords: Math.round(chunkSizeWords * (1 - 0.15 * fatigueIndex)),
+    chunkOverlapWords: Math.round(
+      clamp(chunkSizeWords * (1 - 0.15 * fatigueIndex) * 0.2, 50, 150),
+    ),
+    retrievalIntervalMultiplier:
+      clamp(
+        retrievalIntervalMultiplier * (1 - 0.1 * fatigueIndex),
+        0.6,
+        1.6,
+      ),
     theoryPracticeRatio,
     feedbackDensity:
       stats.retrievalSuccess.mean < 0.45
@@ -173,6 +310,7 @@ export function deriveAdaptiveParameters(
             ? "feynman"
             : "socratic",
   };
+  return applyOverrides(derived, profile.userOverrides);
 }
 
 export function createColdStartProfile(now = Date.now()): LearningProfile {
@@ -192,6 +330,12 @@ export function createColdStartProfile(now = Date.now()): LearningProfile {
     },
     hourHistogram: Array.from({ length: 24 }, () => 1 / 24),
     errorPatterns: {},
+    responseTime: moments(),
+    revisitRate: stat(0),
+    dropoffRate: stat(0),
+    abilityTheta: stat(0),
+    fatigueIndex: 0,
+    domains: {},
   };
   return {
     ...profileWithoutParameters,
@@ -203,8 +347,25 @@ export function createBehaviorEvent(
   input: BehaviorEventInput,
   now = input.timestamp ?? Date.now(),
 ): BehaviorEvent {
+  const domainKey =
+    input.domainKey?.startsWith("d:")
+      ? input.domainKey.slice(0, 32)
+      : deriveDomainKey(input.domainKey ?? input.taskType ?? input.surface);
+  const responseTimeMs =
+    input.responseTimeMs === undefined
+      ? undefined
+      : Math.round(clamp(input.responseTimeMs, 500, 120_000) / 250) * 250;
   return {
     ...input,
+    domainKey,
+    responseTimeMs,
+    itemDifficulty:
+      input.itemDifficulty === undefined
+        ? undefined
+        : clamp(input.itemDifficulty, -3, 3),
+    errorFamily:
+      input.errorFamily ??
+      normalizeErrorFamily(input.errorType, input.abandoned),
     quality:
       input.quality === undefined ? undefined : clamp(input.quality, 0, 1),
     durationSeconds:
@@ -215,6 +376,103 @@ export function createBehaviorEvent(
     id: crypto.randomUUID(),
     timestamp: now,
     hourOfDay: new Date(now).getHours(),
+  };
+}
+
+const createDomainProfile = (profile: LearningProfile, now: number): DomainProfile => ({
+  eventCount: 0,
+  lastSeen: now,
+  retrievalSuccess: { ...profile.stats.retrievalSuccess },
+  responseTime: { ...(profile.responseTime ?? moments()) },
+  revisitRate: { ...(profile.revisitRate ?? stat(0)) },
+  dropoffRate: { ...(profile.dropoffRate ?? stat(0)) },
+  abilityTheta: { ...(profile.abilityTheta ?? stat(0)) },
+  errorPatterns: {},
+});
+
+const updateAbility = (
+  current: RunningStat,
+  outcome: number,
+  difficulty = 0,
+): RunningStat => {
+  const probability = 1 / (1 + Math.exp(-(current.mean - difficulty)));
+  return {
+    mean: clamp(current.mean + 0.12 * (outcome - probability), -3, 3),
+    samples: current.samples + 1,
+  };
+};
+
+export function deriveDomainParameters(
+  profile: LearningProfile,
+  domainKey?: string,
+): AdaptiveParameters {
+  if (!domainKey || !profile.domains?.[domainKey]) {
+    return profile.parameters;
+  }
+  const domain = profile.domains[domainKey];
+  const confidence = clamp(domain.eventCount / 8, 0, 1);
+  const blendedRetrieval: RunningStat = {
+    mean:
+      profile.stats.retrievalSuccess.mean * (1 - confidence) +
+      domain.retrievalSuccess.mean * confidence,
+    samples: domain.retrievalSuccess.samples,
+  };
+  const domainProfile: Omit<LearningProfile, "parameters"> = {
+    ...profile,
+    eventCount: Math.round(confidence * 40),
+    stats: { ...profile.stats, retrievalSuccess: blendedRetrieval },
+    responseTime: domain.responseTime,
+    revisitRate: domain.revisitRate,
+    dropoffRate: domain.dropoffRate,
+    abilityTheta: domain.abilityTheta,
+    fatigueIndex: profile.fatigueIndex,
+  };
+  return deriveAdaptiveParameters(domainProfile);
+}
+
+export interface ProfileExplanation {
+  confidence: number;
+  evidenceCount: number;
+  domainEvidenceCount: number;
+  summary: string;
+  drivers: string[];
+  activeOverrides: string[];
+  privacyNote: string;
+}
+
+export function explainLearningProfile(
+  profile: LearningProfile,
+  domainKey?: string,
+): ProfileExplanation {
+  const domain = domainKey ? profile.domains?.[domainKey] : undefined;
+  const parameters = deriveDomainParameters(profile, domainKey);
+  const confidence = domain
+    ? clamp(domain.eventCount / 8, 0, 1)
+    : parameters.confidence;
+  const drivers = [
+    `${profile.stats.retrievalSuccess.samples} retrieval observations; estimated success ${Math.round(
+      profile.stats.retrievalSuccess.mean * 100,
+    )}%`,
+    `${profile.responseTime?.samples ?? 0} response-time observations; recent fatigue index ${Math.round(
+      (profile.fatigueIndex ?? 0) * 100,
+    )}%`,
+    `Current chunk target ${parameters.chunkSizeWords} words and review multiplier ${parameters.retrievalIntervalMultiplier.toFixed(
+      2,
+    )}`,
+  ];
+  const activeOverrides = Object.keys(profile.userOverrides ?? {});
+  return {
+    confidence,
+    evidenceCount: profile.eventCount,
+    domainEvidenceCount: domain?.eventCount ?? 0,
+    summary:
+      confidence < 0.25
+        ? "Personalization remains close to conservative defaults because evidence is limited."
+        : "Parameters are adjusted continuously from observed outcomes and remain bounded.",
+    drivers,
+    activeOverrides,
+    privacyNote:
+      "The profile stores coarse outcomes and timing buckets, not note text, prompts, filenames, or identity labels.",
   };
 }
 
@@ -275,6 +533,43 @@ export function applyBehaviorEvent(
     );
   }
 
+  let responseTime = profile.responseTime ?? moments();
+  let fatigueIndex = clamp(profile.fatigueIndex ?? 0, 0, 1);
+  if (event.responseTimeMs !== undefined) {
+    const previousMean = responseTime.mean;
+    const previousStd = Math.sqrt(Math.max(0, responseTime.variance));
+    responseTime = updateMoments(responseTime, event.responseTimeMs);
+    const slowdown =
+      previousStd > 0
+        ? clamp(
+            (event.responseTimeMs - previousMean) /
+              Math.max(250, previousStd * 2),
+            0,
+            1,
+          )
+        : 0;
+    fatigueIndex = clamp(0.85 * fatigueIndex + 0.15 * slowdown, 0, 1);
+  } else if (event.kind === "focus_session") {
+    fatigueIndex *= 0.5;
+  }
+
+  const revisitRate = updateStat(
+    profile.revisitRate ?? stat(0),
+    Number(Boolean(event.isRevisit)),
+  );
+  const dropoffRate = updateStat(
+    profile.dropoffRate ?? stat(0),
+    Number(Boolean(event.abandoned)),
+  );
+  let abilityTheta = profile.abilityTheta ?? stat(0);
+  if (retrievalObservation !== undefined) {
+    abilityTheta = updateAbility(
+      abilityTheta,
+      retrievalObservation,
+      event.itemDifficulty,
+    );
+  }
+
   const hourHistogram = profile.hourHistogram.map((value) => value * 0.95);
   hourHistogram[event.hourOfDay] += 0.05;
   const histogramTotal = hourHistogram.reduce((sum, value) => sum + value, 0);
@@ -283,12 +578,78 @@ export function applyBehaviorEvent(
   );
 
   const errorPatterns = { ...profile.errorPatterns };
-  if (event.errorType) {
-    const key = event.errorType.slice(0, 80);
+  if (event.errorType || event.errorFamily !== "unknown") {
+    const scope =
+      event.kind === "flashcard_review"
+        ? "flashcard"
+        : event.kind === "feynman_check"
+          ? "feynman"
+          : event.kind.startsWith("task")
+            ? "task"
+            : "agent";
+    const key = `${scope}:${event.errorFamily ?? "unknown"}`.slice(0, 40);
     errorPatterns[key] = {
       count: (errorPatterns[key]?.count ?? 0) + 1,
       lastSeen: event.timestamp,
     };
+  }
+
+  const domains = { ...(profile.domains ?? {}) };
+  const domainKey = event.domainKey ?? deriveDomainKey(event.taskType ?? event.surface);
+  const currentDomain =
+    domains[domainKey] ?? createDomainProfile(profile, event.timestamp);
+  let domainResponseTime = currentDomain.responseTime;
+  if (event.responseTimeMs !== undefined) {
+    domainResponseTime = updateMoments(
+      domainResponseTime,
+      event.responseTimeMs,
+    );
+  }
+  let domainRetrieval = currentDomain.retrievalSuccess;
+  let domainAbility = currentDomain.abilityTheta;
+  if (retrievalObservation !== undefined) {
+    domainRetrieval = updateStat(domainRetrieval, retrievalObservation, 0.1);
+    domainAbility = updateAbility(
+      domainAbility,
+      retrievalObservation,
+      event.itemDifficulty,
+    );
+  }
+  const domainErrors = { ...currentDomain.errorPatterns };
+  if (event.errorType || event.errorFamily !== "unknown") {
+    const key = `${event.questionKind ?? "item"}:${event.errorFamily ?? "unknown"}`.slice(
+      0,
+      40,
+    );
+    domainErrors[key] = {
+      count: (domainErrors[key]?.count ?? 0) + 1,
+      lastSeen: event.timestamp,
+    };
+  }
+  domains[domainKey] = {
+    eventCount: currentDomain.eventCount + 1,
+    lastSeen: event.timestamp,
+    retrievalSuccess: domainRetrieval,
+    responseTime: domainResponseTime,
+    revisitRate: updateStat(
+      currentDomain.revisitRate,
+      Number(Boolean(event.isRevisit)),
+      0.1,
+    ),
+    dropoffRate: updateStat(
+      currentDomain.dropoffRate,
+      Number(Boolean(event.abandoned)),
+      0.1,
+    ),
+    abilityTheta: domainAbility,
+    errorPatterns: domainErrors,
+  };
+  const domainEntries = Object.entries(domains);
+  if (domainEntries.length > 12) {
+    const [oldestKey] = domainEntries.sort(
+      ([, left], [, right]) => left.lastSeen - right.lastSeen,
+    )[0];
+    delete domains[oldestKey];
   }
 
   const nextWithoutParameters: Omit<LearningProfile, "parameters"> = {
@@ -298,6 +659,12 @@ export function applyBehaviorEvent(
     stats,
     hourHistogram: normalizedHistogram,
     errorPatterns,
+    responseTime,
+    revisitRate,
+    dropoffRate,
+    abilityTheta,
+    fatigueIndex,
+    domains,
   };
   return {
     ...nextWithoutParameters,

@@ -2,45 +2,45 @@ name: CI
 
 on:
   push:
-    branches: [main, master, 'feat/**']
+    branches: [main, master, "feat/**", "cursor/**"]
   pull_request:
 
-jobs:
-  lint-test-build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-      - run: npm ci
-      - run: npm run lint
-      - run: npm run test
-      - run: npm run build
+permissions:
+  contents: read
 
-  firestore-rules:
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: "22"
           cache: npm
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '21'
+          java-version: "21"
       - run: npm ci
+      - run: npm run lint
+      - run: npm test
       - run: npm run test:rules
+      - run: npm run build
+      - run: npm run audit
 
   e2e:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: "22"
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium

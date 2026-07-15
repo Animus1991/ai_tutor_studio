@@ -1,9 +1,10 @@
-import { defineConfig } from 'vitest/config';
+import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
-    globals: true,
-    environment: 'node',
-    include: ['tests/**/*.test.ts'],
+    include: ["firestore.rules.test.ts"],
+    testTimeout: 15_000,
+    hookTimeout: 15_000,
+    fileParallelism: false,
   },
 });

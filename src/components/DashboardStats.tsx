@@ -9,6 +9,7 @@ import { useStore } from '../store/useStore';
 import { buildTaskAnalytics } from '../lib/taskAnalytics';
 import { isDemoModeActive, loadDemoTasks } from '../lib/demoStorage';
 import { googleWorkspaceService } from '../lib/services/GoogleWorkspaceService';
+import { getAccessToken, googleSignInForWorkspace } from '../lib/auth';
 import { toast } from 'sonner';
 
 export default function DashboardStats() {
@@ -19,28 +20,51 @@ export default function DashboardStats() {
   const [isExporting, setIsExporting] = useState(false);
   const [isEmailing, setIsEmailing] = useState(false);
 
-  const handleExportSheets = async (analyticsData: any[]) => {
+  const ensureWorkspaceToken = async (): Promise<string | null> => {
+    let token = await getAccessToken();
+    if (token) return token;
+
+    toast.info(t('Connect Google Workspace to export', 'Σύνδεση Google Workspace για εξαγωγή'));
+    const session = await googleSignInForWorkspace();
+    if (session === null) return null;
+    token = session.accessToken ?? (await getAccessToken());
+    return token;
+  };
+
+  const handleExportSheets = async (analyticsData: Array<{ date: string; focusTime: number; completionRate: number }>) => {
     try {
       setIsExporting(true);
+      const token = await ensureWorkspaceToken();
+      if (!token) {
+        toast.error(t('Google authorization required', 'Απαιτείται εξουσιοδότηση Google'));
+        return;
+      }
+
       const data = [
         ["Date", "Study Time (mins)", "Completion Rate (%)"],
         ...analyticsData.map(d => [d.date, d.focusTime, d.completionRate])
       ];
       const url = await googleWorkspaceService.createSpreadsheet("Study Analytics Report", data);
       window.open(url, "_blank");
-      toast.success("Exported to Google Sheets");
+      toast.success(t('Exported to Google Sheets', 'Εξαγωγή σε Google Sheets'));
     } catch (e) {
       console.error(e);
-      toast.error("Failed to export to Google Sheets");
+      toast.error(t('Failed to export to Google Sheets', 'Αποτυχία εξαγωγής σε Google Sheets'));
     } finally {
       setIsExporting(false);
     }
   };
 
-  const handleEmailReport = async (analyticsData: any[]) => {
+  const handleEmailReport = async (analyticsData: Array<{ date: string; focusTime: number; completionRate: number }>) => {
     try {
       setIsEmailing(true);
-      const userEmail = prompt("Enter email address to send report to:");
+      const token = await ensureWorkspaceToken();
+      if (!token) {
+        toast.error(t('Google authorization required', 'Απαιτείται εξουσιοδότηση Google'));
+        return;
+      }
+
+      const userEmail = prompt(t('Enter email address to send report to:', 'Email για αποστολή αναφοράς:'));
       if (!userEmail) return;
 
       let htmlBody = "<h1>Study Analytics Report</h1><table border='1'><tr><th>Date</th><th>Study Time (mins)</th><th>Completion Rate (%)</th></tr>";
@@ -55,10 +79,10 @@ export default function DashboardStats() {
         "Please view this email in an HTML compatible client.",
         htmlBody
       );
-      toast.success("Report sent to Gmail!");
+      toast.success(t('Report sent to Gmail!', 'Η αναφορά στάλθηκε μέσω Gmail!'));
     } catch (e) {
       console.error(e);
-      toast.error("Failed to send email");
+      toast.error(t('Failed to send email', 'Αποτυχία αποστολής email'));
     } finally {
       setIsEmailing(false);
     }

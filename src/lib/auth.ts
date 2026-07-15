@@ -8,12 +8,18 @@ import {
   type UserCredential,
 } from "firebase/auth";
 import { auth } from "./firebase";
+import {
+  GOOGLE_CLASSROOM_SCOPES,
+  GOOGLE_WORKSPACE_SCOPES,
+} from "./googleScopes";
 
 let isSigningIn = false;
 let cachedAccessToken: string | null = null;
 try {
   cachedAccessToken = sessionStorage.getItem('memora_google_access_token');
-} catch (e) {}
+} catch {
+  /* ignore */
+}
 
 /** getRedirectResult() is single-use — share one promise (React StrictMode calls twice). */
 let redirectResultPromise: Promise<{
@@ -58,53 +64,28 @@ function preferRedirectSignIn(): boolean {
   return host === 'localhost' || host === '127.0.0.1';
 }
 
-function createGoogleProvider(includeClassroomScope = false): GoogleAuthProvider {
+export type GoogleSignInOptions = {
+  /** Sheets, Gmail, Docs, Meet, Tasks, Forms, etc. */
+  workspace?: boolean;
+  /** Google Classroom import and sync. */
+  classroom?: boolean;
+};
+
+function createGoogleProvider(opts: GoogleSignInOptions = {}): GoogleAuthProvider {
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: 'select_account' });
-  provider.addScope('https://www.googleapis.com/auth/calendar.readonly');
-  provider.addScope('https://www.googleapis.com/auth/contacts.readonly');
-  provider.addScope('https://www.googleapis.com/auth/drive.file');
-  provider.addScope('https://www.googleapis.com/auth/spreadsheets');
-  provider.addScope('https://www.googleapis.com/auth/gmail.send');
-  provider.addScope('https://www.googleapis.com/auth/gmail.readonly');
-  provider.addScope('https://www.googleapis.com/auth/documents');
-  provider.addScope('https://www.googleapis.com/auth/presentations');
-  provider.addScope('https://www.googleapis.com/auth/tasks');
-  provider.addScope('https://www.googleapis.com/auth/chat.spaces');
-  provider.addScope('https://www.googleapis.com/auth/forms.body');
-  provider.addScope('https://www.googleapis.com/auth/keep');
-  provider.addScope('https://www.googleapis.com/auth/keep.readonly');
-  provider.addScope('https://www.googleapis.com/auth/meetings.space.created');
-  provider.addScope('https://www.googleapis.com/auth/meetings.space.readonly');
-  provider.addScope('https://www.googleapis.com/auth/meetings.space.settings');
-  provider.addScope('https://www.googleapis.com/auth/drive.metadata.readonly');
 
-  if (includeClassroomScope) {
-    provider.addScope('https://www.googleapis.com/auth/classroom.addons.student');
-    provider.addScope('https://www.googleapis.com/auth/classroom.addons.teacher');
-    provider.addScope('https://www.googleapis.com/auth/classroom.announcements');
-    provider.addScope('https://www.googleapis.com/auth/classroom.announcements.readonly');
-    provider.addScope('https://www.googleapis.com/auth/classroom.courses');
-    provider.addScope('https://www.googleapis.com/auth/classroom.courses.readonly');
-    provider.addScope('https://www.googleapis.com/auth/classroom.coursework.me');
-    provider.addScope('https://www.googleapis.com/auth/classroom.coursework.me.readonly');
-    provider.addScope('https://www.googleapis.com/auth/classroom.coursework.students');
-    provider.addScope('https://www.googleapis.com/auth/classroom.coursework.students.readonly');
-    provider.addScope('https://www.googleapis.com/auth/classroom.courseworkmaterials');
-    provider.addScope('https://www.googleapis.com/auth/classroom.courseworkmaterials.readonly');
-    provider.addScope('https://www.googleapis.com/auth/classroom.guardianlinks.me.readonly');
-    provider.addScope('https://www.googleapis.com/auth/classroom.guardianlinks.students');
-    provider.addScope('https://www.googleapis.com/auth/classroom.guardianlinks.students.readonly');
-    provider.addScope('https://www.googleapis.com/auth/classroom.profile.emails');
-    provider.addScope('https://www.googleapis.com/auth/classroom.profile.photos');
-    provider.addScope('https://www.googleapis.com/auth/classroom.push-notifications');
-    provider.addScope('https://www.googleapis.com/auth/classroom.rosters');
-    provider.addScope('https://www.googleapis.com/auth/classroom.rosters.readonly');
-    provider.addScope('https://www.googleapis.com/auth/classroom.student-submissions.me.readonly');
-    provider.addScope('https://www.googleapis.com/auth/classroom.student-submissions.students.readonly');
-    provider.addScope('https://www.googleapis.com/auth/classroom.topics');
-    provider.addScope('https://www.googleapis.com/auth/classroom.topics.readonly');
+  if (opts.workspace) {
+    for (const scope of GOOGLE_WORKSPACE_SCOPES) {
+      provider.addScope(scope);
+    }
   }
+  if (opts.classroom) {
+    for (const scope of GOOGLE_CLASSROOM_SCOPES) {
+      provider.addScope(scope);
+    }
+  }
+
   return provider;
 }
 
@@ -115,8 +96,12 @@ function sessionFromCredential(result: UserCredential): {
   const credential = GoogleAuthProvider.credentialFromResult(result);
   cachedAccessToken = credential?.accessToken ?? null;
   try {
-    if (cachedAccessToken) sessionStorage.setItem('memora_google_access_token', cachedAccessToken);
-  } catch (e) {}
+    if (cachedAccessToken) {
+      sessionStorage.setItem('memora_google_access_token', cachedAccessToken);
+    }
+  } catch {
+    /* ignore */
+  }
   return { user: result.user, accessToken: cachedAccessToken };
 }
 
@@ -249,14 +234,15 @@ export const initAuth = (
 /**
  * Google sign-in. On localhost uses full-page redirect (reliable vs popup/CSP).
  * Returns null when redirect started (page will reload).
+ * Default sign-in uses profile/email only; pass workspace/classroom for API scopes.
  */
-export const googleSignIn = async (opts?: {
-  includeClassroomScope?: boolean;
-}): Promise<{
+export const googleSignIn = async (
+  opts: GoogleSignInOptions = {},
+): Promise<{
   user: User;
   accessToken: string | null;
 } | null> => {
-  const provider = createGoogleProvider(opts?.includeClassroomScope ?? false);
+  const provider = createGoogleProvider(opts);
 
   try {
     isSigningIn = true;
@@ -283,16 +269,18 @@ export const googleSignIn = async (opts?: {
   }
 };
 
+/** Re-auth with Google Workspace scopes (Sheets, Gmail, Docs, Meet, etc.). */
+export const googleSignInForWorkspace = () => googleSignIn({ workspace: true });
+
 /** Re-auth with Classroom scope (Library import). */
-export const googleSignInForClassroom = () =>
-  googleSignIn({ includeClassroomScope: true });
+export const googleSignInForClassroom = () => googleSignIn({ classroom: true });
 
 export const getAccessToken = async (): Promise<string | null> => {
   return cachedAccessToken;
 };
 
 export const logout = async () => {
-  try { sessionStorage.removeItem('memora_google_access_token'); } catch (e) {}
+  try { sessionStorage.removeItem('memora_google_access_token'); } catch { /* ignore */ }
   cachedAccessToken = null;
   await auth.signOut();
 };
