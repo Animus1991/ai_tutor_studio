@@ -1,8 +1,11 @@
 {
-  "name": "react-example",
+  "name": "memora-ai-tutor",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
@@ -13,10 +16,12 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "verify:gemini": "node scripts/verify-gemini-key.mjs",
-    "test:rules": "firebase emulators:exec --only firestore \"vitest run --config vitest.rules.config.ts\"",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-memora-rules \"vitest run --config vitest.rules.config.ts\"",
     "test:e2e": "playwright test",
     "test:e2e:prod": "npm run build && cross-env NODE_ENV=production PLAYWRIGHT_PROD=1 PORT=3011 playwright test",
-    "smoke:prod": "npm run build && cross-env NODE_ENV=production node dist/server.cjs"
+    "smoke:prod": "npm run build && cross-env NODE_ENV=production node dist/server.cjs",
+    "audit": "npm audit --omit=dev --audit-level=moderate",
+    "check": "npm run lint && npm test && npm run test:rules && npm run build"
   },
   "dependencies": {
     "@google/genai": "^2.10.0",

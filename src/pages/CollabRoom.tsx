@@ -33,14 +33,18 @@ import { chatWithAgent } from "../lib/api";
 import { apiRequest } from "../lib/apiClient";
 import { auth, db } from "../lib/firebase";
 import {
+  arrayRemove,
+  arrayUnion,
   collection,
-  onSnapshot,
-  query,
-  setDoc,
+  deleteDoc,
   doc,
   getDoc,
-  serverTimestamp,
+  onSnapshot,
   orderBy,
+  query,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { getAccessToken } from "../lib/auth";
@@ -69,6 +73,21 @@ import { useGoogleOAuth, type GoogleOAuthScopes } from '../hooks/useGoogleOAuth'
 import GoogleOAuthConsentModal from '../components/GoogleOAuthConsentModal';
 import StudyRoomPanel, { type StudyRoomSharedTool } from '../components/collab/StudyRoomPanel';
 
+const ROOM_STORAGE_KEY = "memora-collab-room-id";
+const ROOM_ID_PATTERN = /^[a-zA-Z0-9_-]{8,128}$/;
+
+const initialRoomId = () => {
+  const queryRoom = new URLSearchParams(window.location.search).get("room");
+  if (queryRoom && ROOM_ID_PATTERN.test(queryRoom)) return queryRoom;
+
+  const storedRoom = window.localStorage.getItem(ROOM_STORAGE_KEY);
+  if (storedRoom && ROOM_ID_PATTERN.test(storedRoom)) return storedRoom;
+
+  const roomId = crypto.randomUUID();
+  window.localStorage.setItem(ROOM_STORAGE_KEY, roomId);
+  return roomId;
+};
+
 export default function CollabRoom() {
   const { t } = useLanguage();
   const [isVideoOn, setIsVideoOn] = useState(true);
@@ -86,7 +105,7 @@ export default function CollabRoom() {
   const [pendingOauthAction, setPendingOauthAction] = useState<(() => void) | null>(null);
 
   const [user, setUser] = useState<any>(null);
-  const [roomId, setRoomId] = useState("default_room");
+  const [roomId] = useState(initialRoomId);
   const [studyRoomOpen, setStudyRoomOpen] = useState(false);
   const [selfRole, setSelfRole] = useState<'student' | 'mentor' | 'facilitator' | 'observer'>('student');
 
@@ -98,6 +117,13 @@ export default function CollabRoom() {
   const [ydoc, setYdoc] = useState(() => new Y.Doc());
   const [provider, setProvider] = useState<WebsocketProvider | null>(null);
   const [awarenessUsers, setAwarenessUsers] = useState<any[]>([]);
+
+  useEffect(() => {
+    window.localStorage.setItem(ROOM_STORAGE_KEY, roomId);
+    const url = new URL(window.location.href);
+    url.searchParams.set("room", roomId);
+    window.history.replaceState({}, "", url);
+  }, [roomId]);
 
   useEffect(() => {
     const doc = new Y.Doc();
@@ -158,6 +184,22 @@ export default function CollabRoom() {
       updateAwareness(currentUser);
 
       if (currentUser && !isDemoModeActive()) {
+        const roomRef = doc(db, "rooms", roomId);
+        try {
+          const roomSnapshot = await getDoc(roomRef);
+          if (!roomSnapshot.exists()) {
+            await setDoc(roomRef, {
+              ownerId: currentUser.uid,
+              memberEmails: currentUser.email ? [currentUser.email] : [],
+              createdAt: serverTimestamp(),
+            });
+          }
+        } catch (error) {
+          console.error("Unable to access collaboration room:", error);
+          toast.error("You do not have access to this collaboration room.");
+          return;
+        }
+
         const fireProvider = new FireProvider({
           firebaseApp: app,
           ydoc: doc,
@@ -498,6 +540,48 @@ export default function CollabRoom() {
       }
     }
   };
+
+  const handleParticipantStatus = async (
+    contact: { id: string; email: string },
+    status: "accepted" | "removed",
+  ) => {
+    if (!user || isDemoModeActive()) return;
+    try {
+      const participantRef = doc(
+        db,
+        "rooms",
+        roomId,
+        "participants",
+        contact.id,
+      );
+      const roomRef = doc(db, "rooms", roomId);
+      if (status === "accepted") {
+        await updateDoc(participantRef, { status: "accepted" });
+        await updateDoc(roomRef, { memberEmails: arrayUnion(contact.email) });
+        setInvitedContacts((prev) =>
+          prev.map((c) =>
+            c.id === contact.id ? { ...c, status: "accepted" } : c,
+          ),
+        );
+      } else {
+        await deleteDoc(participantRef);
+        await updateDoc(roomRef, { memberEmails: arrayRemove(contact.email) });
+        setInvitedContacts((prev) => prev.filter((c) => c.id !== contact.id));
+      }
+    } catch (error) {
+      console.error("Failed to update room access:", error);
+      toast.error("Failed to update room access.");
+    }
+  };
+
+  const copyRoomLink = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      toast.success("Private room link copied.");
+    } catch {
+      toast.error("Unable to copy. Copy the current URL from your browser.");
+    }
+  };
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -735,6 +819,13 @@ export default function CollabRoom() {
                 <p className="text-sm text-slate-500 mb-4">
                   {t('Invite people by email to join this secure study room.', 'Προσκάλεσε άτομα με email να συμμετέχουν σε αυτό το ασφαλές δωμάτιο μελέτης.')}
                 </p>
+                <button
+                  type="button"
+                  onClick={copyRoomLink}
+                  className="mb-4 w-full text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+                >
+                  {t('Copy private room link', 'Αντιγραφή ιδιωτικού συνδέσμου')}
+                </button>
                 <form
                   onSubmit={handleInvite}
                   className="flex gap-2 mb-6 relative"
@@ -812,13 +903,7 @@ export default function CollabRoom() {
                           <div className="flex gap-2">
                             <button
                               onClick={() =>
-                                setInvitedContacts((prev) =>
-                                  prev.map((c) =>
-                                    c.email === contact.email
-                                      ? { ...c, status: "accepted" }
-                                      : c,
-                                  ),
-                                )
+                                handleParticipantStatus(contact, "accepted")
                               }
                               className="text-emerald-600 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 px-2 py-1 rounded transition-colors text-xs font-semibold"
                             >
@@ -826,9 +911,7 @@ export default function CollabRoom() {
                             </button>
                             <button
                               onClick={() =>
-                                setInvitedContacts((prev) =>
-                                  prev.filter((c) => c.email !== contact.email),
-                                )
+                                handleParticipantStatus(contact, "removed")
                               }
                               className="text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 px-2 py-1 rounded transition-colors text-xs font-semibold"
                             >
@@ -861,9 +944,7 @@ export default function CollabRoom() {
                           </span>
                           <button
                             onClick={() =>
-                              setInvitedContacts((prev) =>
-                                prev.filter((c) => c.email !== contact.email),
-                              )
+                              handleParticipantStatus(contact, "removed")
                             }
                             className="text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 p-1 rounded transition-colors text-xs font-semibold"
                           >
@@ -882,7 +963,7 @@ export default function CollabRoom() {
         <div className="flex-1 bg-slate-900 rounded-3xl overflow-hidden relative border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-center">
           {mainView === "video" ? (
             <div className="p-4 w-full h-full">
-              <Room roomId="demo-room" isVideoOn={isVideoOn} isMicOn={isMicOn} />
+              <Room roomId={roomId} isVideoOn={isVideoOn} isMicOn={isMicOn} />
             </div>
           ) : mainView === "whiteboard" ? (
             <div className="w-full h-full bg-white relative">

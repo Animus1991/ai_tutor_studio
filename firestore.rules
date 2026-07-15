@@ -10,7 +10,7 @@ service cloud.firestore {
     }
     
     function isVerified() {
-      return true;
+      return isSignedIn() && request.auth.token.email_verified == true;
     }
 
     function isValidId(id) {
@@ -25,49 +25,33 @@ service cloud.firestore {
       return resource.data;
     }
 
-    function optionalString(data, field, max) {
-      return !(field in data) || (data[field] is string && data[field].size() <= max);
-    }
-
-    function optionalNumber(data, field) {
-      return !(field in data) || data[field] is number;
-    }
-
-    function optionalBool(data, field) {
-      return !(field in data) || data[field] is bool;
-    }
-
-    function optionalUid(data, field, uid) {
-      return !(field in data) || data[field] == uid;
-    }
-
     function isValidTask(data, uid) {
       return data.keys().hasAll(['title', 'course', 'completed', 'userId', 'createdAt']) &&
              data.title is string && data.title.size() <= 200 &&
              data.course is string && data.course.size() <= 100 &&
              data.completed is bool &&
              data.userId == uid &&
-             optionalString(data, 'type', 50) &&
-             optionalString(data, 'time', 50) &&
-             optionalBool(data, 'urgent') &&
-             optionalString(data, 'icon', 50) &&
-             optionalString(data, 'color', 50) &&
-             optionalString(data, 'bg', 50) &&
-             optionalNumber(data, 'repetition') &&
-             optionalNumber(data, 'interval') &&
-             optionalNumber(data, 'easeFactor') &&
-             optionalString(data, 'nextReviewDate', 64);
+             (!data.keys().hasAny(['type']) || (data.type is string && data.type.size() <= 50)) &&
+             (!data.keys().hasAny(['time']) || (data.time is string && data.time.size() <= 50)) &&
+             (!data.keys().hasAny(['urgent']) || data.urgent is bool) &&
+             (!data.keys().hasAny(['icon']) || (data.icon is string && data.icon.size() <= 50)) &&
+             (!data.keys().hasAny(['color']) || (data.color is string && data.color.size() <= 50)) &&
+             (!data.keys().hasAny(['bg']) || (data.bg is string && data.bg.size() <= 50)) &&
+             (!data.keys().hasAny(['repetition']) || data.repetition is number) &&
+             (!data.keys().hasAny(['interval']) || data.interval is number) &&
+             (!data.keys().hasAny(['easeFactor']) || data.easeFactor is number) &&
+             (!data.keys().hasAny(['nextReviewDate']) || data.nextReviewDate is string);
     }
 
     function isValidCourse(data, uid) {
       return data.keys().hasAll(['title', 'userId', 'createdAt']) &&
              data.title is string && data.title.size() <= 200 &&
              data.userId == uid &&
-             optionalNumber(data, 'progress') &&
-             optionalNumber(data, 'documents') &&
-             optionalString(data, 'lastActive', 50) &&
-             optionalString(data, 'color', 50) &&
-             optionalString(data, 'bg', 50);
+             (!data.keys().hasAny(['progress']) || data.progress is number) &&
+             (!data.keys().hasAny(['documents']) || data.documents is number) &&
+             (!data.keys().hasAny(['lastActive']) || (data.lastActive is string && data.lastActive.size() <= 50)) &&
+             (!data.keys().hasAny(['color']) || (data.color is string && data.color.size() <= 50)) &&
+             (!data.keys().hasAny(['bg']) || (data.bg is string && data.bg.size() <= 50));
     }
 
     function isValidMessage(data, uid, rId) {
@@ -76,7 +60,7 @@ service cloud.firestore {
              data.user is string && data.user.size() <= 100 &&
              data.text is string && data.text.size() <= 1000 &&
              data.userId == uid &&
-             optionalString(data, 'time', 50);
+             (!data.keys().hasAny(['time']) || (data.time is string && data.time.size() <= 50));
     }
     
     function isValidParticipant(data, uid, rId) {
@@ -105,27 +89,65 @@ service cloud.firestore {
              data.status is string && data.status == 'new';
     }
 
-    function isValidDocument(data, uid) {
-      return data.keys().hasAll(['title', 'createdAt']) &&
+    function isValidActivity(data) {
+      return data.keys().hasOnly(['title', 'type', 'timestamp']) &&
+             data.keys().hasAll(['title', 'type', 'timestamp']) &&
              data.title is string && data.title.size() <= 300 &&
-             optionalString(data, 'content', 50000) &&
-             optionalString(data, 'sourceUrl', 500) &&
-             optionalUid(data, 'userId', uid);
+             data.type is string && data.type.matches('^(study|upload|collab|task|other)$') &&
+             data.timestamp == request.time;
     }
 
-    function isValidDeck(data, uid) {
-      return data.keys().hasAll(['title', 'createdAt']) &&
-             data.title is string && data.title.size() <= 200 &&
-             optionalUid(data, 'userId', uid);
+    function isValidDocument(data) {
+      return data.keys().hasOnly(['title', 'content', 'createdAt', 'sourceUrl']) &&
+             data.keys().hasAll(['title', 'content', 'createdAt', 'sourceUrl']) &&
+             data.title is string && data.title.size() <= 300 &&
+             data.content is string && data.content.size() <= 500000 &&
+             data.sourceUrl is string && data.sourceUrl.size() <= 2048;
     }
 
-    function isValidFlashcard(data, uid) {
-      return data.keys().hasAll(['deckId', 'front', 'back', 'createdAt']) &&
+    function isValidDeck(data) {
+      return data.keys().hasOnly(['title', 'createdAt']) &&
+             data.keys().hasAll(['title', 'createdAt']) &&
+             data.title is string && data.title.size() <= 300;
+    }
+
+    function isValidFlashcard(data) {
+      return data.keys().hasOnly([
+               'deckId', 'front', 'back', 'createdAt', 'repetition',
+               'interval', 'easeFactor', 'nextReviewDate', 'imageUrl', 'box', 'type'
+             ]) &&
+             data.keys().hasAll(['deckId', 'front', 'back', 'createdAt']) &&
              data.deckId is string && data.deckId.size() <= 128 &&
-             data.front is string && data.front.size() <= 2000 &&
-             data.back is string && data.back.size() <= 2000 &&
-             optionalUid(data, 'userId', uid) &&
-             optionalString(data, 'type', 50);
+             data.front is string && data.front.size() <= 5000 &&
+             data.back is string && data.back.size() <= 10000 &&
+             (!data.keys().hasAny(['repetition']) || data.repetition is number) &&
+             (!data.keys().hasAny(['interval']) || data.interval is number) &&
+             (!data.keys().hasAny(['easeFactor']) || data.easeFactor is number) &&
+             (!data.keys().hasAny(['nextReviewDate']) || data.nextReviewDate is string) &&
+             (!data.keys().hasAny(['imageUrl']) || (data.imageUrl is string && data.imageUrl.size() <= 750000)) &&
+             (!data.keys().hasAny(['box']) || (data.box is list && data.box.size() == 4)) &&
+             (!data.keys().hasAny(['type']) || data.type == 'occlusion');
+    }
+
+    function isRoomOwner(roomId) {
+      return isSignedIn() &&
+             get(/databases/$(database)/documents/rooms/$(roomId)).data.ownerId == request.auth.uid;
+    }
+
+    function hasRoomAccess(roomId) {
+      let room = get(/databases/$(database)/documents/rooms/$(roomId)).data;
+      return isSignedIn() && isVerified() &&
+             (room.ownerId == request.auth.uid ||
+              (request.auth.token.email is string &&
+               room.memberEmails is list &&
+               request.auth.token.email in room.memberEmails));
+    }
+
+    function isValidRoom(data, uid) {
+      return data.keys().hasAll(['ownerId', 'memberEmails', 'createdAt']) &&
+             data.keys().hasOnly(['ownerId', 'memberEmails', 'createdAt', 'offer', 'answer']) &&
+             data.ownerId == uid &&
+             data.memberEmails is list && data.memberEmails.size() <= 100;
     }
 
     match /users/{userId}/tasks/{taskId} {
@@ -156,47 +178,133 @@ service cloud.firestore {
       allow delete: if isSignedIn() && isVerified() && isValidId(userId) && isValidId(courseId) && request.auth.uid == userId;
     }
 
+    match /users/{userId}/activityLogs/{activityId} {
+      allow read, list: if isSignedIn() && isVerified() &&
+                         isValidId(userId) && request.auth.uid == userId;
+      allow create: if isSignedIn() && isVerified() &&
+                     isValidId(userId) && isValidId(activityId) &&
+                     request.auth.uid == userId && isValidActivity(incoming());
+      allow update: if false;
+      allow delete: if isSignedIn() && isVerified() &&
+                     isValidId(userId) && isValidId(activityId) &&
+                     request.auth.uid == userId;
+    }
+
+    match /users/{userId}/documents/{documentId} {
+      allow read, list, delete: if isSignedIn() && isVerified() &&
+                                isValidId(userId) && isValidId(documentId) &&
+                                request.auth.uid == userId;
+      allow create: if isSignedIn() && isVerified() &&
+                     isValidId(userId) && isValidId(documentId) &&
+                     request.auth.uid == userId &&
+                     isValidDocument(incoming()) &&
+                     incoming().createdAt == request.time;
+      allow update: if isSignedIn() && isVerified() &&
+                     isValidId(userId) && isValidId(documentId) &&
+                     request.auth.uid == userId &&
+                     isValidDocument(incoming()) &&
+                     incoming().createdAt == existing().createdAt;
+    }
+
+    match /users/{userId}/decks/{deckId} {
+      allow read, list, delete: if isSignedIn() && isVerified() &&
+                                isValidId(userId) && isValidId(deckId) &&
+                                request.auth.uid == userId;
+      allow create: if isSignedIn() && isVerified() &&
+                     isValidId(userId) && isValidId(deckId) &&
+                     request.auth.uid == userId && isValidDeck(incoming()) &&
+                     incoming().createdAt == request.time;
+      allow update: if isSignedIn() && isVerified() &&
+                     isValidId(userId) && isValidId(deckId) &&
+                     request.auth.uid == userId && isValidDeck(incoming()) &&
+                     incoming().createdAt == existing().createdAt;
+    }
+
+    match /users/{userId}/flashcards/{flashcardId} {
+      allow read, list, delete: if isSignedIn() && isVerified() &&
+                                isValidId(userId) && isValidId(flashcardId) &&
+                                request.auth.uid == userId;
+      allow create: if isSignedIn() && isVerified() &&
+                     isValidId(userId) && isValidId(flashcardId) &&
+                     request.auth.uid == userId && isValidFlashcard(incoming()) &&
+                     incoming().createdAt == request.time;
+      allow update: if isSignedIn() && isVerified() &&
+                     isValidId(userId) && isValidId(flashcardId) &&
+                     request.auth.uid == userId && isValidFlashcard(incoming()) &&
+                     incoming().createdAt == existing().createdAt;
+    }
+
+    // Room metadata is the authorization source for chat, CRDT and signaling.
+    match /rooms/{roomId} {
+      allow read: if isValidId(roomId) && hasRoomAccess(roomId);
+      allow create: if isSignedIn() && isVerified() && isValidId(roomId) &&
+                     isValidRoom(incoming(), request.auth.uid) &&
+                     incoming().createdAt == request.time;
+      allow update: if isValidId(roomId) && hasRoomAccess(roomId) &&
+                     incoming().ownerId == existing().ownerId &&
+                     incoming().createdAt == existing().createdAt &&
+                     (
+                       (isRoomOwner(roomId) &&
+                        isValidRoom(incoming(), existing().ownerId)) ||
+                       incoming().memberEmails == existing().memberEmails
+                     );
+      allow delete: if false;
+
+      match /{candidateCollection}/{candidateId} {
+        allow read, create: if isValidId(roomId) && isValidId(candidateId) &&
+                            hasRoomAccess(roomId) &&
+                            candidateCollection.matches('^(callerCandidates|calleeCandidates)$');
+        allow update, delete: if false;
+      }
+    }
+
+    // y-fire owns the nested CRDT schema; room metadata controls access.
+    match /yjs_state/{roomId} {
+      allow read, write: if isValidId(roomId) && hasRoomAccess(roomId);
+    }
+    match /yjs_state/{roomId}/{document=**} {
+      allow read, write: if isValidId(roomId) && hasRoomAccess(roomId);
+    }
+
     match /rooms/{roomId}/messages/{messageId} {
-      // Need a way to ensure user has access to room. Let's assume everyone logged in can read for now (demo), 
-      // or we can use a check on participants collection.
-      // For simplicity and since rooms might be public/shared via link, let's restrict read/write to logged in users.
-      // Better: check if the user is a participant.
-      // Since it's a collab room, anyone logged in with the link might write. 
-      allow read, list: if isSignedIn() && isVerified() && isValidId(roomId);
-      allow create: if isSignedIn() && isVerified() && isValidId(roomId) && isValidId(messageId) &&
+      allow read, list: if isValidId(roomId) && hasRoomAccess(roomId);
+      allow create: if isValidId(roomId) && hasRoomAccess(roomId) && isValidId(messageId) &&
                        isValidMessage(incoming(), request.auth.uid, roomId) &&
                        incoming().createdAt == request.time;
-      allow update: if isSignedIn() && isVerified() && isValidId(roomId) && isValidId(messageId) &&
+      allow update: if isValidId(roomId) && hasRoomAccess(roomId) && isValidId(messageId) &&
                        isValidMessage(incoming(), request.auth.uid, roomId) &&
                        incoming().userId == existing().userId && 
                        request.auth.uid == existing().userId &&
                        incoming().createdAt == existing().createdAt;
-      allow delete: if isSignedIn() && isVerified() && isValidId(roomId) && isValidId(messageId) && request.auth.uid == existing().userId;
+      allow delete: if isValidId(roomId) && hasRoomAccess(roomId) &&
+                       isValidId(messageId) && request.auth.uid == existing().userId;
     }
 
     match /rooms/{roomId}/participants/{participantId} {
-      allow read, list: if isSignedIn() && isVerified() && isValidId(roomId);
-      allow create: if isSignedIn() && isVerified() && isValidId(roomId) && isValidId(participantId) &&
+      allow read, list: if isValidId(roomId) && hasRoomAccess(roomId);
+      allow create: if isValidId(roomId) && isRoomOwner(roomId) && isValidId(participantId) &&
                        isValidParticipant(incoming(), request.auth.uid, roomId) &&
                        incoming().createdAt == request.time;
-      allow update: if isSignedIn() && isVerified() && isValidId(roomId) && isValidId(participantId) &&
+      allow update: if isValidId(roomId) && isRoomOwner(roomId) && isValidId(participantId) &&
                        isValidParticipant(incoming(), request.auth.uid, roomId) &&
                        incoming().userId == existing().userId &&
                        request.auth.uid == existing().userId &&
                        incoming().createdAt == existing().createdAt;
-      allow delete: if isSignedIn() && isVerified() && isValidId(roomId) && isValidId(participantId) && request.auth.uid == existing().userId;
+      allow delete: if isValidId(roomId) && isRoomOwner(roomId) &&
+                       isValidId(participantId);
     }
     match /rooms/{roomId}/quizzes/{quizId} {
-      allow read, list: if isSignedIn() && isVerified() && isValidId(roomId);
-      allow create: if isSignedIn() && isVerified() && isValidId(roomId) && isValidId(quizId) &&
+      allow read, list: if isValidId(roomId) && hasRoomAccess(roomId);
+      allow create: if isValidId(roomId) && hasRoomAccess(roomId) && isValidId(quizId) &&
                        isValidQuiz(incoming(), request.auth.uid, roomId) &&
                        incoming().createdAt == request.time;
-      allow update: if isSignedIn() && isVerified() && isValidId(roomId) && isValidId(quizId) &&
+      allow update: if isValidId(roomId) && hasRoomAccess(roomId) && isValidId(quizId) &&
                        isValidQuiz(incoming(), request.auth.uid, roomId) &&
                        incoming().userId == existing().userId &&
                        request.auth.uid == existing().userId &&
                        incoming().createdAt == existing().createdAt;
-      allow delete: if isSignedIn() && isVerified() && isValidId(roomId) && isValidId(quizId) && request.auth.uid == existing().userId;
+      allow delete: if isValidId(roomId) && hasRoomAccess(roomId) &&
+                       isValidId(quizId) && request.auth.uid == existing().userId;
     }
 
     match /feedback/{feedbackId} {
@@ -204,67 +312,6 @@ service cloud.firestore {
                        isValidFeedback(incoming(), isSignedIn() ? request.auth.uid : 'anonymous') &&
                        incoming().createdAt == request.time;
       allow read, update, delete: if false; 
-    }
-
-    function isValidActivityLog(data) {
-      return data.keys().hasAll(['title', 'type', 'timestamp']) &&
-             data.title is string && data.title.size() <= 300 &&
-             data.type is string && data.type.matches('^(study|upload|collab|task|other)$');
-    }
-
-    match /users/{userId}/activityLogs/{logId} {
-      allow read, list: if isSignedIn() && isVerified() && isValidId(userId) && request.auth.uid == userId;
-      allow create: if isSignedIn() && isVerified() && isValidId(userId) && isValidId(logId) &&
-                       request.auth.uid == userId &&
-                       isValidActivityLog(incoming()) &&
-                       incoming().timestamp == request.time;
-      allow update, delete: if false;
-    }
-
-    match /users/{userId}/documents/{documentId} {
-      allow read, list: if isSignedIn() && isVerified() && isValidId(userId) && request.auth.uid == userId;
-      allow create: if isSignedIn() && isVerified() && isValidId(userId) && isValidId(documentId) &&
-                       request.auth.uid == userId &&
-                       isValidDocument(incoming(), userId) &&
-                       incoming().createdAt == request.time;
-      allow update: if isSignedIn() && isVerified() && isValidId(userId) && isValidId(documentId) &&
-                       request.auth.uid == userId &&
-                       isValidDocument(incoming(), userId) &&
-                       incoming().createdAt == existing().createdAt;
-      allow delete: if isSignedIn() && isVerified() && isValidId(userId) && isValidId(documentId) &&
-                       request.auth.uid == userId;
-    }
-
-    match /users/{userId}/decks/{deckId} {
-      allow read, list: if isSignedIn() && isVerified() && isValidId(userId) && request.auth.uid == userId;
-      allow create: if isSignedIn() && isVerified() && isValidId(userId) && isValidId(deckId) &&
-                       request.auth.uid == userId &&
-                       isValidDeck(incoming(), userId) &&
-                       incoming().createdAt == request.time;
-      allow update: if isSignedIn() && isVerified() && isValidId(userId) && isValidId(deckId) &&
-                       request.auth.uid == userId &&
-                       isValidDeck(incoming(), userId) &&
-                       incoming().createdAt == existing().createdAt;
-      allow delete: if isSignedIn() && isVerified() && isValidId(userId) && isValidId(deckId) &&
-                       request.auth.uid == userId;
-    }
-
-    match /users/{userId}/flashcards/{cardId} {
-      allow read, list: if isSignedIn() && isVerified() && isValidId(userId) && request.auth.uid == userId;
-      allow create: if isSignedIn() && isVerified() && isValidId(userId) && isValidId(cardId) &&
-                       request.auth.uid == userId &&
-                       isValidFlashcard(incoming(), userId) &&
-                       incoming().createdAt == request.time;
-      allow update: if isSignedIn() && isVerified() && isValidId(userId) && isValidId(cardId) &&
-                       request.auth.uid == userId &&
-                       isValidFlashcard(incoming(), userId) &&
-                       incoming().createdAt == existing().createdAt;
-      allow delete: if isSignedIn() && isVerified() && isValidId(userId) && isValidId(cardId) &&
-                       request.auth.uid == userId;
-    }
-
-    match /yjs_state/{document=**} {
-      allow read, write: if isSignedIn() && isVerified();
     }
 
     // Platform audit — written only via Firebase Admin SDK on the server
