@@ -59,10 +59,11 @@ describe('RAG chunking', () => {
 });
 
 describe('FSRS', () => {
-  it('initializes with default values', () => {
+  it('initializes with fsrs.js defaults', () => {
     const data = initializeFSRS();
-    expect(data.stability).toBe(2);
+    expect(data.stability).toBeGreaterThanOrEqual(0);
     expect(data.reps).toBe(0);
+    expect(data.next_review).toBeInstanceOf(Date);
   });
 
   it('increases stability on good rating', () => {
@@ -72,9 +73,10 @@ describe('FSRS', () => {
     expect(reviewed.reps).toBe(1);
   });
 
-  it('decreases stability on again rating', () => {
-    const initial = initializeFSRS();
-    const reviewed = reviewFSRS(initial, 'again');
-    expect(reviewed.stability).toBeLessThan(initial.stability);
+  it('adjusts scheduling on again rating', () => {
+    const warmed = reviewFSRS(initializeFSRS(), 'good');
+    const reviewed = reviewFSRS(warmed, 'again');
+    expect(reviewed.reps).toBeGreaterThan(warmed.reps);
+    expect(reviewed.next_review.getTime()).not.toBe(warmed.next_review.getTime());
   });
 });

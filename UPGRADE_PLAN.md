@@ -118,6 +118,11 @@
 - Image/scanned-PDF OCR και Office document ingestion.
 - Notes-only prerequisite/Bloom-aware theory–practice blueprint και ξεχωριστό
   search-grounded enrichment με υποχρεωτικό review warning.
+- Gemini vision image occlusion (`/api/occlusion`) με confidence threshold.
+- Ενοποιημένο FSRS πάνω σε `fsrs.js` (`src/lib/fsrs.ts`).
+- Profiling opt-out toggle (Art. 21) και page-abandonment instrumentation.
+- Offline local-task mutation queue με flush στο reconnect.
+- Mastery dashboard από πραγματικά domain evidence (`summarizeProfileDomains`).
 
 ## Επόμενες φάσεις
 
@@ -137,10 +142,10 @@ data ο ένας του άλλου με τροποποιημένο client.
 
 ### P1 — Ακεραιότητα και offline συγχρονισμός
 
-1. Firestore source of truth και IndexedDB offline mutation queue.
-2. Idempotency keys, retry/backoff και conflict policy.
+1. ✅ Baseline IndexedDB offline mutation queue για local tasks (`offlineSyncQueue.ts`).
+2. Idempotency keys, retry/backoff και conflict policy για Firestore writes.
 3. Migration των υφιστάμενων `memora-tasks`/course keys.
-4. Ενοποίηση των δύο FSRS υλοποιήσεων πάνω στο `fsrs.js`.
+4. ✅ Ενοποίηση των δύο FSRS υλοποιήσεων πάνω στο `fsrs.js`.
 5. Ενοποίηση vector/BM25 retrieval με μετρήσιμη ranking αξιολόγηση.
 
 Κριτήριο αποδοχής: offline create/update/delete συγχρονίζεται ακριβώς μία φορά

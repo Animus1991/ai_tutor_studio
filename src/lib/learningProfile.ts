@@ -440,6 +440,55 @@ export interface ProfileExplanation {
   privacyNote: string;
 }
 
+export interface DomainMasterySummary {
+  domainKey: string;
+  label: string;
+  mastery: number;
+  cognitiveLoad: number;
+  eventCount: number;
+}
+
+export function summarizeProfileDomains(
+  profile: LearningProfile,
+  limit = 7,
+): DomainMasterySummary[] {
+  const entries = Object.entries(profile.domains ?? {})
+    .map(([domainKey, domain]) => {
+      const retrieval = domain.retrievalSuccess.mean;
+      const fatigue = profile.fatigueIndex ?? 0;
+      const mastery = Math.round(clamp(retrieval * 100, 15, 95));
+      const cognitiveLoad = Math.round(
+        clamp(55 + fatigue * 25 + (1 - retrieval) * 30, 20, 95),
+      );
+      return {
+        domainKey,
+        label: domainKey.replace(/^domain:/, '').slice(0, 14) || 'General',
+        mastery,
+        cognitiveLoad,
+        eventCount: domain.eventCount,
+      };
+    })
+    .sort((a, b) => b.eventCount - a.eventCount)
+    .slice(0, limit);
+
+  if (entries.length > 0) return entries;
+
+  const fallbackMastery = Math.round(
+    clamp(profile.stats.retrievalSuccess.mean * 100, 20, 85),
+  );
+  return [
+    {
+      domainKey: 'general',
+      label: 'Overall',
+      mastery: fallbackMastery,
+      cognitiveLoad: Math.round(
+        clamp(60 + (profile.fatigueIndex ?? 0) * 20, 25, 90),
+      ),
+      eventCount: profile.eventCount,
+    },
+  ];
+}
+
 export function explainLearningProfile(
   profile: LearningProfile,
   domainKey?: string,

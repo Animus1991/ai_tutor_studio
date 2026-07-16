@@ -8,6 +8,7 @@ import {
   deriveDomainKey,
   deriveDomainParameters,
   explainLearningProfile,
+  summarizeProfileDomains,
 } from "../lib/learningProfile";
 
 describe("implicit learning profile", () => {
@@ -144,5 +145,23 @@ describe("implicit learning profile", () => {
     const explanation = explainLearningProfile(profile);
     expect(explanation.activeOverrides).toContain("chunkSizeWords");
     expect(explanation.privacyNote).toContain("not note text");
+  });
+
+  it("summarizes domain mastery from profile evidence", () => {
+    let profile = createColdStartProfile();
+    profile = applyBehaviorEvent(
+      profile,
+      createBehaviorEvent({
+        kind: "task_review",
+        surface: "tasks",
+        channel: "retrieval",
+        domainKey: "domain:biology",
+        quality: 0.9,
+        success: true,
+      }),
+    );
+    const summary = summarizeProfileDomains(profile);
+    expect(summary.length).toBeGreaterThan(0);
+    expect(summary[0].mastery).toBeGreaterThan(0);
   });
 });

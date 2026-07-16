@@ -15,8 +15,10 @@ import {
 
 interface LearningProfileState {
   profile: LearningProfile;
+  profilingEnabled: boolean;
   trackEvent: (input: BehaviorEventInput) => void;
   resetProfile: () => void;
+  setProfilingEnabled: (enabled: boolean) => void;
   setOverrides: (overrides: Partial<AdaptiveOverrides>) => void;
   clearOverrides: () => void;
 }
@@ -25,12 +27,15 @@ export const useLearningProfileStore = create<LearningProfileState>()(
   persist(
     (set, get) => ({
       profile: createColdStartProfile(),
+      profilingEnabled: true,
       trackEvent: (input) => {
+        if (!get().profilingEnabled) return;
         const event = createBehaviorEvent(input);
         set({ profile: applyBehaviorEvent(get().profile, event) });
         void appendBehaviorEvent(event);
       },
       resetProfile: () => set({ profile: createColdStartProfile() }),
+      setProfilingEnabled: (enabled) => set({ profilingEnabled: enabled }),
       setOverrides: (overrides) =>
         set((state) => {
           const userOverrides = {
@@ -66,11 +71,29 @@ export const useLearningProfileStore = create<LearningProfileState>()(
     {
       name: "learning-profile-storage",
       storage: createJSONStorage(() => idbStorage),
-      version: 2,
-      partialize: (state) => ({ profile: state.profile }),
+      version: 3,
+      partialize: (state) => ({
+        profile: state.profile,
+        profilingEnabled: state.profilingEnabled,
+      }),
+      migrate: (persisted, version) => {
+        const saved = persisted as Partial<LearningProfileState>;
+        if (version < 3) {
+          return {
+            profile: saved.profile ?? createColdStartProfile(),
+            profilingEnabled: saved.profilingEnabled ?? true,
+          } as LearningProfileState;
+        }
+        return saved as LearningProfileState;
+      },
       merge: (persisted, current) => {
         const saved = (persisted as Partial<LearningProfileState>)?.profile;
-        if (!saved) return current;
+        const profilingEnabled =
+          (persisted as Partial<LearningProfileState>)?.profilingEnabled ??
+          true;
+        if (!saved) {
+          return { ...current, profilingEnabled };
+        }
         const cold = createColdStartProfile();
         const mergedWithoutParameters = {
           ...cold,
@@ -86,7 +109,7 @@ export const useLearningProfileStore = create<LearningProfileState>()(
         const { parameters: _parameters, ...base } = mergedWithoutParameters;
         return {
           ...current,
-          ...(persisted as Partial<LearningProfileState>),
+          profilingEnabled,
           profile: {
             ...base,
             parameters: deriveAdaptiveParameters(base),

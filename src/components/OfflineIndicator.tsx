@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { WifiOff, Wifi } from "lucide-react";
 import { Logger } from "../utils/logger";
+import { flushOfflineMutationQueue } from "../lib/offlineSyncQueue";
 
 export function OfflineIndicator() {
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
@@ -17,8 +18,8 @@ export function OfflineIndicator() {
       setIsOffline(false);
       setShowReconnected(true);
       Logger.log("App reconnected");
-      // Trigger sync logic here
-      Logger.syncOfflineErrors();
+      void Logger.syncOfflineErrors();
+      void flushOfflineMutationQueue();
       setTimeout(() => setShowReconnected(false), 3000);
     };
 
