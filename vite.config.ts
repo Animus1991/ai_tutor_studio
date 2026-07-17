@@ -46,6 +46,37 @@ export default defineConfig(() => {
         workbox: {
           globPatterns: ["**/*.{js,css,html,ico,png,svg}"],
           maximumFileSizeToCacheInBytes: 10000000,
+          navigateFallback: "index.html",
+          navigateFallbackDenylist: [/^\/api\//, /^\/yjs/],
+          runtimeCaching: [
+            {
+              urlPattern: ({ url }) =>
+                [
+                  "/",
+                  "/library",
+                  "/tasks",
+                  "/agent",
+                  "/workspace",
+                  "/match",
+                  "/circles",
+                  "/teacher",
+                ].includes(url.pathname),
+              handler: "NetworkFirst",
+              options: {
+                cacheName: "memora-route-shells",
+                networkTimeoutSeconds: 3,
+                expiration: { maxEntries: 32, maxAgeSeconds: 7 * 24 * 60 * 60 },
+              },
+            },
+            {
+              urlPattern: /\/offline-study-pack\.json$/,
+              handler: "CacheFirst",
+              options: {
+                cacheName: "memora-offline-pack-v1",
+                expiration: { maxEntries: 4, maxAgeSeconds: 30 * 24 * 60 * 60 },
+              },
+            },
+          ],
         },
       }),
     ],

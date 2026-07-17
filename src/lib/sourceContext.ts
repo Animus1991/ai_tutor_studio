@@ -107,8 +107,9 @@ export async function retrieveForQueryHybrid(
 ): Promise<RetrievalResult> {
   const { topK = 5, useEmbeddings = true, docIds } = opts;
 
-  // Prefer server RAG index as source of truth when signed in (not demo).
-  if (!isDemoModeActive()) {
+  // Prefer server RAG when online; offline Agent must stay on local/demo corpus only.
+  const online = typeof navigator === 'undefined' || navigator.onLine;
+  if (!isDemoModeActive() && online) {
     try {
       const server = await serverRagQuery(query, docIds?.[0], topK);
       if (server?.results?.length) {

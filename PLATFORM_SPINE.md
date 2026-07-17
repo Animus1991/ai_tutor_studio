@@ -24,7 +24,9 @@ Checklist for every route/API:
 | 8–10 | Collab / Circles / Match | **Social spine** | Unified `socialPolicy` · dual Meet · Circle↔Match bridge · board mod · admin triage |
 | 11 | Teacher / Classroom | **Institution spine** | Class ACL · DP aggregates · at-risk · Classroom sync · assignment maps · domain tenancy |
 | 4 / 15 | Eval / research | **Evidence spine** | Golden-question harness · `/api/evidence/*` · anonymized research export · blueprint principles catalog |
-| 5–6,12–14,16–17 | Remaining | **Next** | Offline packs · Workspace registry · Workspace/Google polish · a11y/CI chaos |
+| 6 | Study Workspace | **Workspace spine** | `workspaceToolRegistry` (schema, persistence, pedagogy, a11y) · typed concept-bus event log |
+| 14 | Offline / PWA | **Offline spine** | Signed study packs (SHA-256/HMAC) · sync conflict UI · SW route-shell caching · BG Sync register · offline Agent local RAG only |
+| 12–13,16–17 | Remaining | **Next** | Google Workspace polish · break-glass admin · a11y/CI/chaos |
 
 ## Modules
 
@@ -41,6 +43,10 @@ Checklist for every route/API:
 | `src/lib/evidencePrinciples.ts` | PRODUCT_BLUEPRINT §1 principle tags + why-now |
 | `src/lib/evidenceEval.ts` | Golden-question evaluation harness |
 | `src/lib/calibration.ts` | Confidence calibration bins / Brier / MACE |
+| `src/lib/offlineStudyPack.ts` | Signed offline packs + route precache list |
+| `src/lib/offlineSyncQueue.ts` | Mutation queue + conflict resolve |
+| `src/lib/workspaceToolRegistry.ts` | 13-tool contracts (schema/intent/a11y) |
+| `src/lib/workspaceConceptBus.ts` | Engagement map + typed event log |
 | `server/requestSpine.ts` | Trace IDs, idempotency, contracts |
 | `server/circuitBreaker.ts` | Gemini breaker |
 | `server/appCheck.ts` | Optional App Check enforce |
@@ -71,7 +77,7 @@ Checklist for every route/API:
 ## Next implementation order
 
 1. Trust — claims service, App Check enforce in prod, referrer keys
-2. Offline packs — signed manifests + conflict UI
-3. Workspace tool registry + typed concept bus
-4. Chaos/load — Match queue + Yjs
-5. CI e2e for `/match`, `/circles`, `/voice`, `/teacher`
+2. Google Workspace — audited Meet/Forms + Contacts opt-in
+3. Chaos/load — Match queue + Yjs
+4. CI e2e for `/match`, `/circles`, `/voice`, `/teacher`
+5. WCAG 2.2 AA hardening + RTL-ready i18n completion

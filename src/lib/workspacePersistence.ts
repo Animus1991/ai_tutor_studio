@@ -5,6 +5,7 @@
 
 import type { ConceptEngagement } from './workspaceConceptBus';
 import type { WorkspaceToolId } from './workspaceNoteContent';
+import { persistenceKeyForTool } from './workspaceToolRegistry';
 
 const STORAGE_PREFIX = 'synapse:workspace:';
 
@@ -65,15 +66,17 @@ export function loadConceptBus(progressKey: string): Record<string, ConceptEngag
 
 export function saveToolState(progressKey: string, toolId: WorkspaceToolId, state: unknown): void {
   try {
-    localStorage.setItem(`${storageKey(progressKey)}:tool:${toolId}`, JSON.stringify(state));
+    localStorage.setItem(persistenceKeyForTool(progressKey, toolId), JSON.stringify(state));
   } catch {
-    // Silently fail
+    /* quota */
   }
 }
 
 export function loadToolState<T = unknown>(progressKey: string, toolId: WorkspaceToolId): T | null {
   try {
-    const json = localStorage.getItem(`${storageKey(progressKey)}:tool:${toolId}`);
+    const json =
+      localStorage.getItem(persistenceKeyForTool(progressKey, toolId)) ??
+      localStorage.getItem(`${storageKey(progressKey)}:tool:${toolId}`);
     if (!json) return null;
     return JSON.parse(json) as T;
   } catch {
