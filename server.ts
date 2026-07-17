@@ -78,6 +78,16 @@ import {
   privacyDeleteRequestHandler,
   privacyExportHandler,
 } from './server/privacy.js';
+import {
+  appendModeSafety,
+  looksLikeExamAnswerDump,
+  modeAllowsGoogleSearch,
+  normalizeAgentMode,
+} from './server/agentModes.js';
+import {
+  getLearningSummaryHandler,
+  postLearningEventHandler,
+} from './server/learningEvents.js';
 const _require = createRequire(typeof import.meta !== 'undefined' && import.meta.url ? import.meta.url : 'file://' + process.cwd() + '/server.ts');
 const pdfParse = _require('pdf-parse');
 
@@ -751,29 +761,40 @@ async function startServer() {
   app.post('/api/agent/chat', async (req, res) => {
     try {
       const { messages, systemInstruction, model } = req.body;
+      const mode = normalizeAgentMode(req.body?.mode);
       const userTexts = extractAgentUserTexts(messages);
       for (const t of userTexts.slice(-3)) {
         const mod = await moderatePlatformContent(t, 'chat');
         if (!mod.allowed) throw new HttpError(400, mod.reason);
       }
+      const instruction = appendModeSafety(String(systemInstruction ?? ''), mode);
+      const tools = modeAllowsGoogleSearch(mode) ? [{ googleSearch: {} }] : [];
       const response = await generateChatWithFallback(ai, {
         model: model || geminiChatModel,
         contents: messages,
         config: {
-          systemInstruction,
-          tools: [{ googleSearch: {} }],
-          toolConfig: { includeServerSideToolInvocations: true }
+          systemInstruction: instruction,
+          ...(tools.length
+            ? {
+                tools,
+                toolConfig: { includeServerSideToolInvocations: true },
+              }
+            : {}),
         }
       });
       
       let text = response.text || '';
+      if (mode === 'exam-coach' && looksLikeExamAnswerDump(text)) {
+        text =
+          'Exam Coach policy: I will not provide a complete submit-ready answer. Attempt the question first, then I can score your reasoning and share a rubric.';
+      }
       let urls: any[] = [];
       const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
       if (chunks) {
         urls = chunks.map((c: any) => c.web?.uri).filter(Boolean);
       }
       
-      res.json({ text, urls, traceId: res.locals.traceId });
+      res.json({ text, urls, mode, traceId: res.locals.traceId });
     } catch (error) {
       if (error instanceof HttpError) {
         sendRouteError(res, error, 'Agent Moderation', error.message);
@@ -792,6 +813,7 @@ async function startServer() {
 
     try {
       const { messages, systemInstruction, model } = req.body;
+      const mode = normalizeAgentMode(req.body?.mode);
       const userTexts = extractAgentUserTexts(messages);
       for (const t of userTexts.slice(-3)) {
         const mod = await moderatePlatformContent(t, 'chat');
@@ -802,13 +824,19 @@ async function startServer() {
           return;
         }
       }
+      const instruction = appendModeSafety(String(systemInstruction ?? ''), mode);
+      const tools = modeAllowsGoogleSearch(mode) ? [{ googleSearch: {} }] : [];
       const stream = await streamChatWithFallback(ai, {
         model: model || geminiChatModel,
         contents: messages,
         config: {
-          systemInstruction,
-          tools: [{ googleSearch: {} }],
-          toolConfig: { includeServerSideToolInvocations: true },
+          systemInstruction: instruction,
+          ...(tools.length
+            ? {
+                tools,
+                toolConfig: { includeServerSideToolInvocations: true },
+              }
+            : {}),
         },
       });
 
@@ -1805,6 +1833,22 @@ Use pixel coordinates relative to the image. Include 1-12 labels. confidence is 
       await moderateContentHandler(req, res);
     } catch (error) {
       sendRouteError(res, error, 'Moderation Error', 'Failed to moderate content');
+    }
+  });
+
+  // Learning spine — server-authoritative pedagogy events
+  app.post('/api/learning/events', async (req, res) => {
+    try {
+      await postLearningEventHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Learning Event Error', 'Failed to record learning event');
+    }
+  });
+  app.get('/api/learning/summary', async (req, res) => {
+    try {
+      await getLearningSummaryHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Learning Summary Error', 'Failed to load learning summary');
     }
   });
 

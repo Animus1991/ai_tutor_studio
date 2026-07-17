@@ -24,10 +24,18 @@ import {
   type AgentMessage,
   type AgentModeId,
 } from '../lib/agentChatStorage';
+import {
+  buildAgentSystemInstruction,
+  getAgentModeContract,
+  looksLikeExamAnswerDump,
+} from '../lib/agentModes';
+import {
+  assessGroundedness,
+  groundingRefusalMessage,
+} from '../lib/ragGrounding';
 import { useAuthStore } from '../store/useAuthStore';
 import { useLibraryStore } from '../store/useLibraryStore';
 import { useLearningProfileStore } from '../store/useLearningProfileStore';
-import type { BehaviorEvent } from '../lib/learningProfile';
 import {
   deriveDomainKey,
   deriveDomainParameters,
@@ -37,6 +45,7 @@ import { useLanguage } from '../lib/i18n';
 import { announce } from '../lib/liveAnnouncer';
 import MarkdownMessage from '../components/MarkdownMessage';
 import { ensureDemoSandboxReady } from '../lib/demoMode';
+import { apiRequest } from '../lib/apiClient';
 
 type Message = AgentMessage;
 
@@ -71,24 +80,6 @@ const MODE_DESCS: Record<string, { en: string; el: string }> = {
   summariser:   { en: 'Creates concise summaries, bullet points, and study notes',         el: 'Δημιουργεί περιλήψεις, κουκκίδες και σημειώσεις μελέτης' },
   debate:       { en: 'Argues the opposing view to strengthen your understanding',          el: 'Υποστηρίζει την αντίθετη άποψη για να ενισχύσει την κατανόησή σου' },
   explorer:     { en: 'Maps relationships between concepts and builds knowledge graphs',   el: 'Χαρτογραφεί σχέσεις εννοιών και δομεί γράφους γνώσης' },
-};
-
-const MODE_PROMPTS: Record<string, string> = {
-  socratic: 'Use the Socratic method: ask guiding questions rather than giving direct answers. Help the student discover insights themselves.',
-  direct: 'Provide thorough, structured theoretical explanations with clear definitions and examples.',
-  quiz: 'Act as a quiz master: ask one focused question at a time, wait for answers, then give brief feedback before the next question.',
-  feynman: 'Ask the student to explain concepts in their own words. When they do, compare against the source material and identify knowledge gaps gently.',
-  'exam-coach': 'Simulate an exam environment: present questions under time pressure, provide a score afterward, identify weak areas, and suggest targeted review. Be strict but encouraging.',
-  summariser: 'Generate concise, well-structured summaries of the material. Use bullet points, key takeaways, and highlight the most important concepts. Offer to create flashcard-style notes.',
-  debate: 'Take the opposing viewpoint on the topic the student presents. Challenge their reasoning with counter-arguments, evidence, and alternative perspectives to deepen understanding.',
-  explorer: 'Map relationships between concepts. When the student asks about a topic, explain how it connects to related ideas, prerequisites, and advanced extensions. Build a mental knowledge graph.',
-};
-
-const agentProfileMode = (modeId: AgentModeId): BehaviorEvent['mode'] | undefined => {
-  if (modeId === 'socratic' || modeId === 'direct' || modeId === 'quiz' || modeId === 'feynman') {
-    return modeId;
-  }
-  return undefined;
 };
 
 const resolveAgentMode = (
@@ -309,16 +300,15 @@ export default function Agent() {
         console.error("Hybrid retrieval failed", err);
       }
 
-      const modePrompt = MODE_PROMPTS[activeMode.id] ?? modeDesc(activeMode.id);
-      const courseScope = scopedCourse
-        ? `\nFocus on course: "${scopedCourse.title}". Only use document context from this course when available.`
-        : '';
-      const systemInstruction = `You are Memora, an advanced AI tutor. Current mode: ${modeName(activeMode.id)}. ${modePrompt}${courseScope}
-Use ${adaptiveParameters.feedbackDensity} feedback density and keep each instructional chunk near ${adaptiveParameters.chunkSizeWords} words or fewer.
-The recent observed theory/practice interaction ratio is ${adaptiveParameters.theoryPracticeRatio.toFixed(2)} with confidence ${adaptiveParameters.confidence.toFixed(2)}. Treat this only as uncertain behavioral evidence, never as a fixed "learning style".
-When using document context, cite sources inline using the format [DocumentName ¶N].
-Do not hallucinate external facts if not confident. Focus on educational outcomes, mastery, and adaptive learning principles.
-Format responses nicely using markdown structure if helpful.${ragContext}`;
+      const systemInstruction = buildAgentSystemInstruction({
+        modeId: activeMode.id,
+        courseTitle: scopedCourse?.title,
+        feedbackDensity: adaptiveParameters.feedbackDensity,
+        chunkSizeWords: adaptiveParameters.chunkSizeWords,
+        theoryPracticeRatio: adaptiveParameters.theoryPracticeRatio,
+        confidence: adaptiveParameters.confidence,
+        ragContext,
+      });
 
       const serverUp = await checkHealth();
       const assistantId = (Date.now() + 1).toString();
@@ -332,7 +322,10 @@ Format responses nicely using markdown structure if helpful.${ragContext}`;
 
         try {
           const streamedUrls: string[] = [];
-          await streamChatWithAgent(geminiMessages, systemInstruction, {
+          await streamChatWithAgent(
+            geminiMessages,
+            systemInstruction,
+            {
             onChunk: (chunk) => {
               responseText += chunk;
               setMessages((prev) =>
@@ -355,10 +348,18 @@ Format responses nicely using markdown structure if helpful.${ragContext}`;
               if (urls.length > 0) responseUrls = urls;
               announce('Response received.', 'polite');
             },
-          });
+            },
+            'gemini-2.0-flash',
+            activeMode.id,
+          );
         } catch (streamErr) {
           try {
-            const response = await chatWithAgent(geminiMessages, systemInstruction);
+            const response = await chatWithAgent(
+              geminiMessages,
+              systemInstruction,
+              'gemini-2.0-flash',
+              activeMode.id,
+            );
             responseText = response.text;
             responseUrls = response.urls;
           } catch (chatErr) {
@@ -401,6 +402,43 @@ Format responses nicely using markdown structure if helpful.${ragContext}`;
         ]);
       }
 
+      if (
+        activeMode.id === 'exam-coach' &&
+        looksLikeExamAnswerDump(responseText)
+      ) {
+        responseText =
+          'Exam Coach policy: I will not provide a complete submit-ready answer. Attempt the question first, then I can score your reasoning and share a rubric.';
+        setMessages((prev) =>
+          prev.map((m) => (m.id === assistantId ? { ...m, content: responseText } : m)),
+        );
+      }
+
+      if (ragContext && responseText) {
+        const grounding = assessGroundedness({
+          answer: responseText,
+          excerpt: retrievalResult?.excerpt,
+          citations,
+        });
+        if (!grounding.grounded) {
+          responseText = groundingRefusalMessage();
+          setMessages((prev) =>
+            prev.map((m) => (m.id === assistantId ? { ...m, content: responseText } : m)),
+          );
+          void apiRequest('/api/learning/events', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              kind: 'rag_grounding',
+              surface: 'agent',
+              domainKey,
+              success: false,
+              mode: activeMode.id,
+              meta: { score: grounding.score, reason: grounding.reason },
+            }),
+          }).catch(() => undefined);
+        }
+      }
+
       if (shouldSpeak) {
         const utterance = new SpeechSynthesisUtterance(responseText);
         window.speechSynthesis.speak(utterance);
@@ -410,7 +448,7 @@ Format responses nicely using markdown structure if helpful.${ragContext}`;
         kind: 'agent_turn',
         surface: 'agent',
         channel: shouldSpeak ? 'voice' : 'text',
-        mode: agentProfileMode(activeMode.id as AgentModeId),
+        mode: getAgentModeContract(activeMode.id).profileMode,
         domainKey,
         questionKind:
           activeMode.id === 'quiz'
@@ -443,7 +481,7 @@ Format responses nicely using markdown structure if helpful.${ragContext}`;
         kind: 'agent_turn',
         surface: 'agent',
         channel: shouldSpeak ? 'voice' : 'text',
-        mode: agentProfileMode(activeMode.id as AgentModeId),
+        mode: getAgentModeContract(activeMode.id).profileMode,
         domainKey,
         responseTimeMs: Date.now() - turnStartedAtRef.current,
         success: false,

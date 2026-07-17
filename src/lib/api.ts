@@ -29,13 +29,14 @@ export async function chatWithAgent(
   messages: { role: string; parts: { text: string }[] }[],
   systemInstruction: string,
   model = 'gemini-2.0-flash',
+  mode?: string,
 ) {
   const response = await apiRequest('/api/agent/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages, systemInstruction, model }),
+    body: JSON.stringify({ messages, systemInstruction, model, mode }),
   });
-  return parseResponse<{ text: string; urls?: string[] }>(response);
+  return parseResponse<{ text: string; urls?: string[]; mode?: string }>(response);
 }
 
 export interface AgentCitation {
@@ -62,6 +63,7 @@ export async function streamChatWithAgent(
   systemInstruction: string,
   onChunkOrHandlers: ((text: string) => void) | StreamAgentHandlers,
   model = 'gemini-2.0-flash',
+  mode?: string,
 ): Promise<void> {
   const handlers: StreamAgentHandlers =
     typeof onChunkOrHandlers === 'function' ? { onChunk: onChunkOrHandlers } : onChunkOrHandlers;
@@ -69,7 +71,7 @@ export async function streamChatWithAgent(
   const response = await apiRequest('/api/agent/chat/stream', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages, systemInstruction, model }),
+    body: JSON.stringify({ messages, systemInstruction, model, mode }),
   });
 
   if (!response.ok) {

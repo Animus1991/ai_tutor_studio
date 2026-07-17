@@ -16,6 +16,7 @@ import {
   getAllEmbeddings,
   VectorDoc,
 } from './vectorStore';
+import { serverRagQuery } from './serverSync';
 
 function toCorpusDoc(doc: VectorDoc): CorpusDoc {
   const chunkIndex = parseInt(doc.id.split('_chunk_')[1] ?? '0', 10) || 0;
@@ -105,6 +106,36 @@ export async function retrieveForQueryHybrid(
   opts: RetrieveOptions = {},
 ): Promise<RetrievalResult> {
   const { topK = 5, useEmbeddings = true, docIds } = opts;
+
+  // Prefer server RAG index as source of truth when signed in (not demo).
+  if (!isDemoModeActive()) {
+    try {
+      const server = await serverRagQuery(query, docIds?.[0], topK);
+      if (server?.results?.length) {
+        const chunks: ScoredChunk[] = server.results.map((r) => ({
+          id: `${r.docId}_${r.index}`,
+          docId: r.docId,
+          docTitle: r.title,
+          text: r.chunk,
+          chunkIndex: r.index,
+          score: r.score,
+          lexicalScore: r.score,
+          semanticScore: 0,
+        }));
+        // If a multi-doc filter was requested, keep only matching docs
+        const filtered =
+          docIds && docIds.length > 1
+            ? chunks.filter((c) => docIds.includes(c.docId))
+            : chunks;
+        if (filtered.length > 0) {
+          return assembleRetrieval(filtered.slice(0, topK));
+        }
+      }
+    } catch {
+      /* fall through to client hybrid */
+    }
+  }
+
   let allDocs = await getAllEmbeddings();
   if (docIds && docIds.length > 0) {
     const allowed = new Set(docIds);

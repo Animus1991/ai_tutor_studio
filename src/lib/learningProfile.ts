@@ -44,7 +44,7 @@ export interface BehaviorEvent {
   kind: BehaviorKind;
   surface: LearningSurface;
   channel: InteractionChannel;
-  mode?: "socratic" | "direct" | "quiz" | "feynman";
+  mode?: "socratic" | "direct" | "quiz" | "feynman"; // mapped from all 8 agent modes via contracts
   taskType?: string;
   success?: boolean;
   quality?: number;

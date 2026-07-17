@@ -99,15 +99,25 @@ export async function putLibraryHandler(req: Request, res: Response) {
   res.json({ ok: true, backend: 'local' });
 }
 
+/** Lightweight BM25-ish term scoring (no external deps). */
 function scoreChunk(query: string, chunk: string): number {
   const q = query.toLowerCase().split(/\W+/).filter((t) => t.length > 2);
   if (q.length === 0) return 0;
-  const hay = chunk.toLowerCase();
-  let hits = 0;
+  const terms = chunk.toLowerCase().split(/\W+/).filter((t) => t.length > 2);
+  if (terms.length === 0) return 0;
+  const tf = new Map<string, number>();
+  for (const t of terms) tf.set(t, (tf.get(t) ?? 0) + 1);
+  const avgLen = 80;
+  const k1 = 1.2;
+  const b = 0.75;
+  let score = 0;
   for (const term of q) {
-    if (hay.includes(term)) hits += 1;
+    const f = tf.get(term) ?? 0;
+    if (f === 0) continue;
+    const idf = 1.2; // uniform prior without corpus DF
+    score += idf * ((f * (k1 + 1)) / (f + k1 * (1 - b + b * (terms.length / avgLen))));
   }
-  return hits / q.length;
+  return score;
 }
 
 export async function ragIndexHandler(req: Request, res: Response) {
@@ -184,13 +194,24 @@ export async function ragQueryHandler(req: Request, res: Response) {
   }
 
   const ranked = chunks
-    .map((c) => ({ ...c, score: scoreChunk(queryText, c.chunk) }))
+    .map((c) => ({
+      ...c,
+      chunkId: `${c.docId}_${c.index}`,
+      score: scoreChunk(queryText, c.chunk),
+    }))
     .filter((c) => c.score > 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, topK);
 
-  const context = ranked.map((r) => r.chunk).join('\n\n');
-  res.json({ results: ranked, context });
+  const context = ranked
+    .map((r) => `[${r.title} ¶${r.index + 1} | ${r.chunkId}]\n${r.chunk}`)
+    .join('\n\n');
+  res.json({
+    results: ranked,
+    context,
+    grounded: ranked.length > 0,
+    citationHint: 'Cite as [Title ¶N] using the paragraph markers above.',
+  });
 }
 
 export async function listRoomReportsHandler(req: Request, res: Response) {

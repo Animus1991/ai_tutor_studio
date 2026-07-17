@@ -27,11 +27,15 @@ import {
   LOCAL_TASKS_UPDATED_EVENT,
   readLocalTasks,
 } from "../lib/localTasks";
+import { filterDueItems, rankReviewQueue } from "../lib/jointScheduler";
 
 export default function Dashboard() {
   const navigate = useNavigate();
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
   const [upcomingTasks, setUpcomingTasks] = useState<any[]>([]);
+  const [dueReviews, setDueReviews] = useState<
+    Array<{ id: string; title: string; domainKey: string; score: number }>
+  >([]);
   const [tasksDone, setTasksDone] = useState(0);
   const [completionRate, setCompletionRate] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -59,6 +63,23 @@ export default function Dashboard() {
       const incomplete = tasksData.filter(t => !t.completed);
       // For simplicity, we just take the first few as "upcoming"
       setUpcomingTasks(incomplete.slice(0, 4));
+
+      const schedulable = incomplete.map((t) => ({
+        id: String(t.id),
+        domainKey: String(t.subject || t.courseId || t.title || "general"),
+        dueAt: t.nextReviewDate || t.fsrsCard?.due || t.dueDate || null,
+        mastery: typeof t.mastery === "number" ? t.mastery : undefined,
+      }));
+      const due = filterDueItems(schedulable);
+      const ranked = rankReviewQueue(due.length ? due : schedulable, { limit: 4 });
+      setDueReviews(
+        ranked.map((r) => ({
+          id: r.id,
+          title: String(incomplete.find((t) => String(t.id) === r.id)?.title || r.domainKey),
+          domainKey: r.domainKey,
+          score: r.score,
+        })),
+      );
 
       // Calculate tasks done and completion rate
       const completed = tasksData.filter(t => t.completed).length;
@@ -196,6 +217,47 @@ export default function Dashboard() {
           <Flashcards />
         </div>
         
+        {/* FSRS / joint-scheduler due reviews */}
+        <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 rounded-xl p-4 sm:p-5 shadow-sm xl:col-span-1 h-[420px] md:h-[380px] flex flex-col print-expand print-break-inside-avoid">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-white tracking-tight">
+              Due reviews
+            </h3>
+            <Link to="/tasks" className="text-indigo-600 dark:text-indigo-400 text-xs font-medium hover:underline">
+              Open Tasks
+            </Link>
+          </div>
+          <p className="text-[11px] text-slate-400 mb-3">
+            Ranked by FSRS due pressure × mastery gap (interleaved domains).
+          </p>
+          <div className="flex-1 overflow-y-auto pr-1 space-y-2">
+            {loading ? (
+              <div className="space-y-3 animate-pulse">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="h-12 bg-slate-100 dark:bg-slate-800/50 rounded-lg" />
+                ))}
+              </div>
+            ) : dueReviews.length > 0 ? (
+              dueReviews.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => navigate("/tasks")}
+                  className="w-full flex items-center justify-between p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700/50 text-left"
+                >
+                  <div>
+                    <h4 className="text-sm font-medium text-slate-900 dark:text-white">{item.title}</h4>
+                    <p className="text-[10px] text-slate-500">{item.domainKey}</p>
+                  </div>
+                  <span className="text-[10px] font-mono text-slate-400">{item.score.toFixed(2)}</span>
+                </button>
+              ))
+            ) : (
+              <p className="text-sm text-slate-500 py-6 text-center">No spaced-repetition due items.</p>
+            )}
+          </div>
+        </div>
+
         {/* Upcoming Tasks */}
         <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 rounded-xl p-4 sm:p-5 shadow-sm xl:col-span-1 h-[420px] md:h-[380px] flex flex-col print-expand print-break-inside-avoid">
           <div className="flex items-center justify-between mb-4">
@@ -300,6 +362,7 @@ export default function Dashboard() {
         </div>
         <div className="space-y-4 lg:col-span-1 print-expand print-break-inside-avoid">
           <LearningProfileInsights />
+          <MasteryDashboard />
         </div>
       </div>
     )

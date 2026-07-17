@@ -20,8 +20,9 @@ Checklist for every route/API:
 | 0 | Deploy | **Done** | Dockerfile ships `server/` + `dist/server.cjs` · authenticated Yjs |
 | 1 | Auth / Google | **Partial** | App Check hooks · OAuth scopes exist · claims assignment still external |
 | 8–10 | Collab / Circles / Match | **Hardened** | Yjs token+ACL · guidelines **v2** re-accept · Match moderator/social |
-| 4 / 7 | Agent / Voice | **Safety wired** | User-text + transcript/TTS moderation · circuit breaker |
-| 2–3,5–6,11–16 | Remaining surfaces | **Next** | Learning/social/institution/evidence spines per product blueprint |
+| 4 / 7 | Agent / Voice | **Learning wired** | Mode contracts · exam-coach refusal · hybrid server RAG · groundedness · STT/TTS mod |
+| 2–3 / 15 | Dashboard / Tasks / Mastery | **Partial** | Joint FSRS×mastery scheduler · Due reviews widget · MasteryDashboard mounted · `/api/learning/*` |
+| 5–6,8–14,16–17 | Remaining | **Next** | Social / institution / evidence spines |
 
 ## Modules
 

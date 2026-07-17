@@ -417,5 +417,13 @@ service cloud.firestore {
     match /privacyDeletionRequests/{userId} {
       allow read, write: if false;
     }
+
+    // Server-authoritative learning events — Admin SDK only
+    match /userLearningEvents/{userId} {
+      allow read, write: if false;
+      match /events/{eventId} {
+        allow read, write: if false;
+      }
+    }
   }
 }
