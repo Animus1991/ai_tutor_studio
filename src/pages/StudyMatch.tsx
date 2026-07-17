@@ -192,6 +192,7 @@ export default function StudyMatch() {
         topicLabel: label,
         durationMin: duration,
         domainFilter: domainFilter || undefined,
+        guidelinesAccepted: hasAcceptedCommunityGuidelines(),
       });
       if (result.status === 'matched') {
         navigate(`/match/${result.session.id}`, { replace: true });

@@ -112,6 +112,10 @@ export type MatchSessionView = {
   pomodoro?: PomodoroState;
   peerOnline?: boolean;
   selfOnline?: boolean;
+  notesVersion?: number;
+  quietFocusSelf?: boolean;
+  quietFocusPeer?: boolean;
+  midpointSent?: boolean;
 };
 
 export type MatchEnqueueResult =
@@ -135,6 +139,7 @@ export async function enqueueMatch(input: {
   topicLabel: string;
   durationMin: MatchDuration;
   domainFilter?: string;
+  guidelinesAccepted?: boolean;
 }): Promise<MatchEnqueueResult> {
   const res = await apiRequest('/api/match/enqueue', {
     method: 'POST',
@@ -143,6 +148,7 @@ export async function enqueueMatch(input: {
       topicLabel: input.topicLabel.trim().slice(0, 120),
       durationMin: input.durationMin,
       domainFilter: (input.domainFilter ?? '').trim().toLowerCase().slice(0, 120),
+      guidelinesAccepted: input.guidelinesAccepted !== false,
     }),
   });
   return parseJson<MatchEnqueueResult>(res);
@@ -166,13 +172,22 @@ export async function getMatchSession(sessionId: string): Promise<MatchSessionVi
   return parseJson<MatchSessionView>(res);
 }
 
-export async function leaveMatchSession(sessionId: string): Promise<void> {
+export type MatchSessionSummary = {
+  topicLabel: string;
+  durationMin: number;
+  studiedSec: number;
+  cycles: number;
+};
+
+export async function leaveMatchSession(
+  sessionId: string,
+): Promise<{ ok: boolean; summary?: MatchSessionSummary }> {
   const res = await apiRequest(`/api/match/session/${encodeURIComponent(sessionId)}/leave`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: '{}',
   });
-  await parseJson(res);
+  return parseJson(res);
 }
 
 export async function reportMatchSession(
@@ -211,13 +226,32 @@ export async function createMatchMeet(
   return parseJson(res);
 }
 
-export async function saveMatchNotes(sessionId: string, notes: string): Promise<void> {
+export async function saveMatchNotes(
+  sessionId: string,
+  notes: string,
+  notesVersion?: number,
+): Promise<{ ok: boolean; notesVersion: number }> {
   const res = await apiRequest(`/api/match/session/${encodeURIComponent(sessionId)}/notes`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ notes: notes.slice(0, 20000) }),
+    body: JSON.stringify({
+      notes: notes.slice(0, 20000),
+      notesVersion,
+    }),
   });
-  await parseJson(res);
+  return parseJson(res);
+}
+
+export async function setQuietFocus(
+  sessionId: string,
+  enabled: boolean,
+): Promise<MatchSessionView> {
+  const res = await apiRequest(`/api/match/session/${encodeURIComponent(sessionId)}/quiet-focus`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  });
+  return parseJson(res);
 }
 
 export async function sendMatchMessage(

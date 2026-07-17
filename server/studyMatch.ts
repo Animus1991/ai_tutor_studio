@@ -16,14 +16,20 @@ import { HttpError } from './security.js';
 import {
   buildInitialPomodoro,
   canonicalTopicKey,
+  cooldownRemainingMs,
   createRateLimiter,
   emailDomain,
+  emptyMatchMetrics,
+  isInCooldown,
   isPeerOnline,
   isSafeMatchChat,
   normalizeTopicKey,
+  REPORT_COOLDOWN_MS,
   resumeFocusPhase,
+  shouldEmitMidpointCheckIn,
   startBreakPhase,
   type MatchDuration,
+  type MatchMetricsSnapshot,
   type PomodoroState,
 } from './studyMatchCore.js';
 
@@ -82,12 +88,15 @@ export type MatchSession = {
   startedAt: string;
   endsAt: string;
   notes: string;
+  notesVersion: number;
   messages: MatchChatMessage[];
   meetConsent: Record<string, boolean>;
   meetUrl: string | null;
   domainFilter: string;
   pomodoro: PomodoroState;
   presence: Record<string, string>;
+  quietFocus: Record<string, boolean>;
+  midpointSent: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -96,6 +105,9 @@ export type MatchSession = {
 const memoryQueue = new Map<string, QueueEntry>();
 const memorySessions = new Map<string, MatchSession>();
 const memoryBlocks = new Set<string>();
+/** uid → ISO timestamp until which rematch is blocked after a report */
+const memoryCooldowns = new Map<string, string>();
+const matchMetrics: MatchMetricsSnapshot = emptyMatchMetrics();
 
 function getAuthUser(res: Response): AuthUser {
   const user = res.locals.user as AuthUser | undefined;
@@ -171,6 +183,7 @@ function toSessionView(session: MatchSession, selfId: string) {
   const peerId = session.memberIds[0] === selfId ? session.memberIds[1] : session.memberIds[0];
   const pomodoro = ensurePomodoro(session);
   const presence = session.presence ?? {};
+  const quietFocus = session.quietFocus ?? {};
   return {
     id: session.id,
     topicLabel: session.topicLabel,
@@ -181,6 +194,7 @@ function toSessionView(session: MatchSession, selfId: string) {
     startedAt: session.startedAt,
     endsAt: session.endsAt,
     notes: session.notes,
+    notesVersion: session.notesVersion ?? 0,
     messages: (session.messages ?? []).slice(-100),
     meetConsent: session.meetConsent,
     meetUrl: session.meetUrl,
@@ -191,7 +205,27 @@ function toSessionView(session: MatchSession, selfId: string) {
     pomodoro,
     peerOnline: isPeerOnline(presence[peerId]),
     selfOnline: isPeerOnline(presence[selfId]),
+    quietFocusSelf: Boolean(quietFocus[selfId]),
+    quietFocusPeer: Boolean(quietFocus[peerId]),
+    midpointSent: Boolean(session.midpointSent),
   };
+}
+
+async function setCooldown(db: Firestore | null, uid: string, untilIso: string): Promise<void> {
+  memoryCooldowns.set(uid, untilIso);
+  if (!db) return;
+  await db.collection('matchCooldowns').doc(uid).set({ until: untilIso, updatedAt: new Date().toISOString() });
+}
+
+async function getCooldownUntil(db: Firestore | null, uid: string): Promise<string | undefined> {
+  const mem = memoryCooldowns.get(uid);
+  if (mem) return mem;
+  if (!db) return undefined;
+  const snap = await db.collection('matchCooldowns').doc(uid).get();
+  if (!snap.exists) return undefined;
+  const until = String(snap.data()?.until ?? '');
+  if (until) memoryCooldowns.set(uid, until);
+  return until || undefined;
 }
 
 function buildSessionDoc(a: QueueEntry, b: QueueEntry): MatchSession {
@@ -211,6 +245,7 @@ function buildSessionDoc(a: QueueEntry, b: QueueEntry): MatchSession {
     startedAt: now.toISOString(),
     endsAt: pomo.phaseEndsAt,
     notes: '',
+    notesVersion: 0,
     messages: [
       {
         id: newId('msg'),
@@ -225,6 +260,8 @@ function buildSessionDoc(a: QueueEntry, b: QueueEntry): MatchSession {
     domainFilter: a.domainFilter || b.domainFilter || '',
     pomodoro: pomo,
     presence: { [a.uid]: now.toISOString(), [b.uid]: now.toISOString() },
+    quietFocus: { [a.uid]: false, [b.uid]: false },
+    midpointSent: false,
     createdAt: now.toISOString(),
     updatedAt: now.toISOString(),
   };
@@ -336,6 +373,7 @@ async function pairUsers(
   const matchedB: QueueEntry = { ...b, status: 'matched', sessionId: session.id };
   await setQueueEntry(db, matchedA);
   await setQueueEntry(db, matchedB);
+  matchMetrics.matchesTotal += 1;
   return session;
 }
 
@@ -381,6 +419,7 @@ async function tryMatch(db: Firestore | null, entrant: QueueEntry): Promise<Matc
               memoryQueue.set(uid, { ...prev, status: 'matched', sessionId: session.id });
             }
           }
+          matchMetrics.matchesTotal += 1;
           return session;
         }
       } catch {
@@ -410,6 +449,9 @@ export async function enqueueMatchHandler(req: Request, res: Response): Promise<
   if (!enqueueLimiter.allow(user.uid)) {
     throw new HttpError(429, 'Too many match attempts — wait a few minutes');
   }
+  if (req.body?.guidelinesAccepted !== true) {
+    throw new HttpError(403, 'Accept community guidelines before joining Study Match');
+  }
   const topicLabel = String(req.body?.topicLabel ?? '').trim().slice(0, 120);
   if (!topicLabel || topicLabel.length < 2) {
     throw new HttpError(400, 'Choose a subject / topic (at least 2 characters)');
@@ -432,6 +474,14 @@ export async function enqueueMatchHandler(req: Request, res: Response): Promise<
   }
 
   const db = await getAdminFirestore();
+  const cooldownUntil = await getCooldownUntil(db, user.uid);
+  if (isInCooldown(cooldownUntil)) {
+    const mins = Math.ceil(cooldownRemainingMs(cooldownUntil) / 60_000);
+    throw new HttpError(
+      429,
+      `Rematch cooldown active after a safety report — try again in ~${mins} min`,
+    );
+  }
   const existing = await getQueueEntry(db, user.uid);
   if (existing?.status === 'matched' && existing.sessionId) {
     const session = await getSession(db, existing.sessionId);
@@ -555,15 +605,30 @@ export async function leaveSessionHandler(req: Request, res: Response): Promise<
   if (!session || !session.memberIds.includes(user.uid)) {
     throw new HttpError(404, 'Session not found');
   }
-  if (session.status === 'active') {
+  const wasActive = session.status === 'active';
+  if (wasActive) {
     session.status = 'ended';
     session.updatedAt = new Date().toISOString();
     await setSession(db, session);
+    matchMetrics.leavesTotal += 1;
   }
   for (const uid of session.memberIds) {
     await deleteQueueEntry(db, uid);
   }
-  res.json({ ok: true });
+  const studiedSec = Math.max(
+    0,
+    Math.floor((Date.now() - new Date(session.startedAt).getTime()) / 1000),
+  );
+  res.json({
+    ok: true,
+    summary: {
+      topicLabel: session.topicLabel,
+      durationMin: session.durationMin,
+      studiedSec,
+      cycles: session.pomodoro?.cycle ?? 1,
+      // Never include peer identity in post-session summary
+    },
+  });
 }
 
 export async function reportSessionHandler(req: Request, res: Response): Promise<void> {
@@ -585,10 +650,14 @@ export async function reportSessionHandler(req: Request, res: Response): Promise
 
   const peerId = session.memberIds.find((id) => id !== user.uid)!;
   await writeBlock(db, user.uid, peerId, reason);
+  const until = new Date(Date.now() + REPORT_COOLDOWN_MS).toISOString();
+  await setCooldown(db, user.uid, until);
+  await setCooldown(db, peerId, until);
 
   session.status = 'reported';
   session.updatedAt = new Date().toISOString();
   await setSession(db, session);
+  matchMetrics.reportsTotal += 1;
 
   if (db) {
     await db
@@ -691,6 +760,7 @@ export async function createMeetHandler(req: Request, res: Response): Promise<vo
   session.meetUrl = meetUrl;
   session.updatedAt = new Date().toISOString();
   await setSession(db, session);
+  if (!fallback) matchMetrics.meetCreatedTotal += 1;
   res.json({ meetUrl, fallback, session: toSessionView(session, user.uid) });
 }
 
@@ -698,16 +768,23 @@ export async function saveNotesHandler(req: Request, res: Response): Promise<voi
   const user = getAuthUser(res);
   const sessionId = String(req.params.sessionId ?? '');
   const notes = String(req.body?.notes ?? '').slice(0, 20000);
+  const expectedVersion =
+    req.body?.notesVersion === undefined ? undefined : Number(req.body.notesVersion);
   const db = await getAdminFirestore();
   const session = await getSession(db, sessionId);
   if (!session || !session.memberIds.includes(user.uid)) {
     throw new HttpError(404, 'Session not found');
   }
   if (session.status !== 'active') throw new HttpError(409, 'Session is not active');
+  const currentVersion = session.notesVersion ?? 0;
+  if (expectedVersion !== undefined && expectedVersion !== currentVersion) {
+    throw new HttpError(409, 'Notes were updated by your buddy — refresh and try again');
+  }
   session.notes = notes;
+  session.notesVersion = currentVersion + 1;
   session.updatedAt = new Date().toISOString();
   await setSession(db, session);
-  res.json({ ok: true });
+  res.json({ ok: true, notesVersion: session.notesVersion });
 }
 
 export async function postMessageHandler(req: Request, res: Response): Promise<void> {
@@ -767,9 +844,61 @@ export async function heartbeatHandler(req: Request, res: Response): Promise<voi
     [user.uid]: new Date().toISOString(),
   };
   session.pomodoro = ensurePomodoro(session);
+
+  // Midpoint accountability nudge (once per focus phase)
+  if (
+    session.pomodoro.phase === 'focus' &&
+    shouldEmitMidpointCheckIn({
+      startedAt: session.pomodoro.phaseStartedAt,
+      endsAt: session.pomodoro.phaseEndsAt,
+      midpointSent: Boolean(session.midpointSent),
+    })
+  ) {
+    session.midpointSent = true;
+    session.messages = [
+      ...(session.messages ?? []),
+      {
+        id: newId('msg'),
+        userId: 'system',
+        displayName: 'Memora',
+        text: `Halfway through this focus block on ${session.topicLabel}. Quick check-in: still on topic?`,
+        createdAt: new Date().toISOString(),
+      },
+    ].slice(-100);
+  }
+
   session.updatedAt = new Date().toISOString();
   await setSession(db, session);
   res.json({ ok: true, session: toSessionView(session, user.uid) });
+}
+
+export async function quietFocusHandler(req: Request, res: Response): Promise<void> {
+  const user = getAuthUser(res);
+  const sessionId = String(req.params.sessionId ?? '');
+  const enabled = Boolean(req.body?.enabled);
+  const db = await getAdminFirestore();
+  const session = await getSession(db, sessionId);
+  if (!session || !session.memberIds.includes(user.uid)) {
+    throw new HttpError(404, 'Session not found');
+  }
+  if (session.status !== 'active') throw new HttpError(409, 'Session is not active');
+  session.quietFocus = { ...(session.quietFocus ?? {}), [user.uid]: enabled };
+  session.updatedAt = new Date().toISOString();
+  await setSession(db, session);
+  res.json(toSessionView(session, user.uid));
+}
+
+export async function matchMetricsHandler(_req: Request, res: Response): Promise<void> {
+  // Anonymized ops snapshot — no emails, no uids, no message content.
+  getAuthUser(res);
+  const waiting = [...memoryQueue.values()].filter((e) => e.status === 'waiting').length;
+  const active = [...memorySessions.values()].filter((s) => s.status === 'active').length;
+  res.json({
+    ...matchMetrics,
+    queueWaiting: waiting,
+    sessionsActive: active,
+    generatedAt: new Date().toISOString(),
+  });
 }
 
 export async function pomodoroHandler(req: Request, res: Response): Promise<void> {
@@ -801,6 +930,7 @@ export async function pomodoroHandler(req: Request, res: Response): Promise<void
   } else if (action === 'start_focus') {
     const focusMin = parseDuration(req.body?.durationMin ?? session.durationMin);
     session.pomodoro = resumeFocusPhase(pomo, focusMin, now);
+    session.midpointSent = false;
     session.durationMin = focusMin;
     session.endsAt = session.pomodoro.phaseEndsAt;
     session.messages = [
@@ -830,9 +960,12 @@ export const __test__ = {
   memoryQueue,
   memorySessions,
   memoryBlocks,
+  memoryCooldowns,
+  matchMetrics,
   domainsCompatible,
   pairUsers,
   normalizeTopicKey,
   buddyDisplayName,
   blockKey,
+  setCooldown,
 };

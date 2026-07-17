@@ -57,9 +57,11 @@ import {
   leaveSessionHandler,
   matchStatusHandler,
   heartbeatHandler,
+  matchMetricsHandler,
   meetConsentHandler,
   pomodoroHandler,
   postMessageHandler,
+  quietFocusHandler,
   reportSessionHandler,
   saveNotesHandler,
 } from './server/studyMatch.js';
@@ -1723,6 +1725,20 @@ Use pixel coordinates relative to the image. Include 1-12 labels. confidence is 
       await pomodoroHandler(req, res);
     } catch (error) {
       sendRouteError(res, error, 'Match Pomodoro Error', 'Failed to update Pomodoro phase');
+    }
+  });
+  app.post('/api/match/session/:sessionId/quiet-focus', async (req, res) => {
+    try {
+      await quietFocusHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Quiet Focus Error', 'Failed to update quiet focus');
+    }
+  });
+  app.get('/api/match/metrics', async (req, res) => {
+    try {
+      await matchMetricsHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Match Metrics Error', 'Failed to load match metrics');
     }
   });
 

@@ -403,6 +403,11 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Post-report rematch cooldowns — Admin SDK only
+    match /matchCooldowns/{userId} {
+      allow read, write: if false;
+    }
+
     // Platform audit — written only via Firebase Admin SDK on the server
     match /platform_audit/{eventId} {
       allow read, write: if false;

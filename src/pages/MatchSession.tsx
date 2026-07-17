@@ -12,6 +12,8 @@ import {
   Check,
   Coffee,
   Circle,
+  VolumeX,
+  Volume2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuthStore } from '../store/useAuthStore';
@@ -34,6 +36,7 @@ import {
   secondsRemaining,
   sendMatchMessage,
   setMeetConsent,
+  setQuietFocus,
 } from '../lib/studyMatch';
 
 function loadDemoSession(id: string): MatchSessionView | null {
@@ -68,6 +71,7 @@ export default function MatchSession() {
   const [busy, setBusy] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const notesTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const notesVersionRef = useRef(0);
 
   const refresh = useCallback(async () => {
     if (!sessionId) return;
@@ -80,14 +84,16 @@ export default function MatchSession() {
       }
       setSession(s);
       setNotes(s.notes);
-      setRemaining(secondsRemaining(s.endsAt));
+      notesVersionRef.current = s.notesVersion ?? 0;
+      setRemaining(secondsRemaining(s.pomodoro?.phaseEndsAt ?? s.endsAt));
       return;
     }
     try {
       const s = await getMatchSession(sessionId);
       setSession(s);
       setNotes(s.notes);
-      setRemaining(secondsRemaining(s.endsAt));
+      notesVersionRef.current = s.notesVersion ?? 0;
+      setRemaining(secondsRemaining(s.pomodoro?.phaseEndsAt ?? s.endsAt));
       if (s.status !== 'active') {
         toast.message(t('Session ended', 'Η συνεδρία ολοκληρώθηκε'));
         navigate('/match', { replace: true });
@@ -182,13 +188,44 @@ export default function MatchSession() {
     if (notesTimer.current) clearTimeout(notesTimer.current);
     notesTimer.current = setTimeout(() => {
       if (demo) {
-        const next = { ...session, notes: value };
+        const next = {
+          ...session,
+          notes: value,
+          notesVersion: (session.notesVersion ?? 0) + 1,
+        };
         saveDemoSession(next);
         setSession(next);
+        notesVersionRef.current = next.notesVersion ?? 0;
         return;
       }
-      void saveMatchNotes(session.id, value).catch(() => undefined);
+      void saveMatchNotes(session.id, value, notesVersionRef.current)
+        .then((r) => {
+          notesVersionRef.current = r.notesVersion;
+        })
+        .catch((e) => {
+          if (e instanceof Error && e.message.includes('buddy')) {
+            toast.info(e.message);
+            void refresh();
+          }
+        });
     }, 600);
+  };
+
+  const toggleQuietFocus = async () => {
+    if (!session) return;
+    const nextEnabled = !session.quietFocusSelf;
+    if (demo) {
+      const next = { ...session, quietFocusSelf: nextEnabled };
+      saveDemoSession(next);
+      setSession(next);
+      return;
+    }
+    try {
+      const next = await setQuietFocus(session.id, nextEnabled);
+      setSession(next);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed');
+    }
   };
 
   const handleLeave = async () => {
@@ -197,8 +234,23 @@ export default function MatchSession() {
     try {
       if (demo) {
         sessionStorage.removeItem(`memora-demo-match:${session.id}`);
+        toast.success(
+          t(
+            `Session saved locally · ${session.topicLabel}`,
+            `Η συνεδρία αποθηκεύτηκε τοπικά · ${session.topicLabel}`,
+          ),
+        );
       } else {
-        await leaveMatchSession(session.id);
+        const result = await leaveMatchSession(session.id);
+        if (result.summary) {
+          const mins = Math.round(result.summary.studiedSec / 60);
+          toast.success(
+            t(
+              `Nice focus · ${mins}′ on ${result.summary.topicLabel}`,
+              `Ωραία συγκέντρωση · ${mins}′ στο ${result.summary.topicLabel}`,
+            ),
+          );
+        }
       }
       navigate('/match', { replace: true });
     } catch (e) {
@@ -427,6 +479,22 @@ export default function MatchSession() {
               {t('Start next focus cycle', 'Επόμενος κύκλος focus')}
             </button>
           )}
+          <button
+            type="button"
+            onClick={() => void toggleQuietFocus()}
+            className={`min-h-10 px-3 rounded-xl border text-xs font-semibold inline-flex items-center gap-1.5 ${
+              session.quietFocusSelf
+                ? 'bg-slate-900 text-white border-slate-900 dark:bg-slate-100 dark:text-slate-900'
+                : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+            }`}
+            title={t('Quiet focus — signal you are deep working', 'Quiet focus — σήμα βαθιάς συγκέντρωσης')}
+          >
+            {session.quietFocusSelf ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+            {session.quietFocusSelf
+              ? t('Quiet focus on', 'Quiet focus ενεργό')
+              : t('Quiet focus', 'Quiet focus')}
+            {session.quietFocusPeer ? ` · ${t('buddy quiet', 'buddy ήσυχος')}` : ''}
+          </button>
         </div>
 
         <div className="mt-3 flex flex-wrap gap-2">

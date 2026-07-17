@@ -17,6 +17,12 @@ Time-boxed, topic-matched peer focus — **not** Omegle. Built for students on M
 | Report / leave / ban | Report → mutual `matchBlocks` + session `reported`; leave ends without ban |
 | No public profile / post-session DMs | Peer shown as `Buddy-####` only; no email exposure |
 | Optional school domain | `domainFilter` (e.g. `uni.edu`) must match both emails |
+| Guidelines ack (server) | Enqueue requires `guidelinesAccepted: true` |
+| Report cooldown | 30′ rematch cooldown for both parties after a report |
+| Quiet focus | Per-user deep-work signal (visible to buddy, no DMs) |
+| Notes integrity | Optimistic `notesVersion` concurrency |
+| Midpoint check-in | One system nudge at halfway through each focus phase |
+| Leave summary | Studied minutes returned — **never** peer identity |
 
 ## Architecture
 
@@ -46,6 +52,8 @@ Client (/match/:id) chat/notes/timer/Meet consent
 | POST | `.../message` | Session chat (safety-filtered) |
 | POST | `.../heartbeat` | Presence ping |
 | POST | `.../pomodoro` | `{ action: "start_break" \| "start_focus" }` |
+| POST | `.../quiet-focus` | Toggle quiet focus signal |
+| GET | `/api/match/metrics` | Anonymized ops counters (no PII) |
 
 ### Firestore (Admin-written)
 

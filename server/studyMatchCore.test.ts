@@ -7,7 +7,10 @@ import {
   normalizeTopicKey,
   buildInitialPomodoro,
   startBreakPhase,
+  shouldEmitMidpointCheckIn,
+  isInCooldown,
   PRESENCE_ONLINE_MS,
+  REPORT_COOLDOWN_MS,
 } from './studyMatchCore';
 
 describe('studyMatchCore', () => {
@@ -50,5 +53,27 @@ describe('studyMatchCore', () => {
     const now = Date.now();
     expect(isPeerOnline(new Date(now - 5_000).toISOString(), now)).toBe(true);
     expect(isPeerOnline(new Date(now - PRESENCE_ONLINE_MS - 1).toISOString(), now)).toBe(false);
+  });
+
+  it('emits midpoint check-in once', () => {
+    const startedAt = '2026-07-17T12:00:00.000Z';
+    const endsAt = '2026-07-17T12:20:00.000Z';
+    const before = Date.parse('2026-07-17T12:05:00.000Z');
+    const after = Date.parse('2026-07-17T12:11:00.000Z');
+    expect(shouldEmitMidpointCheckIn({ startedAt, endsAt, midpointSent: false, now: before })).toBe(
+      false,
+    );
+    expect(shouldEmitMidpointCheckIn({ startedAt, endsAt, midpointSent: false, now: after })).toBe(
+      true,
+    );
+    expect(shouldEmitMidpointCheckIn({ startedAt, endsAt, midpointSent: true, now: after })).toBe(
+      false,
+    );
+  });
+
+  it('tracks report rematch cooldown', () => {
+    const until = new Date(Date.now() + REPORT_COOLDOWN_MS).toISOString();
+    expect(isInCooldown(until)).toBe(true);
+    expect(isInCooldown(new Date(Date.now() - 1000).toISOString())).toBe(false);
   });
 });

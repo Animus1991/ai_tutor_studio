@@ -138,9 +138,62 @@ export function createRateLimiter(max: number, windowMs: number) {
 
 export const PRESENCE_ONLINE_MS = 20_000;
 
+/** After a report, reporter & reported get a short rematch cooldown (anti-abuse). */
+export const REPORT_COOLDOWN_MS = 30 * 60_000;
+
 export function isPeerOnline(lastSeenIso: string | undefined, now = Date.now()): boolean {
   if (!lastSeenIso) return false;
   const t = new Date(lastSeenIso).getTime();
   if (Number.isNaN(t)) return false;
   return now - t <= PRESENCE_ONLINE_MS;
+}
+
+export function cooldownRemainingMs(
+  untilIso: string | undefined,
+  now = Date.now(),
+): number {
+  if (!untilIso) return 0;
+  const until = new Date(untilIso).getTime();
+  if (Number.isNaN(until)) return 0;
+  return Math.max(0, until - now);
+}
+
+export function isInCooldown(untilIso: string | undefined, now = Date.now()): boolean {
+  return cooldownRemainingMs(untilIso, now) > 0;
+}
+
+/** True once when elapsed crosses the halfway mark of a focus phase. */
+export function shouldEmitMidpointCheckIn(input: {
+  startedAt: string;
+  endsAt: string;
+  midpointSent: boolean;
+  now?: number;
+}): boolean {
+  if (input.midpointSent) return false;
+  const start = new Date(input.startedAt).getTime();
+  const end = new Date(input.endsAt).getTime();
+  const now = input.now ?? Date.now();
+  if (Number.isNaN(start) || Number.isNaN(end) || end <= start) return false;
+  const mid = start + (end - start) / 2;
+  return now >= mid;
+}
+
+export type MatchMetricsSnapshot = {
+  queueWaiting: number;
+  sessionsActive: number;
+  matchesTotal: number;
+  reportsTotal: number;
+  leavesTotal: number;
+  meetCreatedTotal: number;
+};
+
+export function emptyMatchMetrics(): MatchMetricsSnapshot {
+  return {
+    queueWaiting: 0,
+    sessionsActive: 0,
+    matchesTotal: 0,
+    reportsTotal: 0,
+    leavesTotal: 0,
+    meetCreatedTotal: 0,
+  };
 }

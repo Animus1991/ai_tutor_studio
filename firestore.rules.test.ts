@@ -181,6 +181,23 @@ describe("student-safe social", () => {
     await assertSucceeds(getDoc(doc(bob, "studyCircles/circle1")));
   });
 
+  it("keeps match queue and cooldowns admin-only", async () => {
+    const alice = authenticatedDb("alice", "alice@school.edu");
+    await assertFails(
+      setDoc(doc(alice, "matchQueue/alice"), {
+        uid: "alice",
+        status: "waiting",
+        topicKey: "calc",
+      }),
+    );
+    await assertFails(getDoc(doc(alice, "matchCooldowns/alice")));
+    await assertFails(
+      setDoc(doc(alice, "matchBlocks/alice::bob"), {
+        members: ["alice", "bob"],
+      }),
+    );
+  });
+
   it("allows create-only reports and enum kudos", async () => {
     const alice = authenticatedDb("alice", "alice@school.edu");
     const bob = authenticatedDb("bob", "bob@school.edu");
