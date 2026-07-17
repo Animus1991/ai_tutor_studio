@@ -35,6 +35,38 @@ import {
   streamChatWithFallback,
 } from './server/gemini.js';
 import { geminiKeyFingerprint, resolveGeminiApiKey } from './server/geminiEnv.js';
+import {
+  classDetailHandler,
+  createClassHandler,
+  joinClassHandler,
+  listClassesHandler,
+  reportProgressHandler,
+} from './server/teacher.js';
+import {
+  getLibraryHandler,
+  listRoomReportsHandler,
+  putLibraryHandler,
+  ragIndexHandler,
+  ragQueryHandler,
+} from './server/libraryRag.js';
+import {
+  createMeetHandler,
+  enqueueMatchHandler,
+  getSessionHandler,
+  leaveQueueHandler,
+  leaveSessionHandler,
+  matchStatusHandler,
+  heartbeatHandler,
+  matchMetricsHandler,
+  meetConsentHandler,
+  pomodoroHandler,
+  postMessageHandler,
+  quietFocusHandler,
+  reactMessageHandler,
+  respectVoteHandler,
+  reportSessionHandler,
+  saveNotesHandler,
+} from './server/studyMatch.js';
 const _require = createRequire(typeof import.meta !== 'undefined' && import.meta.url ? import.meta.url : 'file://' + process.cwd() + '/server.ts');
 const pdfParse = _require('pdf-parse');
 
@@ -1495,6 +1527,269 @@ Use pixel coordinates relative to the image. Include 1-12 labels. confidence is 
     }
   });
 
+  // Voice tutor — Gemini STT + optional client TTS fallback
+  app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: 'Audio file is required' });
+
+      const response = await ai.models.generateContent({
+        model: geminiChatModel,
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                inlineData: {
+                  mimeType: req.file.mimetype || 'audio/webm',
+                  data: req.file.buffer.toString('base64'),
+                },
+              },
+              {
+                text: 'Transcribe the spoken words in this audio faithfully. Return only the transcript text with no commentary.',
+              },
+            ],
+          },
+        ],
+      });
+
+      res.json({ text: (response.text ?? '').trim() });
+    } catch (error) {
+      sendRouteError(res, error, 'Transcribe Error', 'Failed to transcribe audio');
+    }
+  });
+
+  app.post('/api/tts', async (req, res) => {
+    try {
+      const text = String(req.body?.text ?? '').trim();
+      if (!text) return res.status(400).json({ error: 'Text is required' });
+
+      const voice = String(req.body?.voice ?? 'Kore');
+      const geminiVoiceMap: Record<string, string> = {
+        alloy: 'Kore',
+        nova: 'Aoede',
+        shimmer: 'Leda',
+        echo: 'Charon',
+        fable: 'Fenrir',
+        onyx: 'Puck',
+      };
+      const voiceName = geminiVoiceMap[voice.toLowerCase()] ?? voice;
+
+      try {
+        const response = await ai.models.generateContent({
+          model: process.env.GEMINI_TTS_MODEL?.trim() || 'gemini-2.5-flash-preview-tts',
+          contents: [{ role: 'user', parts: [{ text: text.slice(0, 4000) }] }],
+          config: {
+            responseModalities: ['AUDIO'],
+            speechConfig: {
+              voiceConfig: { prebuiltVoiceConfig: { voiceName } },
+            },
+          },
+        });
+
+        const parts = response.candidates?.[0]?.content?.parts ?? [];
+        const audioPart = parts.find((part) => part.inlineData?.mimeType?.startsWith('audio/'));
+        if (audioPart?.inlineData?.data) {
+          const mime = audioPart.inlineData.mimeType || 'audio/mp3';
+          res.json({ audio: `data:${mime};base64,${audioPart.inlineData.data}` });
+          return;
+        }
+      } catch (ttsError) {
+        console.warn('[Memora] Gemini TTS unavailable, using client fallback:', ttsError);
+      }
+
+      res.json({ clientFallback: true, text: text.slice(0, 4000) });
+    } catch (error) {
+      sendRouteError(res, error, 'TTS Error', 'Failed to synthesize speech');
+    }
+  });
+
+  // Teacher / class dashboard (Firestore via Admin SDK)
+  app.post('/api/classes', async (req, res) => {
+    try {
+      await createClassHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Create Class Error', 'Failed to create class');
+    }
+  });
+
+  app.get('/api/classes', async (req, res) => {
+    try {
+      await listClassesHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'List Classes Error', 'Failed to list classes');
+    }
+  });
+
+  app.post('/api/classes/join', async (req, res) => {
+    try {
+      await joinClassHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Join Class Error', 'Failed to join class');
+    }
+  });
+
+  app.get('/api/classes/:classId', async (req, res) => {
+    try {
+      await classDetailHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Class Detail Error', 'Failed to load class');
+    }
+  });
+
+  app.post('/api/progress', async (req, res) => {
+    try {
+      await reportProgressHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Progress Error', 'Failed to report progress');
+    }
+  });
+
+  // Study Match — server-side focus-buddy matchmaking (no public queue)
+  app.post('/api/match/enqueue', async (req, res) => {
+    try {
+      await enqueueMatchHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Match Enqueue Error', 'Failed to join match queue');
+    }
+  });
+  app.delete('/api/match/queue', async (req, res) => {
+    try {
+      await leaveQueueHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Match Queue Error', 'Failed to leave match queue');
+    }
+  });
+  app.get('/api/match/status', async (req, res) => {
+    try {
+      await matchStatusHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Match Status Error', 'Failed to load match status');
+    }
+  });
+  app.get('/api/match/session/:sessionId', async (req, res) => {
+    try {
+      await getSessionHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Match Session Error', 'Failed to load session');
+    }
+  });
+  app.post('/api/match/session/:sessionId/leave', async (req, res) => {
+    try {
+      await leaveSessionHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Match Leave Error', 'Failed to leave session');
+    }
+  });
+  app.post('/api/match/session/:sessionId/report', async (req, res) => {
+    try {
+      await reportSessionHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Match Report Error', 'Failed to submit report');
+    }
+  });
+  app.post('/api/match/session/:sessionId/meet-consent', async (req, res) => {
+    try {
+      await meetConsentHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Meet Consent Error', 'Failed to update Meet consent');
+    }
+  });
+  app.post('/api/match/session/:sessionId/meet', async (req, res) => {
+    try {
+      await createMeetHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Match Meet Error', 'Failed to create Meet link');
+    }
+  });
+  app.patch('/api/match/session/:sessionId/notes', async (req, res) => {
+    try {
+      await saveNotesHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Match Notes Error', 'Failed to save notes');
+    }
+  });
+  app.post('/api/match/session/:sessionId/message', async (req, res) => {
+    try {
+      await postMessageHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Match Chat Error', 'Failed to send message');
+    }
+  });
+  app.post('/api/match/session/:sessionId/heartbeat', async (req, res) => {
+    try {
+      await heartbeatHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Match Heartbeat Error', 'Failed to update presence');
+    }
+  });
+  app.post('/api/match/session/:sessionId/pomodoro', async (req, res) => {
+    try {
+      await pomodoroHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Match Pomodoro Error', 'Failed to update Pomodoro phase');
+    }
+  });
+  app.post('/api/match/session/:sessionId/quiet-focus', async (req, res) => {
+    try {
+      await quietFocusHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Quiet Focus Error', 'Failed to update quiet focus');
+    }
+  });
+  app.get('/api/match/metrics', async (req, res) => {
+    try {
+      await matchMetricsHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Match Metrics Error', 'Failed to load match metrics');
+    }
+  });
+  app.post('/api/match/session/:sessionId/react', async (req, res) => {
+    try {
+      await reactMessageHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Match React Error', 'Failed to react');
+    }
+  });
+  app.post('/api/match/session/:sessionId/respect', async (req, res) => {
+    try {
+      await respectVoteHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Match Respect Error', 'Failed to save respect vote');
+    }
+  });
+
+  // Cross-device library sync (Firebase Admin or local data/library-sync)
+  app.get('/api/library', async (req, res) => {
+    try {
+      await getLibraryHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Library GET Error', 'Failed to load library');
+    }
+  });
+  app.put('/api/library', async (req, res) => {
+    try {
+      await putLibraryHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Library PUT Error', 'Failed to save library');
+    }
+  });
+
+  // Lightweight per-user RAG index (complements client-side hybrid RAG)
+  app.post('/api/rag/index', async (req, res) => {
+    try {
+      await ragIndexHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'RAG Index Error', 'Failed to index document');
+    }
+  });
+  app.post('/api/rag/query', async (req, res) => {
+    try {
+      await ragQueryHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'RAG Query Error', 'Failed to query index');
+    }
+  });
+
   app.get('/api/admin/audit', async (req, res) => {
     const limit = Math.min(Number(req.query.limit) || 50, 200);
     const firestoreLogs = await fetchPlatformAuditFromFirestore(limit);
@@ -1504,6 +1799,14 @@ Use pixel coordinates relative to the image. Include 1-12 labels. confidence is 
     }
     const logs = merged.slice(-limit).reverse();
     res.json({ logs, persistedPath: process.env.AUDIT_STORE_PATH ?? 'data/audit-log.jsonl' });
+  });
+
+  app.get('/api/admin/room-reports', async (req, res) => {
+    try {
+      await listRoomReportsHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Room Reports Error', 'Failed to list reports');
+    }
   });
 
   app.get('/api/admin/tenant-metrics', async (_req, res) => {

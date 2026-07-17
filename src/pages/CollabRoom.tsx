@@ -24,7 +24,11 @@ import {
   Clock,
   Timer,
   ScreenShare,
-  StickyNote
+  StickyNote,
+  Flag,
+  HandHeart,
+  HelpCircle,
+  Sparkles,
 } from "lucide-react";
 import { useStore } from "../store/useStore";
 import { useLanguage } from "../lib/i18n";
@@ -68,10 +72,22 @@ import {
   type CollabMessage,
 } from "../lib/collabDemoStorage";
 
-import PresenceIndicator from "../components/PresenceIndicator";
+import PresenceIndicator, { type ActivityStatus } from "../components/PresenceIndicator";
 import { useGoogleOAuth, type GoogleOAuthScopes } from '../hooks/useGoogleOAuth';
 import GoogleOAuthConsentModal from '../components/GoogleOAuthConsentModal';
 import StudyRoomPanel, { type StudyRoomSharedTool } from '../components/collab/StudyRoomPanel';
+import CollabOverlay from '../components/collab/CollabOverlay';
+import CommunityGuidelinesModal from '../components/CommunityGuidelinesModal';
+import {
+  hasAcceptedCommunityGuidelines,
+  isValidInviteEmail,
+  normalizeEmail,
+  reportRoomMessage,
+  sendKudos,
+  type KudosKind,
+  type ReportReason,
+  REPORT_REASONS,
+} from '../lib/safeSocial';
 
 const ROOM_STORAGE_KEY = "memora-collab-room-id";
 const ROOM_ID_PATTERN = /^[a-zA-Z0-9_-]{8,128}$/;
@@ -117,6 +133,11 @@ export default function CollabRoom() {
   const [ydoc, setYdoc] = useState(() => new Y.Doc());
   const [provider, setProvider] = useState<WebsocketProvider | null>(null);
   const [awarenessUsers, setAwarenessUsers] = useState<any[]>([]);
+  const [showGuidelines, setShowGuidelines] = useState(() => !hasAcceptedCommunityGuidelines());
+  const [reportTarget, setReportTarget] = useState<{ id: string; preview: string } | null>(null);
+  const [reportReason, setReportReason] = useState<ReportReason>('off_topic');
+  const [roomOwnerId, setRoomOwnerId] = useState<string | null>(null);
+  const providerRef = useRef<WebsocketProvider | null>(null);
 
   useEffect(() => {
     window.localStorage.setItem(ROOM_STORAGE_KEY, roomId);
@@ -132,6 +153,7 @@ export default function CollabRoom() {
     const roomDocName = `memora-collab-${roomId}`;
     const wsProvider = new WebsocketProvider(getCollabWebSocketUrl(), roomDocName, yCollabDoc);
     setProvider(wsProvider);
+    providerRef.current = wsProvider;
 
     const indexeddbProvider = new IndexeddbPersistence(roomDocName, yCollabDoc);
 
@@ -148,13 +170,14 @@ export default function CollabRoom() {
       return created;
     };
     
-    // Set local awareness state
-    const updateAwareness = (userObj: any) => {
+    // Set local awareness state (includes activity for PresenceIndicator)
+    const updateAwareness = (userObj: any, activity: ActivityStatus = 'online') => {
       const memberId = getLocalMemberId(userObj);
       awareness.setLocalStateField("user", {
         memberId,
         name: userObj?.email?.split('@')[0] || "Guest",
         role: selfRole,
+        activity,
         color: "#" + Math.floor(Math.random() * 16777215).toString(16),
         avatar: `https://ui-avatars.com/api/?name=${userObj?.email || 'G'}`
       });
@@ -188,11 +211,15 @@ export default function CollabRoom() {
         try {
           const roomSnapshot = await getDoc(roomRef);
           if (!roomSnapshot.exists()) {
+            const creatorEmail = currentUser.email ? normalizeEmail(currentUser.email) : '';
             await setDoc(roomRef, {
               ownerId: currentUser.uid,
-              memberEmails: currentUser.email ? [currentUser.email] : [],
+              memberEmails: creatorEmail ? [creatorEmail] : [],
               createdAt: serverTimestamp(),
             });
+            setRoomOwnerId(currentUser.uid);
+          } else {
+            setRoomOwnerId(String(roomSnapshot.data()?.ownerId ?? ''));
           }
         } catch (error) {
           console.error("Unable to access collaboration room:", error);
@@ -519,25 +546,83 @@ export default function CollabRoom() {
 
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
-    const email = inviteEmail.trim();
-    if (email && !invitedContacts.find((c) => c.email === email) && user) {
-      try {
-        await setDoc(
-          doc(db, "rooms", roomId, "participants", Date.now().toString()),
-          {
-            roomId,
-            email,
-            status: "pending",
-            userId: user.uid,
-            createdAt: serverTimestamp(),
-          },
-        );
-        setInviteEmail("");
-        setShowContactSuggestions(false);
-      } catch (err) {
-        console.error(err);
-        toast.error("Failed to invite.");
-      }
+    const email = normalizeEmail(inviteEmail);
+    if (!email || !user) return;
+    if (roomOwnerId && roomOwnerId !== user.uid) {
+      toast.error(t('Only the room owner can invite classmates.', 'Μόνο ο ιδιοκτήτης του δωματίου μπορεί να προσκαλεί.'));
+      return;
+    }
+    if (!isValidInviteEmail(email)) {
+      toast.error(t('Enter a valid email address', 'Βάλε έγκυρο email'));
+      return;
+    }
+    if (invitedContacts.find((c) => normalizeEmail(String(c.email ?? '')) === email)) {
+      toast.info(t('Already invited', 'Ήδη προσκεκλημένος/η'));
+      return;
+    }
+    try {
+      // Grant room ACL immediately (invite-only via email allow-list) so peers can join the link.
+      await updateDoc(doc(db, "rooms", roomId), { memberEmails: arrayUnion(email) });
+      await setDoc(
+        doc(db, "rooms", roomId, "participants", Date.now().toString()),
+        {
+          roomId,
+          email,
+          status: "accepted",
+          userId: user.uid,
+          createdAt: serverTimestamp(),
+        },
+      );
+      setInviteEmail("");
+      setShowContactSuggestions(false);
+      toast.success(t('Invite sent — they can join with the room link.', 'Η πρόσκληση στάλθηκε — μπαίνουν με τον σύνδεσμο.'));
+    } catch (err) {
+      console.error(err);
+      toast.error(t('Failed to invite. Only the owner can expand the allow-list.', 'Αποτυχία πρόσκλησης. Μόνο ο ιδιοκτήτης επεκτείνει τη λίστα.'));
+    }
+  };
+
+  // Broadcast typing / reading presence for peer safety cues (not a public status feed)
+  useEffect(() => {
+    const awareness = providerRef.current?.awareness;
+    if (!awareness) return;
+    const current = awareness.getLocalState()?.user as Record<string, unknown> | undefined;
+    if (!current) return;
+    const activity: ActivityStatus = chatMessage.trim() ? 'typing' : activeTab === 'notes' ? 'reading' : 'online';
+    if (current.activity === activity) return;
+    awareness.setLocalStateField('user', { ...current, activity });
+  }, [chatMessage, activeTab]);
+
+  const handleReportMessage = async () => {
+    if (!reportTarget || !user || isDemoModeActive()) {
+      toast.info(t('Reporting requires a signed-in verified account.', 'Η αναφορά απαιτεί επαληθευμένο λογαριασμό.'));
+      setReportTarget(null);
+      return;
+    }
+    try {
+      await reportRoomMessage(db, roomId, {
+        reporterId: user.uid,
+        messageId: reportTarget.id,
+        reason: reportReason,
+      });
+      toast.success(t('Report submitted. Thank you for keeping study spaces safe.', 'Η αναφορά καταχωρήθηκε. Ευχαριστούμε.'));
+      setReportTarget(null);
+    } catch {
+      toast.error(t('Could not submit report.', 'Αδυναμία υποβολής αναφοράς.'));
+    }
+  };
+
+  const handleKudos = async (toUserId: string, kind: KudosKind) => {
+    if (!user || isDemoModeActive()) {
+      toast.info(t('Kudos require a signed-in account.', 'Τα kudos χρειάζονται σύνδεση.'));
+      return;
+    }
+    if (!toUserId || toUserId === user.uid) return;
+    try {
+      await sendKudos(db, roomId, { fromUserId: user.uid, toUserId, kind });
+      toast.success(t('Encouragement sent', 'Στάλθηκε ενθάρρυνση'));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t('Could not send kudos', 'Αδυναμία αποστολής'));
     }
   };
 
@@ -665,7 +750,7 @@ export default function CollabRoom() {
   };
 
   return (
-    <div className="min-h-[calc(100dvh-3.5rem)] flex flex-col xl:flex-row gap-6 pb-6 w-full">
+    <div className="min-h-[calc(100dvh-4rem)] max-md:pb-[calc(var(--mobile-tab-h)+env(safe-area-inset-bottom,0px))] flex flex-col xl:flex-row gap-3 sm:gap-4 xl:gap-6 p-2 sm:p-3 md:p-4 xl:p-0 w-full">
       <GoogleOAuthConsentModal
         open={oauthModalOpen}
         scopes={pendingOauthScopes}
@@ -995,6 +1080,13 @@ export default function CollabRoom() {
             </div>
           )}
 
+          <CollabOverlay
+            ydoc={ydoc}
+            provider={provider}
+            selfName={(user?.email?.split?.('@')?.[0] ?? 'Guest') as string}
+            selfColor={'#' + ((Math.abs([...(user?.email ?? 'guest')].reduce((a, c) => a + c.charCodeAt(0), 0)) * 2654435761) % 0xffffff).toString(16).padStart(6, '0')}
+          />
+
           {/* Meeting Controls */}
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-black/40 backdrop-blur-xl p-1.5 rounded-2xl border border-white/10 shadow-2xl z-50">
             <button
@@ -1164,12 +1256,12 @@ export default function CollabRoom() {
                 .filter((m) =>
                   activeTab === "ai" ? m.isAi || m.user === "You" : !m.isAi,
                 )
-                .map((msg, i) => (
+                .map((msg) => (
                   <div
-                    key={i}
+                    key={msg.id}
                     className={cn(
                       "flex flex-col",
-                      msg.user === "You" ? "items-end" : "items-start",
+                      msg.user === "You" || msg.userId === user?.uid ? "items-end" : "items-start",
                     )}
                   >
                     <div className="flex items-baseline gap-2 mb-1">
@@ -1180,32 +1272,60 @@ export default function CollabRoom() {
                         {msg.time}
                       </span>
                     </div>
-                    <div className="group/msg relative">
+                    <div className="group/msg relative max-w-[90%] sm:max-w-[85%]">
                       <div
                         className={cn(
-                          "px-4 py-2 rounded-2xl max-w-[85%] text-sm",
-                          msg.user === "You"
+                          "px-4 py-2 rounded-2xl text-sm",
+                          msg.user === "You" || msg.userId === user?.uid
                             ? "bg-indigo-600 text-white rounded-tr-sm"
-                            : msg.isAi
+                            : (msg as { isAi?: boolean }).isAi
                               ? "bg-gradient-to-r from-indigo-500/10 to-purple-500/10 border border-indigo-500/20 text-slate-800 dark:text-slate-200 rounded-tl-sm"
                               : "bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-tl-sm",
                         )}
                       >
                         {msg.text}
                       </div>
-                      {/* Quick reactions */}
-                      <div className="absolute -bottom-3 right-2 hidden group-hover/msg:flex items-center gap-0.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full px-1.5 py-0.5 shadow-lg z-10">
-                        {['👍', '❤️', '😂', '🎯'].map((emoji) => (
+                      {/* Safe social: kudos + report (no public emoji farming) */}
+                      {!(msg as { isAi?: boolean }).isAi && msg.userId && msg.userId !== user?.uid && (
+                        <div className="absolute -bottom-3 right-2 opacity-100 sm:opacity-0 sm:group-hover/msg:opacity-100 flex items-center gap-0.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full px-1 py-0.5 shadow-lg z-10">
                           <button
-                            key={emoji}
                             type="button"
-                            className="text-xs hover:scale-125 transition-transform p-0.5"
-                            aria-label={`React with ${emoji}`}
+                            title={t('Helpful', 'Βοηθητικό')}
+                            onClick={() => void handleKudos(String(msg.userId), 'helpful')}
+                            className="p-1.5 rounded-full hover:bg-emerald-50 dark:hover:bg-emerald-900/30 text-emerald-600"
+                            aria-label={t('Mark helpful', 'Σήμανση ως βοηθητικό')}
                           >
-                            {emoji}
+                            <HandHeart className="w-3.5 h-3.5" />
                           </button>
-                        ))}
-                      </div>
+                          <button
+                            type="button"
+                            title={t('Clear explanation', 'Καθαρή εξήγηση')}
+                            onClick={() => void handleKudos(String(msg.userId), 'clarify')}
+                            className="p-1.5 rounded-full hover:bg-sky-50 dark:hover:bg-sky-900/30 text-sky-600"
+                            aria-label={t('Clear explanation', 'Καθαρή εξήγηση')}
+                          >
+                            <HelpCircle className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            title={t('Encourage', 'Ενθάρρυνση')}
+                            onClick={() => void handleKudos(String(msg.userId), 'encourage')}
+                            className="p-1.5 rounded-full hover:bg-amber-50 dark:hover:bg-amber-900/30 text-amber-600"
+                            aria-label={t('Encourage', 'Ενθάρρυνση')}
+                          >
+                            <Sparkles className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            title={t('Report', 'Αναφορά')}
+                            onClick={() => setReportTarget({ id: String(msg.id), preview: String(msg.text ?? '').slice(0, 80) })}
+                            className="p-1.5 rounded-full hover:bg-rose-50 dark:hover:bg-rose-900/30 text-rose-600"
+                            aria-label={t('Report message', 'Αναφορά μηνύματος')}
+                          >
+                            <Flag className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -1416,6 +1536,67 @@ export default function CollabRoom() {
           toast.success(t('Following shared tool', 'Ακολούθησες το κοινό εργαλείο'));
         }}
       />
+
+      <CommunityGuidelinesModal
+        open={showGuidelines}
+        onAccept={() => setShowGuidelines(false)}
+      />
+
+      <AnimatePresence>
+        {reportTarget && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-slate-900/40 p-0 sm:p-6"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t('Report message', 'Αναφορά μηνύματος')}
+          >
+            <motion.div
+              initial={{ y: 24, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 24, opacity: 0 }}
+              className="w-full max-w-md bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-2xl border border-slate-200 dark:border-slate-800 p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-2xl"
+            >
+              <h3 className="text-base font-display font-bold text-slate-900 dark:text-white mb-1">
+                {t('Report message', 'Αναφορά μηνύματος')}
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mb-3 line-clamp-2">
+                “{reportTarget.preview}”
+              </p>
+              <label className="block text-xs font-semibold text-slate-500 mb-1.5">
+                {t('Reason', 'Λόγος')}
+              </label>
+              <select
+                value={reportReason}
+                onChange={(e) => setReportReason(e.target.value as ReportReason)}
+                className="w-full min-h-11 mb-4 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm"
+              >
+                {REPORT_REASONS.map((r) => (
+                  <option key={r} value={r}>{r.replace('_', ' ')}</option>
+                ))}
+              </select>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setReportTarget(null)}
+                  className="flex-1 min-h-11 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-medium"
+                >
+                  {t('Cancel', 'Άκυρο')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleReportMessage()}
+                  className="flex-1 min-h-11 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold"
+                >
+                  {t('Submit report', 'Υποβολή')}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

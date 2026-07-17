@@ -24,15 +24,17 @@ export function createFirebaseAuthMiddleware(
   required: boolean,
 ): RequestHandler {
   return async (req, res, next) => {
-    if (!required) {
-      next();
-      return;
-    }
-
     const authorization = req.header("authorization");
     const token = authorization?.match(/^Bearer (.+)$/i)?.[1];
+
+    // Even when auth is optional, parse a present Bearer so handlers can
+    // use res.locals.user (e.g. Teacher dashboard in local/preview mode).
     if (!token) {
-      res.status(401).json({ error: "Authentication required" });
+      if (required) {
+        res.status(401).json({ error: "Authentication required" });
+        return;
+      }
+      next();
       return;
     }
 
@@ -49,7 +51,11 @@ export function createFirebaseAuthMiddleware(
       res.locals.user = { uid: payload.sub, claims: payload };
       next();
     } catch {
-      res.status(401).json({ error: "Invalid or expired authentication token" });
+      if (required) {
+        res.status(401).json({ error: "Invalid or expired authentication token" });
+        return;
+      }
+      next();
     }
   };
 }
