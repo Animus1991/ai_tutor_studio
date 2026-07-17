@@ -6,8 +6,10 @@ Time-boxed, topic-matched peer focus — **not** Omegle. Built for students on M
 
 | Rule | Implementation |
 |------|----------------|
-| Same subject/topic | `topicKey` normalized from label; exact `durationMin` match (15/20/25/30) |
-| Time-boxed session | Server sets authoritative `endsAt`; UI countdown + auto-end |
+| Same subject/topic | `canonicalTopicKey` + synonym aliases; exact `durationMin` (15/20/25/30) |
+| Time-boxed Pomodoro | Shared `pomodoro` state (focus/break cycles); authoritative `phaseEndsAt` |
+| Presence | Heartbeat every ~8s; peer online indicator (20s window) |
+| Chat safety | Blocks off-platform contact / phone-number patterns; rate limits |
 | Verified Google email | Firebase ID token + `email_verified` check on enqueue |
 | Guidelines gate | Reuses `CommunityGuidelinesModal` / `safeSocial` |
 | No camera by default | Chat + shared notes; whiteboard via existing Collab room |
@@ -41,7 +43,9 @@ Client (/match/:id) chat/notes/timer/Meet consent
 | POST | `.../meet-consent` | Toggle own Meet opt-in |
 | POST | `.../meet` | Create Meet if both opted in |
 | PATCH | `.../notes` | Shared scratchpad |
-| POST | `.../message` | Session chat |
+| POST | `.../message` | Session chat (safety-filtered) |
+| POST | `.../heartbeat` | Presence ping |
+| POST | `.../pomodoro` | `{ action: "start_break" \| "start_focus" }` |
 
 ### Firestore (Admin-written)
 

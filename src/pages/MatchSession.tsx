@@ -10,6 +10,8 @@ import {
   PenTool,
   Shield,
   Check,
+  Coffee,
+  Circle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuthStore } from '../store/useAuthStore';
@@ -18,12 +20,15 @@ import { isDemoModeActive } from '../lib/demoStorage';
 import { useGoogleOAuth } from '../hooks/useGoogleOAuth';
 import {
   MATCH_REPORT_REASONS,
+  type MatchDuration,
   type MatchReportReason,
   type MatchSessionView,
   createMatchMeet,
   formatCountdown,
   getMatchSession,
   leaveMatchSession,
+  matchHeartbeat,
+  matchPomodoro,
   reportMatchSession,
   saveMatchNotes,
   secondsRemaining,
@@ -99,18 +104,43 @@ export default function MatchSession() {
     return () => window.clearInterval(id);
   }, [refresh, demo]);
 
+  // Presence heartbeat (signed-in sessions)
+  useEffect(() => {
+    if (demo || !sessionId) return;
+    const tick = () => {
+      void matchHeartbeat(sessionId)
+        .then((r) => {
+          if (r.session) setSession(r.session);
+        })
+        .catch(() => undefined);
+    };
+    tick();
+    const id = window.setInterval(tick, 8000);
+    return () => window.clearInterval(id);
+  }, [demo, sessionId]);
+
   useEffect(() => {
     const id = window.setInterval(() => {
       if (!session) return;
-      const left = secondsRemaining(session.endsAt);
+      const phaseEnd = session.pomodoro?.phaseEndsAt ?? session.endsAt;
+      const left = secondsRemaining(phaseEnd);
       setRemaining(left);
-      if (left <= 0 && session.status === 'active') {
+      if (left <= 0 && session.status === 'active' && session.pomodoro?.phase === 'focus') {
+        // Auto-suggest break in demo; otherwise end focus block
+        if (demo) {
+          toast.message(t('Focus block done — start a 5′ break?', 'Τέλος focus — 5′ διάλειμμα;'));
+        }
+      }
+      if (left <= 0 && session.status === 'active' && session.pomodoro?.phase === 'break') {
+        toast.message(t('Break over — ready for another cycle?', 'Τέλος διαλείμματος — νέος κύκλος;'));
+      }
+      if (left <= 0 && session.status === 'active' && !session.pomodoro) {
         toast.message(t('Time is up — great focus block!', 'Ο χρόνος τελείωσε — μπράβο!'));
         navigate('/match', { replace: true });
       }
     }, 500);
     return () => window.clearInterval(id);
-  }, [session, navigate, t]);
+  }, [session, navigate, t, demo]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -267,10 +297,56 @@ export default function MatchSession() {
   const selfConsent = Boolean(session.meetConsent[demo ? 'demo' : session.selfId]);
   const peerConsent = Boolean(session.meetConsent[demo ? 'peer' : session.peerId]);
   const bothConsent = selfConsent && peerConsent;
-  const progress = Math.min(
-    100,
-    Math.max(0, (1 - remaining / (session.durationMin * 60)) * 100),
-  );
+  const phase = session.pomodoro?.phase ?? 'focus';
+  const phaseTotalSec = (phase === 'break' ? (session.pomodoro?.breakMin ?? 5) : session.durationMin) * 60;
+  const progress = Math.min(100, Math.max(0, (1 - remaining / Math.max(1, phaseTotalSec)) * 100));
+
+  const runPomodoro = async (action: 'start_break' | 'start_focus') => {
+    if (!session) return;
+    if (demo) {
+      const now = Date.now();
+      const mins = action === 'start_break' ? 5 : session.durationMin;
+      const phaseEndsAt = new Date(now + mins * 60_000).toISOString();
+      const next: MatchSessionView = {
+        ...session,
+        endsAt: phaseEndsAt,
+        pomodoro: {
+          phase: action === 'start_break' ? 'break' : 'focus',
+          cycle: action === 'start_focus' ? (session.pomodoro?.cycle ?? 1) + 1 : session.pomodoro?.cycle ?? 1,
+          phaseStartedAt: new Date(now).toISOString(),
+          phaseEndsAt,
+          focusMin: session.durationMin,
+          breakMin: 5,
+        },
+        messages: [
+          ...session.messages,
+          {
+            id: `sys-${now}`,
+            userId: 'system',
+            displayName: 'Memora',
+            text:
+              action === 'start_break'
+                ? t('Shared 5′ break started.', 'Ξεκίνησε κοινό διάλειμμα 5′.')
+                : t('New focus cycle started.', 'Νέος κύκλος focus.'),
+            createdAt: new Date(now).toISOString(),
+          },
+        ],
+      };
+      saveDemoSession(next);
+      setSession(next);
+      return;
+    }
+    try {
+      const next = await matchPomodoro(
+        session.id,
+        action,
+        action === 'start_focus' ? (session.durationMin as MatchDuration) : undefined,
+      );
+      setSession(next);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Pomodoro update failed');
+    }
+  };
 
   return (
     <div className="max-w-5xl mx-auto space-y-4 pb-4" data-testid="match-session-page">
@@ -279,28 +355,78 @@ export default function MatchSession() {
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 flex items-center gap-1.5">
               <Shield className="w-3.5 h-3.5 text-emerald-500" />
-              {t('Focus session', 'Συνεδρία συγκέντρωσης')}
+              {phase === 'break'
+                ? t('Shared break', 'Κοινό διάλειμμα')
+                : t('Focus Pomodoro', 'Focus Pomodoro')}
+              {session.pomodoro ? ` · #${session.pomodoro.cycle}` : ''}
             </p>
             <h1 className="text-lg sm:text-xl font-display font-bold text-slate-900 dark:text-white mt-0.5">
               {session.topicLabel}
               <span className="text-slate-400 font-medium"> · {session.durationMin}′</span>
             </h1>
-            <p className="text-sm text-slate-500 mt-0.5">
+            <p className="text-sm text-slate-500 mt-0.5 inline-flex items-center gap-1.5">
+              <Circle
+                className={`w-2.5 h-2.5 fill-current ${
+                  session.peerOnline !== false ? 'text-emerald-500' : 'text-slate-300'
+                }`}
+              />
               {t('With', 'Με')} {session.peerDisplayName}
-              {user?.email ? '' : demo ? ' (demo)' : ''}
+              <span className="text-slate-400">
+                {session.peerOnline !== false
+                  ? t('· online', '· online')
+                  : t('· away', '· away')}
+              </span>
+              {demo ? ' (demo)' : ''}
             </p>
           </div>
           <div className="text-right">
-            <div className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700">
-              <Timer className="w-4 h-4 text-indigo-500" />
+            <div
+              className={`inline-flex items-center gap-2 px-3 py-2 rounded-xl border ${
+                phase === 'break'
+                  ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800'
+                  : 'bg-slate-50 dark:bg-slate-800 border-slate-200/80 dark:border-slate-700'
+              }`}
+            >
+              {phase === 'break' ? (
+                <Coffee className="w-4 h-4 text-amber-600" />
+              ) : (
+                <Timer className="w-4 h-4 text-indigo-500" />
+              )}
               <span className="font-mono text-lg font-bold tabular-nums text-slate-900 dark:text-white">
                 {formatCountdown(remaining)}
               </span>
             </div>
             <div className="mt-2 h-1.5 w-36 ml-auto rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
-              <div className="h-full bg-indigo-500 transition-all duration-500" style={{ width: `${progress}%` }} />
+              <div
+                className={`h-full transition-all duration-500 ${
+                  phase === 'break' ? 'bg-amber-500' : 'bg-indigo-500'
+                }`}
+                style={{ width: `${progress}%` }}
+              />
             </div>
           </div>
+        </div>
+
+        <div className="mt-3 flex flex-wrap gap-2">
+          {phase === 'focus' ? (
+            <button
+              type="button"
+              onClick={() => void runPomodoro('start_break')}
+              className="min-h-10 px-3 rounded-xl border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 text-xs font-semibold inline-flex items-center gap-1.5"
+            >
+              <Coffee className="w-3.5 h-3.5" />
+              {t('Start 5′ shared break', 'Έναρξη κοινού διαλείμματος 5′')}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void runPomodoro('start_focus')}
+              className="min-h-10 px-3 rounded-xl border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 text-xs font-semibold inline-flex items-center gap-1.5"
+            >
+              <Timer className="w-3.5 h-3.5" />
+              {t('Start next focus cycle', 'Επόμενος κύκλος focus')}
+            </button>
+          )}
         </div>
 
         <div className="mt-3 flex flex-wrap gap-2">

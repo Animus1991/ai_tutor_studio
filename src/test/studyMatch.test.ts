@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buddyDisplayName,
+  canonicalTopicKey,
   emailDomain,
   formatCountdown,
   isValidDomainFilter,
@@ -15,11 +16,14 @@ import {
   normalizeTopicKey as serverTopic,
   type QueueEntry,
 } from '../../server/studyMatch';
+import { canonicalTopicKey as serverCanonical } from '../../server/studyMatchCore';
 
 describe('studyMatch client helpers', () => {
   it('normalizes topic keys stably', () => {
     expect(normalizeTopicKey('  Organic Chem!  ')).toBe('organic-chem');
     expect(normalizeTopicKey('Οργανική')).toBeTruthy();
+    expect(canonicalTopicKey('Organic Chemistry')).toBe('organic-chem');
+    expect(serverCanonical('Organic Chemistry')).toBe(canonicalTopicKey('Organic Chemistry'));
   });
 
   it('validates durations and domains', () => {

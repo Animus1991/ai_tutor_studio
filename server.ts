@@ -56,7 +56,9 @@ import {
   leaveQueueHandler,
   leaveSessionHandler,
   matchStatusHandler,
+  heartbeatHandler,
   meetConsentHandler,
+  pomodoroHandler,
   postMessageHandler,
   reportSessionHandler,
   saveNotesHandler,
@@ -1707,6 +1709,20 @@ Use pixel coordinates relative to the image. Include 1-12 labels. confidence is 
       await postMessageHandler(req, res);
     } catch (error) {
       sendRouteError(res, error, 'Match Chat Error', 'Failed to send message');
+    }
+  });
+  app.post('/api/match/session/:sessionId/heartbeat', async (req, res) => {
+    try {
+      await heartbeatHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Match Heartbeat Error', 'Failed to update presence');
+    }
+  });
+  app.post('/api/match/session/:sessionId/pomodoro', async (req, res) => {
+    try {
+      await pomodoroHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Match Pomodoro Error', 'Failed to update Pomodoro phase');
     }
   });
 

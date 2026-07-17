@@ -22,12 +22,12 @@ import {
   MATCH_DURATIONS,
   type MatchDuration,
   buddyDisplayName,
+  canonicalTopicKey,
   emailDomain,
   enqueueMatch,
   getMatchStatus,
   isValidDomainFilter,
   leaveMatchQueue,
-  normalizeTopicKey,
 } from '../lib/studyMatch';
 
 type Phase = 'form' | 'waiting';
@@ -102,31 +102,53 @@ export default function StudyMatch() {
     const label = topic.trim() || 'Organic Chemistry';
     const id = `demo-ms-${Date.now()}`;
     const now = Date.now();
+    const endsAt = new Date(now + duration * 60_000).toISOString();
+    const peerName = buddyDisplayName('demo-peer');
     const session = {
       id,
       topicLabel: label,
-      topicKey: normalizeTopicKey(label),
+      topicKey: canonicalTopicKey(label),
       durationMin: duration,
       roomId: `match-${id}`.slice(0, 64),
       status: 'active' as const,
       startedAt: new Date(now).toISOString(),
-      endsAt: new Date(now + duration * 60_000).toISOString(),
-      notes: '',
+      endsAt,
+      notes: `# ${label}\n\n- Shared scratchpad (demo)\n- No stranger DMs after this block\n`,
       messages: [
         {
           id: 'sys1',
           userId: 'system',
           displayName: 'Memora',
-          text: `Demo focus session: ${label} · ${duration} min. Camera off by default.`,
+          text: `Focus Pomodoro: ${label} · ${duration}′. Camera off. ${peerName} joined.`,
           createdAt: new Date(now).toISOString(),
+        },
+        {
+          id: 'peer1',
+          userId: 'demo-peer',
+          displayName: peerName,
+          text: t(
+            "Hey — I'm reviewing the same topic. Let's stay muted and check in at the halfway mark?",
+            'Γεια — διαβάζω το ίδιο θέμα. Μένουμε focused και check-in στη μέση;',
+          ),
+          createdAt: new Date(now + 800).toISOString(),
         },
       ],
       meetConsent: { demo: false, peer: false },
       meetUrl: null,
       selfId: 'demo',
       peerId: 'demo-peer',
-      peerDisplayName: buddyDisplayName('demo-peer'),
+      peerDisplayName: peerName,
       domainFilter: '',
+      pomodoro: {
+        phase: 'focus' as const,
+        cycle: 1,
+        phaseStartedAt: new Date(now).toISOString(),
+        phaseEndsAt: endsAt,
+        focusMin: duration,
+        breakMin: 5,
+      },
+      peerOnline: true,
+      selfOnline: true,
     };
     sessionStorage.setItem(`memora-demo-match:${id}`, JSON.stringify(session));
     toast.success(t('Matched with a demo study buddy', 'Match με demo study buddy'));

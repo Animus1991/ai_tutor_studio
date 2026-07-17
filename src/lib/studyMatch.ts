@@ -11,6 +11,19 @@ export type MatchDuration = (typeof MATCH_DURATIONS)[number];
 export const MATCH_REPORT_REASONS = REPORT_REASONS;
 export type MatchReportReason = ReportReason;
 
+const TOPIC_ALIASES: Record<string, string> = {
+  'organic-chemistry': 'organic-chem',
+  'org-chem': 'organic-chem',
+  calc: 'calculus',
+  'calc-1': 'calculus',
+  'linear-algebra': 'lin-alg',
+  linalg: 'lin-alg',
+  bio: 'biology',
+  chem: 'chemistry',
+  phys: 'physics',
+  cs: 'computer-science',
+};
+
 /** Normalize free-text subject into a stable match key. */
 export function normalizeTopicKey(label: string): string {
   return label
@@ -21,6 +34,12 @@ export function normalizeTopicKey(label: string): string {
     .replace(/[^\p{L}\p{N}]+/gu, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 80);
+}
+
+/** Apply synonym map so near-identical topics still match. */
+export function canonicalTopicKey(label: string): string {
+  const key = normalizeTopicKey(label);
+  return TOPIC_ALIASES[key] ?? key;
 }
 
 export function isValidMatchDuration(n: unknown): n is MatchDuration {
@@ -62,6 +81,17 @@ export type MatchChatMessage = {
   createdAt: string;
 };
 
+export type PomodoroPhase = 'focus' | 'break';
+
+export type PomodoroState = {
+  phase: PomodoroPhase;
+  cycle: number;
+  phaseStartedAt: string;
+  phaseEndsAt: string;
+  focusMin: number;
+  breakMin: number;
+};
+
 export type MatchSessionView = {
   id: string;
   topicLabel: string;
@@ -79,6 +109,9 @@ export type MatchSessionView = {
   peerId: string;
   peerDisplayName: string;
   domainFilter: string;
+  pomodoro?: PomodoroState;
+  peerOnline?: boolean;
+  selfOnline?: boolean;
 };
 
 export type MatchEnqueueResult =
@@ -195,6 +228,30 @@ export async function sendMatchMessage(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text: text.trim().slice(0, 1000) }),
+  });
+  return parseJson(res);
+}
+
+export async function matchHeartbeat(
+  sessionId: string,
+): Promise<{ ok: boolean; session?: MatchSessionView }> {
+  const res = await apiRequest(`/api/match/session/${encodeURIComponent(sessionId)}/heartbeat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{}',
+  });
+  return parseJson(res);
+}
+
+export async function matchPomodoro(
+  sessionId: string,
+  action: 'start_break' | 'start_focus',
+  durationMin?: MatchDuration,
+): Promise<MatchSessionView> {
+  const res = await apiRequest(`/api/match/session/${encodeURIComponent(sessionId)}/pomodoro`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, durationMin }),
   });
   return parseJson(res);
 }

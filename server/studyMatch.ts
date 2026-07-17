@@ -13,6 +13,21 @@ import type { Request, Response } from 'express';
 import type { Firestore } from 'firebase-admin/firestore';
 import { getAdminFirestore } from '../firebaseAdmin.js';
 import { HttpError } from './security.js';
+import {
+  buildInitialPomodoro,
+  canonicalTopicKey,
+  createRateLimiter,
+  emailDomain,
+  isPeerOnline,
+  isSafeMatchChat,
+  normalizeTopicKey,
+  resumeFocusPhase,
+  startBreakPhase,
+  type MatchDuration,
+  type PomodoroState,
+} from './studyMatchCore.js';
+
+export { canonicalTopicKey, emailDomain, normalizeTopicKey } from './studyMatchCore.js';
 
 const DURATIONS = new Set([15, 20, 25, 30]);
 const REPORT_REASONS = new Set([
@@ -24,9 +39,13 @@ const REPORT_REASONS = new Set([
   'other',
 ]);
 
+const enqueueLimiter = createRateLimiter(8, 5 * 60_000);
+const chatLimiter = createRateLimiter(40, 60_000);
+const heartbeatLimiter = createRateLimiter(60, 60_000);
+
 type AuthUser = { uid: string; claims?: Record<string, unknown> };
 
-export type MatchDuration = 15 | 20 | 25 | 30;
+export type { MatchDuration };
 export type QueueStatus = 'waiting' | 'matched' | 'cancelled';
 export type SessionStatus = 'active' | 'ended' | 'reported';
 
@@ -67,6 +86,8 @@ export type MatchSession = {
   meetConsent: Record<string, boolean>;
   meetUrl: string | null;
   domainFilter: string;
+  pomodoro: PomodoroState;
+  presence: Record<string, string>;
   createdAt: string;
   updatedAt: string;
 };
@@ -94,22 +115,6 @@ function claimEmail(user: AuthUser): string {
     throw new HttpError(403, 'Verify your Google email before joining Study Match');
   }
   return email;
-}
-
-export function normalizeTopicKey(label: string): string {
-  return label
-    .trim()
-    .toLowerCase()
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^\p{L}\p{N}]+/gu, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 80);
-}
-
-export function emailDomain(email: string): string {
-  const at = email.lastIndexOf('@');
-  return at >= 0 ? email.slice(at + 1).toLowerCase() : '';
 }
 
 export function buddyDisplayName(uid: string): string {
@@ -157,8 +162,15 @@ async function writeBlock(db: Firestore | null, a: string, b: string, reason: st
   });
 }
 
+function ensurePomodoro(session: MatchSession): PomodoroState {
+  if (session.pomodoro?.phaseEndsAt) return session.pomodoro;
+  return buildInitialPomodoro(session.durationMin, new Date(session.startedAt));
+}
+
 function toSessionView(session: MatchSession, selfId: string) {
   const peerId = session.memberIds[0] === selfId ? session.memberIds[1] : session.memberIds[0];
+  const pomodoro = ensurePomodoro(session);
+  const presence = session.presence ?? {};
   return {
     id: session.id,
     topicLabel: session.topicLabel,
@@ -176,6 +188,45 @@ function toSessionView(session: MatchSession, selfId: string) {
     peerId,
     peerDisplayName: buddyDisplayName(peerId),
     domainFilter: session.domainFilter,
+    pomodoro,
+    peerOnline: isPeerOnline(presence[peerId]),
+    selfOnline: isPeerOnline(presence[selfId]),
+  };
+}
+
+function buildSessionDoc(a: QueueEntry, b: QueueEntry): MatchSession {
+  const id = newId('ms');
+  const now = new Date();
+  const pomo = buildInitialPomodoro(a.durationMin, now);
+  const roomId = roomIdFor(id);
+  return {
+    id,
+    topicKey: a.topicKey,
+    topicLabel: a.topicLabel,
+    durationMin: a.durationMin,
+    memberIds: [a.uid, b.uid],
+    memberEmails: [a.email, b.email],
+    roomId,
+    status: 'active',
+    startedAt: now.toISOString(),
+    endsAt: pomo.phaseEndsAt,
+    notes: '',
+    messages: [
+      {
+        id: newId('msg'),
+        userId: 'system',
+        displayName: 'Memora',
+        text: `Focus Pomodoro started: ${a.topicLabel} · ${a.durationMin} min. Camera off by default. Be kind — learning only.`,
+        createdAt: now.toISOString(),
+      },
+    ],
+    meetConsent: { [a.uid]: false, [b.uid]: false },
+    meetUrl: null,
+    domainFilter: a.domainFilter || b.domainFilter || '',
+    pomodoro: pomo,
+    presence: { [a.uid]: now.toISOString(), [b.uid]: now.toISOString() },
+    createdAt: now.toISOString(),
+    updatedAt: now.toISOString(),
   };
 }
 
@@ -277,43 +328,12 @@ async function pairUsers(
   a: QueueEntry,
   b: QueueEntry,
 ): Promise<MatchSession> {
-  const id = newId('ms');
-  const now = new Date();
-  const ends = new Date(now.getTime() + a.durationMin * 60_000);
-  const roomId = roomIdFor(id);
-  const session: MatchSession = {
-    id,
-    topicKey: a.topicKey,
-    topicLabel: a.topicLabel,
-    durationMin: a.durationMin,
-    memberIds: [a.uid, b.uid],
-    memberEmails: [a.email, b.email],
-    roomId,
-    status: 'active',
-    startedAt: now.toISOString(),
-    endsAt: ends.toISOString(),
-    notes: '',
-    messages: [
-      {
-        id: newId('msg'),
-        userId: 'system',
-        displayName: 'Memora',
-        text: `Focus session started: ${a.topicLabel} · ${a.durationMin} min. No camera by default. Be kind — learning only.`,
-        createdAt: now.toISOString(),
-      },
-    ],
-    meetConsent: { [a.uid]: false, [b.uid]: false },
-    meetUrl: null,
-    domainFilter: a.domainFilter || b.domainFilter || '',
-    createdAt: now.toISOString(),
-    updatedAt: now.toISOString(),
-  };
-
-  await createCollabRoom(db, roomId, a.uid, [a.email, b.email]);
+  const session = buildSessionDoc(a, b);
+  await createCollabRoom(db, session.roomId, a.uid, [a.email, b.email]);
   await setSession(db, session);
 
-  const matchedA: QueueEntry = { ...a, status: 'matched', sessionId: id };
-  const matchedB: QueueEntry = { ...b, status: 'matched', sessionId: id };
+  const matchedA: QueueEntry = { ...a, status: 'matched', sessionId: session.id };
+  const matchedB: QueueEntry = { ...b, status: 'matched', sessionId: session.id };
   await setQueueEntry(db, matchedA);
   await setQueueEntry(db, matchedB);
   return session;
@@ -339,47 +359,18 @@ async function tryMatch(db: Firestore | null, entrant: QueueEntry): Promise<Matc
           if (a.status !== 'waiting' || b.status !== 'waiting') return null;
           if (!domainsCompatible(a, b)) return null;
 
-          const id = newId('ms');
+          const sessionDoc = buildSessionDoc(a, b);
           const now = new Date();
-          const ends = new Date(now.getTime() + a.durationMin * 60_000);
-          const roomId = roomIdFor(id);
-          const sessionDoc: MatchSession = {
-            id,
-            topicKey: a.topicKey,
-            topicLabel: a.topicLabel,
-            durationMin: a.durationMin,
-            memberIds: [a.uid, b.uid],
-            memberEmails: [a.email, b.email],
-            roomId,
-            status: 'active',
-            startedAt: now.toISOString(),
-            endsAt: ends.toISOString(),
-            notes: '',
-            messages: [
-              {
-                id: newId('msg'),
-                userId: 'system',
-                displayName: 'Memora',
-                text: `Focus session started: ${a.topicLabel} · ${a.durationMin} min. No camera by default. Be kind — learning only.`,
-                createdAt: now.toISOString(),
-              },
-            ],
-            meetConsent: { [a.uid]: false, [b.uid]: false },
-            meetUrl: null,
-            domainFilter: a.domainFilter || b.domainFilter || '',
-            createdAt: now.toISOString(),
-            updatedAt: now.toISOString(),
-          };
 
-          tx.set(db.collection('matchSessions').doc(id), sessionDoc);
-          tx.set(db.collection('rooms').doc(roomId), {
+          tx.set(db.collection('matchSessions').doc(sessionDoc.id), sessionDoc);
+          tx.set(db.collection('rooms').doc(sessionDoc.roomId), {
             ownerId: a.uid,
             memberEmails: [a.email, b.email],
             createdAt: now,
             matchSession: true,
           });
-          tx.set(aRef, { ...a, status: 'matched', sessionId: id });
-          tx.set(bRef, { ...b, status: 'matched', sessionId: id });
+          tx.set(aRef, { ...a, status: 'matched', sessionId: sessionDoc.id });
+          tx.set(bRef, { ...b, status: 'matched', sessionId: sessionDoc.id });
           return sessionDoc;
         });
         if (session) {
@@ -416,11 +407,14 @@ function parseDuration(raw: unknown): MatchDuration {
 export async function enqueueMatchHandler(req: Request, res: Response): Promise<void> {
   const user = getAuthUser(res);
   const email = claimEmail(user);
+  if (!enqueueLimiter.allow(user.uid)) {
+    throw new HttpError(429, 'Too many match attempts — wait a few minutes');
+  }
   const topicLabel = String(req.body?.topicLabel ?? '').trim().slice(0, 120);
   if (!topicLabel || topicLabel.length < 2) {
     throw new HttpError(400, 'Choose a subject / topic (at least 2 characters)');
   }
-  const topicKey = normalizeTopicKey(topicLabel);
+  const topicKey = canonicalTopicKey(topicLabel);
   if (!topicKey) throw new HttpError(400, 'Topic could not be normalized');
 
   const durationMin = parseDuration(req.body?.durationMin);
@@ -722,7 +716,11 @@ export async function postMessageHandler(req: Request, res: Response): Promise<v
   const text = String(req.body?.text ?? '')
     .trim()
     .slice(0, 1000);
-  if (!text) throw new HttpError(400, 'Message text is required');
+  const safety = isSafeMatchChat(text);
+  if (safety.ok === false) throw new HttpError(400, safety.reason);
+  if (!chatLimiter.allow(user.uid)) {
+    throw new HttpError(429, 'Slow down — chat rate limit reached');
+  }
 
   const db = await getAdminFirestore();
   const session = await getSession(db, sessionId);
@@ -739,9 +737,92 @@ export async function postMessageHandler(req: Request, res: Response): Promise<v
     createdAt: new Date().toISOString(),
   };
   session.messages = [...(session.messages ?? []), msg].slice(-100);
+  session.presence = {
+    ...(session.presence ?? {}),
+    [user.uid]: new Date().toISOString(),
+  };
   session.updatedAt = new Date().toISOString();
   await setSession(db, session);
   res.json({ message: msg, session: toSessionView(session, user.uid) });
+}
+
+export async function heartbeatHandler(req: Request, res: Response): Promise<void> {
+  const user = getAuthUser(res);
+  const sessionId = String(req.params.sessionId ?? '');
+  if (!heartbeatLimiter.allow(user.uid)) {
+    res.json({ ok: true, throttled: true });
+    return;
+  }
+  const db = await getAdminFirestore();
+  const session = await getSession(db, sessionId);
+  if (!session || !session.memberIds.includes(user.uid)) {
+    throw new HttpError(404, 'Session not found');
+  }
+  if (session.status !== 'active') {
+    res.json({ ok: true, session: toSessionView(session, user.uid) });
+    return;
+  }
+  session.presence = {
+    ...(session.presence ?? {}),
+    [user.uid]: new Date().toISOString(),
+  };
+  session.pomodoro = ensurePomodoro(session);
+  session.updatedAt = new Date().toISOString();
+  await setSession(db, session);
+  res.json({ ok: true, session: toSessionView(session, user.uid) });
+}
+
+export async function pomodoroHandler(req: Request, res: Response): Promise<void> {
+  const user = getAuthUser(res);
+  const sessionId = String(req.params.sessionId ?? '');
+  const action = String(req.body?.action ?? '');
+  const db = await getAdminFirestore();
+  const session = await getSession(db, sessionId);
+  if (!session || !session.memberIds.includes(user.uid)) {
+    throw new HttpError(404, 'Session not found');
+  }
+  if (session.status !== 'active') throw new HttpError(409, 'Session is not active');
+
+  const now = new Date();
+  const pomo = ensurePomodoro(session);
+  if (action === 'start_break') {
+    session.pomodoro = startBreakPhase(pomo, now);
+    session.endsAt = session.pomodoro.phaseEndsAt;
+    session.messages = [
+      ...(session.messages ?? []),
+      {
+        id: newId('msg'),
+        userId: 'system',
+        displayName: 'Memora',
+        text: `Shared ${session.pomodoro.breakMin}′ break started. Stretch, hydrate — then back to ${session.topicLabel}.`,
+        createdAt: now.toISOString(),
+      },
+    ].slice(-100);
+  } else if (action === 'start_focus') {
+    const focusMin = parseDuration(req.body?.durationMin ?? session.durationMin);
+    session.pomodoro = resumeFocusPhase(pomo, focusMin, now);
+    session.durationMin = focusMin;
+    session.endsAt = session.pomodoro.phaseEndsAt;
+    session.messages = [
+      ...(session.messages ?? []),
+      {
+        id: newId('msg'),
+        userId: 'system',
+        displayName: 'Memora',
+        text: `Focus cycle ${session.pomodoro.cycle} · ${focusMin}′ on ${session.topicLabel}.`,
+        createdAt: now.toISOString(),
+      },
+    ].slice(-100);
+  } else {
+    throw new HttpError(400, 'action must be start_break or start_focus');
+  }
+  session.presence = {
+    ...(session.presence ?? {}),
+    [user.uid]: now.toISOString(),
+  };
+  session.updatedAt = now.toISOString();
+  await setSession(db, session);
+  res.json(toSessionView(session, user.uid));
 }
 
 /** Test helpers (unit tests only). */
