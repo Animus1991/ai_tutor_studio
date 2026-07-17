@@ -16,6 +16,8 @@ const CollabRoom = lazy(() => import("./pages/CollabRoom"));
 const Admin = lazy(() => import("./pages/Admin"));
 const Workspace = lazy(() => import("./pages/Workspace"));
 const StudyWorkspacePage = lazy(() => import("./pages/StudyWorkspacePage"));
+const VoiceTutor = lazy(() => import("./pages/VoiceTutor"));
+const Teacher = lazy(() => import("./pages/Teacher"));
 const OAuthCallback = lazy(() => import("./pages/OAuthCallback"));
 import ThemeProvider from "./components/ThemeProvider";
 import TimerManager from "./components/TimerManager";
@@ -275,6 +277,22 @@ export default function App() {
                 element={
                   <Suspense fallback={<RouteFallback />}>
                     <StudyWorkspacePage />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="voice"
+                element={
+                  <Suspense fallback={<RouteFallback />}>
+                    <VoiceTutor />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="teacher"
+                element={
+                  <Suspense fallback={<RouteFallback />}>
+                    <Teacher />
                   </Suspense>
                 }
               />

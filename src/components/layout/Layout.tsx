@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { BookOpen, CheckSquare, MessageSquare, Settings, BrainCircuit, Bell, Menu, Users, Shield, LayoutDashboard, Calendar as CalendarIcon, HelpCircle, Type, Sparkles, Upload, Zap, Sun, Moon } from 'lucide-react';
+import { BookOpen, CheckSquare, MessageSquare, Settings, BrainCircuit, Bell, Menu, Users, Shield, LayoutDashboard, Calendar as CalendarIcon, HelpCircle, Type, Sparkles, Upload, Zap, Sun, Moon, Mic, GraduationCap } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../../store/useStore';
@@ -71,6 +71,7 @@ export default function Layout() {
     { name: t('Library', 'Βιβλιοθήκη'), subtitle: t('Your study materials', 'Το υλικό μελέτης σου'), path: '/library', icon: BookOpen },
     { name: t('Tasks', 'Εργασίες'), subtitle: t('Due reviews & goals', 'Εκκρεμείς ασκήσεις'), path: '/tasks', icon: CheckSquare },
     { name: t('Agent', 'Βοηθός'), subtitle: t('AI tutor chat', 'Συνομιλία AI'), path: '/agent', icon: MessageSquare },
+    { name: t('Voice Tutor', 'Φωνητικός Βοηθός'), subtitle: t('Speak with Memora', 'Μίλα με τον Memora'), path: '/voice', icon: Mic },
     { name: t('Collab Space', 'Συνεργασία'), subtitle: t('Work with peers', 'Συνεργασία'), path: '/collab', icon: Users },
     { name: t('Workspace', 'Χώρος Εργασίας'), subtitle: t('Deep study tools', 'Εργαλεία μελέτης'), path: '/workspace', icon: CalendarIcon },
   ];
@@ -82,6 +83,7 @@ export default function Layout() {
   ];
 
   if (userRole === 'admin' || userRole === 'instructor') {
+    navItems.push({ name: t('Teacher Dashboard', 'Πίνακας Εκπαιδευτικού'), subtitle: t('Class roster & mastery', 'Τάξεις & πρόοδος'), path: '/teacher', icon: GraduationCap });
     navItems.push({ name: t('Admin Dashboard', 'Διαχείριση'), subtitle: t('Manage platform', 'Διαχείριση'), path: '/admin', icon: Settings });
   }
 

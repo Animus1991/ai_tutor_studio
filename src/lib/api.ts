@@ -175,12 +175,32 @@ export async function checkHealth(): Promise<boolean> {
     return false;
   }
 }
-export async function transcribeAudio(blob: Blob): Promise<string> {
-  // Not fully implemented yet
-  return "Audio transcription placeholder";
+export async function transcribeAudio(blob: Blob): Promise<{ text: string }> {
+  const form = new FormData();
+  form.append('audio', blob, 'recording.webm');
+  const response = await apiRequest('/api/transcribe', { method: 'POST', body: form });
+  return parseResponse<{ text: string }>(response);
 }
 
-export async function synthesizeSpeech(text: string): Promise<Blob> {
-  // Not fully implemented yet
-  return new Blob(["dummy audio"], { type: "audio/mp3" });
+export async function synthesizeSpeech(text: string, voice = 'nova'): Promise<{ audio: string }> {
+  const response = await apiRequest('/api/tts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, voice }),
+  });
+  const data = await parseResponse<{ audio?: string; clientFallback?: boolean; text?: string }>(response);
+  if (data.audio) return { audio: data.audio };
+  if (data.clientFallback && typeof window !== 'undefined' && window.speechSynthesis) {
+    return { audio: await synthesizeSpeechInBrowser(data.text ?? text) };
+  }
+  throw new ApiError('Speech synthesis unavailable', 502, 'tts_unavailable');
+}
+
+function synthesizeSpeechInBrowser(text: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.onend = () => resolve('browser-tts://spoken');
+    utterance.onerror = () => reject(new Error('Browser speech synthesis failed'));
+    window.speechSynthesis.speak(utterance);
+  });
 }

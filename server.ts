@@ -35,6 +35,13 @@ import {
   streamChatWithFallback,
 } from './server/gemini.js';
 import { geminiKeyFingerprint, resolveGeminiApiKey } from './server/geminiEnv.js';
+import {
+  classDetailHandler,
+  createClassHandler,
+  joinClassHandler,
+  listClassesHandler,
+  reportProgressHandler,
+} from './server/teacher.js';
 const _require = createRequire(typeof import.meta !== 'undefined' && import.meta.url ? import.meta.url : 'file://' + process.cwd() + '/server.ts');
 const pdfParse = _require('pdf-parse');
 
@@ -1492,6 +1499,123 @@ Use pixel coordinates relative to the image. Include 1-12 labels. confidence is 
         'Image Occlusion Error',
         'Failed to process image occlusion',
       );
+    }
+  });
+
+  // Voice tutor — Gemini STT + optional client TTS fallback
+  app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: 'Audio file is required' });
+
+      const response = await ai.models.generateContent({
+        model: geminiChatModel,
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                inlineData: {
+                  mimeType: req.file.mimetype || 'audio/webm',
+                  data: req.file.buffer.toString('base64'),
+                },
+              },
+              {
+                text: 'Transcribe the spoken words in this audio faithfully. Return only the transcript text with no commentary.',
+              },
+            ],
+          },
+        ],
+      });
+
+      res.json({ text: (response.text ?? '').trim() });
+    } catch (error) {
+      sendRouteError(res, error, 'Transcribe Error', 'Failed to transcribe audio');
+    }
+  });
+
+  app.post('/api/tts', async (req, res) => {
+    try {
+      const text = String(req.body?.text ?? '').trim();
+      if (!text) return res.status(400).json({ error: 'Text is required' });
+
+      const voice = String(req.body?.voice ?? 'Kore');
+      const geminiVoiceMap: Record<string, string> = {
+        alloy: 'Kore',
+        nova: 'Aoede',
+        shimmer: 'Leda',
+        echo: 'Charon',
+        fable: 'Fenrir',
+        onyx: 'Puck',
+      };
+      const voiceName = geminiVoiceMap[voice.toLowerCase()] ?? voice;
+
+      try {
+        const response = await ai.models.generateContent({
+          model: process.env.GEMINI_TTS_MODEL?.trim() || 'gemini-2.5-flash-preview-tts',
+          contents: [{ role: 'user', parts: [{ text: text.slice(0, 4000) }] }],
+          config: {
+            responseModalities: ['AUDIO'],
+            speechConfig: {
+              voiceConfig: { prebuiltVoiceConfig: { voiceName } },
+            },
+          },
+        });
+
+        const parts = response.candidates?.[0]?.content?.parts ?? [];
+        const audioPart = parts.find((part) => part.inlineData?.mimeType?.startsWith('audio/'));
+        if (audioPart?.inlineData?.data) {
+          const mime = audioPart.inlineData.mimeType || 'audio/mp3';
+          res.json({ audio: `data:${mime};base64,${audioPart.inlineData.data}` });
+          return;
+        }
+      } catch (ttsError) {
+        console.warn('[Memora] Gemini TTS unavailable, using client fallback:', ttsError);
+      }
+
+      res.json({ clientFallback: true, text: text.slice(0, 4000) });
+    } catch (error) {
+      sendRouteError(res, error, 'TTS Error', 'Failed to synthesize speech');
+    }
+  });
+
+  // Teacher / class dashboard (Firestore via Admin SDK)
+  app.post('/api/classes', async (req, res) => {
+    try {
+      await createClassHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Create Class Error', 'Failed to create class');
+    }
+  });
+
+  app.get('/api/classes', async (req, res) => {
+    try {
+      await listClassesHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'List Classes Error', 'Failed to list classes');
+    }
+  });
+
+  app.post('/api/classes/join', async (req, res) => {
+    try {
+      await joinClassHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Join Class Error', 'Failed to join class');
+    }
+  });
+
+  app.get('/api/classes/:classId', async (req, res) => {
+    try {
+      await classDetailHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Class Detail Error', 'Failed to load class');
+    }
+  });
+
+  app.post('/api/progress', async (req, res) => {
+    try {
+      await reportProgressHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Progress Error', 'Failed to report progress');
     }
   });
 

@@ -1,4 +1,7 @@
 // Teacher / Class dashboard client (/api/classes, /api/progress).
+import { apiRequest } from './apiClient';
+import { errorFromResponse } from './apiErrors';
+
 export interface ClassSummary {
   id: string;
   name: string;
@@ -31,14 +34,12 @@ export interface ClassDetail {
 }
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`/api${path}`, {
-    credentials: 'include',
+  const response = await apiRequest(`/api${path}`, {
     headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
     ...init,
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error((data as { detail?: string }).detail || 'Request failed');
-  return data as T;
+  if (!response.ok) throw await errorFromResponse(response);
+  return response.json() as Promise<T>;
 }
 
 export const listClasses = () => api<{ classes: ClassSummary[] }>('/classes');

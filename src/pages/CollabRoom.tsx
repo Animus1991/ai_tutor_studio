@@ -72,6 +72,7 @@ import PresenceIndicator from "../components/PresenceIndicator";
 import { useGoogleOAuth, type GoogleOAuthScopes } from '../hooks/useGoogleOAuth';
 import GoogleOAuthConsentModal from '../components/GoogleOAuthConsentModal';
 import StudyRoomPanel, { type StudyRoomSharedTool } from '../components/collab/StudyRoomPanel';
+import CollabOverlay from '../components/collab/CollabOverlay';
 
 const ROOM_STORAGE_KEY = "memora-collab-room-id";
 const ROOM_ID_PATTERN = /^[a-zA-Z0-9_-]{8,128}$/;
@@ -994,6 +995,13 @@ export default function CollabRoom() {
               <KnowledgeGraph />
             </div>
           )}
+
+          <CollabOverlay
+            ydoc={ydoc}
+            provider={provider}
+            selfName={(user?.email?.split?.('@')?.[0] ?? 'Guest') as string}
+            selfColor={'#' + ((Math.abs([...(user?.email ?? 'guest')].reduce((a, c) => a + c.charCodeAt(0), 0)) * 2654435761) % 0xffffff).toString(16).padStart(6, '0')}
+          />
 
           {/* Meeting Controls */}
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-black/40 backdrop-blur-xl p-1.5 rounded-2xl border border-white/10 shadow-2xl z-50">

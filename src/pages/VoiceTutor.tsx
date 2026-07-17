@@ -52,6 +52,10 @@ export default function VoiceTutor() {
     try {
       setPhase('speaking');
       const { audio } = await synthesizeSpeech(text, voice);
+      if (audio.startsWith('browser-tts://')) {
+        setPhase('idle');
+        return;
+      }
       if (!audioRef.current) audioRef.current = new Audio();
       audioRef.current.src = audio;
       audioRef.current.onended = () => setPhase('idle');
