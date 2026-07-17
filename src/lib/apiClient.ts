@@ -1,4 +1,5 @@
-import { auth } from "./firebase";
+import { getToken } from "firebase/app-check";
+import { appCheck, auth } from "./firebase";
 import { useAuthStore } from "../store/useAuthStore";
 import { DemoModeError, errorFromResponse } from "./apiErrors";
 
@@ -14,6 +15,13 @@ function ensureAuthReady(): Promise<void> {
         : Promise.resolve();
   }
   return authReadyPromise;
+}
+
+function newTraceId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `tr_${Date.now().toString(36)}`;
 }
 
 function getApiPath(input: RequestInfo | URL): string | null {
@@ -48,13 +56,29 @@ async function withAuthentication(
   init: RequestInit,
   forceRefresh = false,
 ): Promise<RequestInit> {
-  if (!isApiRequest(input) || !auth.currentUser) return init;
+  if (!isApiRequest(input)) return init;
 
   const headers = new Headers(init.headers);
-  headers.set(
-    "Authorization",
-    `Bearer ${await auth.currentUser.getIdToken(forceRefresh)}`,
-  );
+  if (!headers.has("X-Request-Id")) {
+    headers.set("X-Request-Id", newTraceId());
+  }
+
+  if (auth.currentUser) {
+    headers.set(
+      "Authorization",
+      `Bearer ${await auth.currentUser.getIdToken(forceRefresh)}`,
+    );
+  }
+
+  if (appCheck) {
+    try {
+      const { token } = await getToken(appCheck, forceRefresh);
+      if (token) headers.set("X-Firebase-AppCheck", token);
+    } catch {
+      /* App Check optional until enforced */
+    }
+  }
+
   return { ...init, headers };
 }
 

@@ -412,5 +412,10 @@ service cloud.firestore {
     match /platform_audit/{eventId} {
       allow read, write: if false;
     }
+
+    // Privacy deletion queue — Admin SDK only (users request via /api/privacy/*)
+    match /privacyDeletionRequests/{userId} {
+      allow read, write: if false;
+    }
   }
 }

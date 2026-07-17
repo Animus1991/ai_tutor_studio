@@ -42,7 +42,10 @@ export const STUDY_FOCUS_OPTIONS = [
 
 export type StudyFocus = (typeof STUDY_FOCUS_OPTIONS)[number];
 
-const GUIDELINES_KEY = 'memora-community-guidelines-v1';
+/** Bump when policy text changes — users must re-accept. */
+export const GUIDELINES_VERSION = 'v2';
+const GUIDELINES_KEY = `memora-community-guidelines-${GUIDELINES_VERSION}`;
+const GUIDELINES_LEGACY_KEYS = ['memora-community-guidelines-v1'];
 const KUDOS_RATE_KEY = 'memora-kudos-rate';
 const KUDOS_MAX_PER_HOUR = 20;
 
@@ -74,8 +77,21 @@ export function acceptCommunityGuidelines(): void {
   try {
     localStorage.setItem(GUIDELINES_KEY, '1');
     localStorage.setItem(`${GUIDELINES_KEY}:at`, new Date().toISOString());
+    localStorage.setItem(`${GUIDELINES_KEY}:version`, GUIDELINES_VERSION);
+    for (const legacy of GUIDELINES_LEGACY_KEYS) {
+      localStorage.removeItem(legacy);
+    }
   } catch {
     /* ignore */
+  }
+}
+
+export function acceptedGuidelinesVersion(): string | null {
+  try {
+    if (localStorage.getItem(GUIDELINES_KEY) !== '1') return null;
+    return localStorage.getItem(`${GUIDELINES_KEY}:version`) || GUIDELINES_VERSION;
+  } catch {
+    return null;
   }
 }
 

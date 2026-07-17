@@ -8,6 +8,7 @@ import localforage from 'localforage';
 import { toast } from "sonner";
 import { BEHAVIOR_EVENTS_KEY } from "../lib/learningProfile";
 import { useLearningProfileStore } from "../store/useLearningProfileStore";
+import { exportMyData, requestAccountDeletion } from "../lib/privacyApi";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -73,6 +74,31 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     resetLearningProfile();
     await localforage.removeItem(BEHAVIOR_EVENTS_KEY);
     toast.success("Adaptive evidence reset.");
+  };
+
+  const handlePrivacyServerExport = async () => {
+    try {
+      const data = await exportMyData();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `memora-privacy-export-${Date.now()}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("Privacy export downloaded (no peer identities)");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Privacy export failed");
+    }
+  };
+
+  const handleDeletionRequest = async () => {
+    try {
+      await requestAccountDeletion("user_settings_request");
+      toast.success("Deletion request queued");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Deletion request failed");
+    }
   };
 
   const handleExportJSON = async () => {
@@ -321,6 +347,20 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       <Download className="w-4 h-4" /> CSV
                     </button>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => void handlePrivacyServerExport()}
+                    className="mt-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                  >
+                    Server privacy export (Match / Circles / Library meta)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleDeletionRequest()}
+                    className="rounded-xl border border-rose-200 px-4 py-2 text-sm font-medium text-rose-600 transition-colors hover:bg-rose-50 dark:border-rose-900 dark:text-rose-300 dark:hover:bg-rose-950/40"
+                  >
+                    Request account deletion
+                  </button>
                   <button
                     type="button"
                     onClick={handleResetLearningProfile}

@@ -23,7 +23,10 @@ records, credentials or API keys.
 - [ ] Set `GEMINI_API_KEY`, `APP_URL` and the correct Firebase project ID.
 - [ ] Keep `REQUIRE_API_AUTH` enabled.
 - [ ] Deploy `firestore.rules` and test them with the Firebase emulator.
-- [ ] Enable Firebase App Check and enforce it for supported products.
+- [ ] Enable Firebase App Check in console; set `VITE_APPCHECK_SITE_KEY` and
+      `APP_CHECK_ENFORCE=true` once tokens validate in staging.
+- [x] App Check client + server middleware hooks shipped (soft by default).
+- [x] Privacy export / deletion-request API (no peer PII in exports).
 - [ ] Restrict the Firebase web API key by expected HTTP referrers and APIs.
 - [ ] Terminate TLS before the Node process and redirect HTTP to HTTPS.
 - [ ] Keep the default CSP; add origins narrowly when integrating new services.

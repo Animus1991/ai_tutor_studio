@@ -67,7 +67,17 @@ import {
   reportSessionHandler,
   saveNotesHandler,
 } from './server/studyMatch.js';
-import { moderateContentHandler } from './server/platformModeration.js';
+import { moderateContentHandler, moderatePlatformContent } from './server/platformModeration.js';
+import {
+  createIdempotencyMiddleware,
+  createTraceMiddleware,
+  extractAgentUserTexts,
+} from './server/requestSpine.js';
+import { createAppCheckMiddleware } from './server/appCheck.js';
+import {
+  privacyDeleteRequestHandler,
+  privacyExportHandler,
+} from './server/privacy.js';
 const _require = createRequire(typeof import.meta !== 'undefined' && import.meta.url ? import.meta.url : 'file://' + process.cwd() + '/server.ts');
 const pdfParse = _require('pdf-parse');
 
@@ -484,7 +494,11 @@ async function startServer() {
     res.status(204).end();
   });
 
+  app.use(createTraceMiddleware());
   app.use('/api', generalApiLimiter);
+
+  const enforceAppCheck = process.env.APP_CHECK_ENFORCE === 'true';
+  app.use('/api', createAppCheckMiddleware(enforceAppCheck));
 
   app.use('/api', (req, res, next) => {
     if (isPublicApiRoute(req)) {
@@ -496,7 +510,13 @@ async function startServer() {
         next(authErr);
         return;
       }
-      protectedApiLimiter(req, res, next);
+      protectedApiLimiter(req, res, (limitErr) => {
+        if (limitErr) {
+          next(limitErr);
+          return;
+        }
+        createIdempotencyMiddleware()(req, res, next);
+      });
     });
   });
 
@@ -731,6 +751,11 @@ async function startServer() {
   app.post('/api/agent/chat', async (req, res) => {
     try {
       const { messages, systemInstruction, model } = req.body;
+      const userTexts = extractAgentUserTexts(messages);
+      for (const t of userTexts.slice(-3)) {
+        const mod = await moderatePlatformContent(t, 'chat');
+        if (!mod.allowed) throw new HttpError(400, mod.reason);
+      }
       const response = await generateChatWithFallback(ai, {
         model: model || geminiChatModel,
         contents: messages,
@@ -748,8 +773,12 @@ async function startServer() {
         urls = chunks.map((c: any) => c.web?.uri).filter(Boolean);
       }
       
-      res.json({ text, urls });
+      res.json({ text, urls, traceId: res.locals.traceId });
     } catch (error) {
+      if (error instanceof HttpError) {
+        sendRouteError(res, error, 'Agent Moderation', error.message);
+        return;
+      }
       sendGeminiError(res, error, 'Gemini API Error');
     }
   });
@@ -763,6 +792,16 @@ async function startServer() {
 
     try {
       const { messages, systemInstruction, model } = req.body;
+      const userTexts = extractAgentUserTexts(messages);
+      for (const t of userTexts.slice(-3)) {
+        const mod = await moderatePlatformContent(t, 'chat');
+        if (!mod.allowed) {
+          res.write(`data: ${JSON.stringify({ error: mod.reason, code: 'moderation_blocked' })}\n\n`);
+          res.write('data: [DONE]\n\n');
+          res.end();
+          return;
+        }
+      }
       const stream = await streamChatWithFallback(ai, {
         model: model || geminiChatModel,
         contents: messages,
@@ -1553,7 +1592,18 @@ Use pixel coordinates relative to the image. Include 1-12 labels. confidence is 
         ],
       });
 
-      res.json({ text: (response.text ?? '').trim() });
+      const text = (response.text ?? '').trim();
+      if (text) {
+        const mod = await moderatePlatformContent(text, 'chat');
+        if (!mod.allowed) {
+          return res.status(400).json({
+            error: mod.reason,
+            code: 'moderation_blocked',
+            text: '',
+          });
+        }
+      }
+      res.json({ text, retention: 'ephemeral_client', traceId: res.locals.traceId });
     } catch (error) {
       sendRouteError(res, error, 'Transcribe Error', 'Failed to transcribe audio');
     }
@@ -1563,6 +1613,10 @@ Use pixel coordinates relative to the image. Include 1-12 labels. confidence is 
     try {
       const text = String(req.body?.text ?? '').trim();
       if (!text) return res.status(400).json({ error: 'Text is required' });
+      const mod = await moderatePlatformContent(text, 'chat');
+      if (!mod.allowed) {
+        return res.status(400).json({ error: mod.reason, code: 'moderation_blocked' });
+      }
 
       const voice = String(req.body?.voice ?? 'Kore');
       const geminiVoiceMap: Record<string, string> = {
@@ -1751,6 +1805,22 @@ Use pixel coordinates relative to the image. Include 1-12 labels. confidence is 
       await moderateContentHandler(req, res);
     } catch (error) {
       sendRouteError(res, error, 'Moderation Error', 'Failed to moderate content');
+    }
+  });
+
+  // Privacy spine — export / delete request (no peer PII)
+  app.get('/api/privacy/export', async (req, res) => {
+    try {
+      await privacyExportHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Privacy Export Error', 'Failed to export data');
+    }
+  });
+  app.post('/api/privacy/delete-request', async (req, res) => {
+    try {
+      await privacyDeleteRequestHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Privacy Delete Error', 'Failed to queue deletion');
     }
   });
 
