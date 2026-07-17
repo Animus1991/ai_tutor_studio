@@ -3,6 +3,8 @@ import { Stage, Layer, Line, Rect, Text, Group } from 'react-konva';
 import * as Y from 'yjs';
 import { Pen, Eraser, Trash2, StickyNote, Move, Wand2, Download, Keyboard } from 'lucide-react';
 import * as d3 from 'd3';
+import { toast } from 'sonner';
+import { moderateBoardText } from '../lib/socialPolicy';
 
 interface Stroke {
   id: string;
@@ -188,6 +190,22 @@ export default function Whiteboard({ ydoc }: { ydoc: Y.Doc }) {
         y: e.target.y()
       });
     }
+  };
+
+  const handleEditNodeText = async (id: string) => {
+    if (!yNodes.current) return;
+    const node = yNodes.current.get(id);
+    if (!node) return;
+    const next = window.prompt('Sticky note text', node.text);
+    if (next === null) return;
+    const trimmed = next.trim().slice(0, 280);
+    if (!trimmed) return;
+    const mod = await moderateBoardText(trimmed);
+    if (!mod.allowed) {
+      toast.error(mod.reason || 'Board text blocked by safety filter');
+      return;
+    }
+    yNodes.current.set(id, { ...node, text: trimmed });
   };
 
   const handleWheel = (e: any) => {
@@ -434,6 +452,8 @@ export default function Whiteboard({ ydoc }: { ydoc: Y.Doc }) {
                   draggable={tool === 'move' || tool === 'pen'}
                   onDragMove={(e) => handleDragMove(e, node.id)}
                   onDragEnd={(e) => handleDragEnd(e, node.id)}
+                  onDblClick={() => void handleEditNodeText(node.id)}
+                  onDblTap={() => void handleEditNodeText(node.id)}
                 >
                   <Rect
                     name="node"

@@ -156,7 +156,10 @@ service cloud.firestore {
 
     function isValidRoom(data, uid) {
       return data.keys().hasAll(['ownerId', 'memberEmails', 'createdAt']) &&
-             data.keys().hasOnly(['ownerId', 'memberEmails', 'createdAt', 'offer', 'answer']) &&
+             data.keys().hasOnly([
+               'ownerId', 'memberEmails', 'createdAt', 'offer', 'answer',
+               'meetConsent', 'meetUrl'
+             ]) &&
              data.ownerId == uid &&
              data.memberEmails is list && data.memberEmails.size() <= 100;
     }

@@ -88,6 +88,13 @@ import {
   getLearningSummaryHandler,
   postLearningEventHandler,
 } from './server/learningEvents.js';
+import {
+  listSocialReportsHandler,
+  roomCreateMeetHandler,
+  roomMeetConsentHandler,
+  socialReportHandler,
+  triageSocialReportHandler,
+} from './server/socialPolicy.js';
 const _require = createRequire(typeof import.meta !== 'undefined' && import.meta.url ? import.meta.url : 'file://' + process.cwd() + '/server.ts');
 const pdfParse = _require('pdf-parse');
 
@@ -1931,6 +1938,43 @@ Use pixel coordinates relative to the image. Include 1-12 labels. confidence is 
       await listRoomReportsHandler(req, res);
     } catch (error) {
       sendRouteError(res, error, 'Room Reports Error', 'Failed to list reports');
+    }
+  });
+
+  // Social spine — unified Circles + Match + Collab policy
+  app.post('/api/social/report', async (req, res) => {
+    try {
+      await socialReportHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Social Report Error', 'Failed to submit report');
+    }
+  });
+  app.post('/api/social/rooms/:roomId/meet-consent', async (req, res) => {
+    try {
+      await roomMeetConsentHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Room Meet Consent Error', 'Failed to update Meet consent');
+    }
+  });
+  app.post('/api/social/rooms/:roomId/meet', async (req, res) => {
+    try {
+      await roomCreateMeetHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Room Meet Error', 'Failed to create Meet link');
+    }
+  });
+  app.get('/api/admin/social-reports', async (req, res) => {
+    try {
+      await listSocialReportsHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Social Reports Error', 'Failed to list social reports');
+    }
+  });
+  app.patch('/api/admin/social-reports/:reportId', async (req, res) => {
+    try {
+      await triageSocialReportHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Social Triage Error', 'Failed to triage report');
     }
   });
 

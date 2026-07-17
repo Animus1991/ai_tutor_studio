@@ -11,7 +11,14 @@ import {
   type ModerationVerdict,
 } from './matchModerator.js';
 
-export type PlatformContentKind = 'chat' | 'notes' | 'goal' | 'collab' | 'agent' | 'upload_meta';
+export type PlatformContentKind =
+  | 'chat'
+  | 'notes'
+  | 'goal'
+  | 'collab'
+  | 'agent'
+  | 'upload_meta'
+  | 'board';
 
 export type { ModerationVerdict };
 export { heuristicModerateText, moderateMatchContent as moderatePlatformContent };
@@ -48,6 +55,7 @@ export async function moderateContentHandler(req: Request, res: Response): Promi
     'collab',
     'agent',
     'upload_meta',
+    'board',
   ];
   const kind = allowedKinds.includes(kindRaw) ? kindRaw : 'chat';
   if (!text.trim()) {

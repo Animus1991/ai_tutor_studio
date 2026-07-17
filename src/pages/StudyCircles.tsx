@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { UsersRound, Plus, Copy, Check, Shield, BookOpen } from 'lucide-react';
+import { UsersRound, Plus, Copy, Check, Shield, BookOpen, Timer } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuthStore } from '../store/useAuthStore';
 import { useLanguage } from '../lib/i18n';
@@ -8,12 +8,15 @@ import { db } from '../lib/firebase';
 import {
   circleCollabRoomId,
   createStudyCircle,
+  hasAcceptedCommunityGuidelines,
   inviteToStudyCircle,
   isValidInviteEmail,
   listMyStudyCircles,
   type StudyCircle,
 } from '../lib/safeSocial';
+import { circleToMatchPath } from '../lib/socialPolicy';
 import { isDemoModeActive } from '../lib/demoStorage';
+import CommunityGuidelinesModal from '../components/CommunityGuidelinesModal';
 
 const DEMO_CIRCLES: StudyCircle[] = [
   {
@@ -37,6 +40,7 @@ export default function StudyCircles() {
   const [selected, setSelected] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [showGuidelines, setShowGuidelines] = useState(() => !hasAcceptedCommunityGuidelines());
 
   const refresh = useCallback(async () => {
     if (isDemoMode || isDemoModeActive() || !user?.email) {
@@ -247,6 +251,17 @@ export default function StudyCircles() {
                 >
                   {t('Open study room', 'Άνοιγμα δωματίου')}
                 </Link>
+                <Link
+                  to={circleToMatchPath(active.topic, active.id)}
+                  className="inline-flex items-center gap-1.5 justify-center min-h-11 px-4 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/80 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300 text-sm font-semibold"
+                  title={t(
+                    'Find a focus buddy on this topic (same safety rules as Match)',
+                    'Βρες focus buddy στο θέμα (ίδιοι κανόνες ασφαλείας με το Match)',
+                  )}
+                >
+                  <Timer className="w-4 h-4" />
+                  {t('Focus buddy', 'Focus buddy')}
+                </Link>
                 <button
                   type="button"
                   onClick={() => void copyLink()}
@@ -278,6 +293,11 @@ export default function StudyCircles() {
           )}
         </div>
       </div>
+
+      <CommunityGuidelinesModal
+        open={showGuidelines}
+        onAccept={() => setShowGuidelines(false)}
+      />
     </div>
   );
 }

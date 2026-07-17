@@ -4,7 +4,14 @@
 import { apiRequest } from './apiClient';
 import { heuristicModerateText } from '../../server/matchModeratorHeuristics';
 
-export type PlatformContentKind = 'chat' | 'notes' | 'goal' | 'collab' | 'agent' | 'upload_meta';
+export type PlatformContentKind =
+  | 'chat'
+  | 'notes'
+  | 'goal'
+  | 'collab'
+  | 'agent'
+  | 'upload_meta'
+  | 'board';
 
 export type PlatformModerationResult = {
   allowed: boolean;

@@ -89,6 +89,10 @@ import {
   type ReportReason,
   REPORT_REASONS,
 } from '../lib/safeSocial';
+import {
+  countMeetConsents,
+  meetDualConsentSatisfied,
+} from '../lib/socialPolicy';
 
 const ROOM_STORAGE_KEY = "memora-collab-room-id";
 const ROOM_ID_PATTERN = /^[a-zA-Z0-9_-]{8,128}$/;
@@ -233,13 +237,30 @@ export default function CollabRoom() {
               });
               setRoomOwnerId(currentUser.uid);
             } else {
-              setRoomOwnerId(String(roomSnapshot.data()?.ownerId ?? ''));
+              const rd = roomSnapshot.data() as {
+                ownerId?: string;
+                meetConsent?: Record<string, boolean>;
+                meetUrl?: string;
+              };
+              setRoomOwnerId(String(rd?.ownerId ?? ''));
+              if (rd?.meetConsent) setMeetConsent(rd.meetConsent);
+              if (rd?.meetUrl) setMeetUrl(rd.meetUrl);
             }
           } catch (error) {
             console.error("Unable to access collaboration room:", error);
             toast.error("You do not have access to this collaboration room.");
             return;
           }
+
+          const unsubRoomMeta = onSnapshot(roomRef, (snap) => {
+            if (!snap.exists()) return;
+            const rd = snap.data() as {
+              meetConsent?: Record<string, boolean>;
+              meetUrl?: string;
+            };
+            if (rd.meetConsent) setMeetConsent(rd.meetConsent);
+            if (typeof rd.meetUrl === 'string') setMeetUrl(rd.meetUrl);
+          });
 
           const fireProvider = new FireProvider({
             firebaseApp: app,
@@ -280,6 +301,7 @@ export default function CollabRoom() {
           });
 
           roomDataCleanup = () => {
+            unsubRoomMeta();
             unsubMessages();
             unsubParticipants();
             unsubQuizzes();
@@ -347,6 +369,8 @@ export default function CollabRoom() {
   const [isAiTyping, setIsAiTyping] = useState(false);
   const [meetUrl, setMeetUrl] = useState<string | null>(null);
   const [isCreatingMeet, setIsCreatingMeet] = useState(false);
+  const [meetConsent, setMeetConsent] = useState<Record<string, boolean>>({});
+  const [meetConsentBusy, setMeetConsentBusy] = useState(false);
 
   // Shared study timer interval
   useEffect(() => {
@@ -464,23 +488,110 @@ export default function CollabRoom() {
     }
   };
 
+  const selfMeetKey = user?.uid || (isDemoModeActive() ? DEMO_USER.uid : '');
+  const selfMeetConsent = Boolean(selfMeetKey && meetConsent[selfMeetKey]);
+  const dualMeetOk = meetDualConsentSatisfied(meetConsent);
+  const meetConsentCount = countMeetConsents(meetConsent);
+
+  const handleToggleMeetConsent = async () => {
+    if (!selfMeetKey) {
+      toast.error(t('Sign in to opt into Meet', 'Συνδέσου για συναίνεση Meet'));
+      return;
+    }
+    const next = !selfMeetConsent;
+    setMeetConsentBusy(true);
+    try {
+      if (isDemoModeActive()) {
+        // Demo: need a second peer consent to unlock Start Meet — simulate peer after self opts in.
+        const nextMap = {
+          ...meetConsent,
+          [DEMO_USER.uid]: next,
+          ...(next ? { 'demo-peer': true } : { 'demo-peer': false }),
+        };
+        setMeetConsent(nextMap);
+        toast.success(
+          next
+            ? t('Meet opt-in recorded (demo peer also ready)', 'Συναίνεση Meet (demo peer έτοιμος)')
+            : t('Meet opt-in withdrawn', 'Ανακλήθηκε η συναίνεση Meet'),
+        );
+        return;
+      }
+
+      const res = await apiRequest(`/api/social/rooms/${encodeURIComponent(roomId)}/meet-consent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ consent: next }),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { meetConsent?: Record<string, boolean> };
+        if (data.meetConsent) setMeetConsent(data.meetConsent);
+        else setMeetConsent((prev) => ({ ...prev, [selfMeetKey]: next }));
+      } else {
+        // Fallback: direct room field update when Admin SDK path unavailable
+        await updateDoc(doc(db, 'rooms', roomId), {
+          [`meetConsent.${selfMeetKey}`]: next,
+        });
+        setMeetConsent((prev) => ({ ...prev, [selfMeetKey]: next }));
+      }
+      toast.success(
+        next
+          ? t('You opted into Meet — waiting for another member', 'Συμφώνησες για Meet — περιμένουμε άλλο μέλος')
+          : t('Meet opt-in withdrawn', 'Ανακλήθηκε η συναίνεση Meet'),
+      );
+    } catch {
+      toast.error(t('Could not update Meet consent', 'Αδυναμία ενημέρωσης συναίνεσης Meet'));
+    } finally {
+      setMeetConsentBusy(false);
+    }
+  };
+
   const handleCreateMeet = async () => {
     try {
       setIsCreatingMeet(true);
 
-      // Ask the server to create a real Meet space when Google credentials are
-      // configured; otherwise it returns the universal "new meeting" URL.
+      if (!dualMeetOk) {
+        toast.error(
+          t(
+            'At least two members must opt in before starting Meet',
+            'Χρειάζονται τουλάχιστον δύο συναινέσεις πριν το Meet',
+          ),
+        );
+        return;
+      }
+
       let meetUri = "https://meet.google.com/new";
       try {
         const token = googleOAuth.token ?? (await getAccessToken());
-        const res = await apiRequest('/api/google/meet', {
+        const res = await apiRequest(`/api/social/rooms/${encodeURIComponent(roomId)}/meet`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ accessToken: token ?? undefined }),
+          body: JSON.stringify({
+            accessToken: token ?? undefined,
+            meetConsent,
+          }),
         });
         if (res.ok) {
           const data = (await res.json()) as { meetUrl?: string };
           if (data.meetUrl) meetUri = data.meetUrl;
+        } else if (res.status === 403) {
+          toast.error(
+            t(
+              'At least two members must opt in before starting Meet',
+              'Χρειάζονται τουλάχιστον δύο συναινέσεις πριν το Meet',
+            ),
+          );
+          return;
+        } else {
+          // Legacy google meet endpoint as last resort after dual check passed locally
+          const legacy = await apiRequest('/api/google/meet', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ accessToken: token ?? undefined }),
+          });
+          if (legacy.ok) {
+            const data = (await legacy.json()) as { meetUrl?: string };
+            if (data.meetUrl) meetUri = data.meetUrl;
+          }
         }
       } catch {
         /* keep fallback URL */
@@ -491,7 +602,7 @@ export default function CollabRoom() {
         await appendLocalMessage({
           roomId,
           user: 'System',
-          text: `Meet link: ${meetUri}`,
+          text: `Meet link (dual consent): ${meetUri}`,
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           userId: DEMO_USER.uid,
         });
@@ -500,12 +611,17 @@ export default function CollabRoom() {
       }
       
       if (user) {
+        try {
+          await updateDoc(doc(db, 'rooms', roomId), { meetUrl: meetUri });
+        } catch {
+          /* non-fatal */
+        }
         await setDoc(
           doc(db, "rooms", roomId, "messages", Date.now().toString()),
           {
             roomId,
             user: "System",
-            text: `A Google Meet has been created for this room: ${meetUri}`,
+            text: `A Google Meet has been created for this room (dual consent): ${meetUri}`,
             time: new Date().toLocaleTimeString([], {
               hour: "2-digit",
               minute: "2-digit",
@@ -622,6 +738,17 @@ export default function CollabRoom() {
         messageId: reportTarget.id,
         reason: reportReason,
       });
+      // Unified social spine intake (admin triage queue)
+      void apiRequest('/api/social/report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          surface: 'collab',
+          targetId: reportTarget.id,
+          reason: reportReason,
+          roomId,
+        }),
+      }).catch(() => undefined);
       toast.success(t('Report submitted. Thank you for keeping study spaces safe.', 'Η αναφορά καταχωρήθηκε. Ευχαριστούμε.'));
       setReportTarget(null);
     } catch {
@@ -837,6 +964,24 @@ export default function CollabRoom() {
               />{" "}
               {t('Schedule', 'Προγραμματισμός')}
             </button>
+            <button
+              type="button"
+              onClick={() => void handleToggleMeetConsent()}
+              disabled={meetConsentBusy || !selfMeetKey}
+              title={t(
+                'Meet requires dual consent — same rule as Study Match',
+                'Το Meet χρειάζεται διπλή συναίνεση — ίδιος κανόνας με Study Match',
+              )}
+              className={`px-3 py-2 border rounded-xl text-sm font-semibold transition-all flex items-center gap-2 shadow-sm disabled:opacity-50 ${
+                selfMeetConsent
+                  ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800/50 text-emerald-700 dark:text-emerald-400'
+                  : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:shadow-md'
+              }`}
+            >
+              {selfMeetConsent
+                ? t(`Meet OK (${meetConsentCount})`, `Meet OK (${meetConsentCount})`)
+                : t('Opt into Meet', 'Συμφωνώ για Meet')}
+            </button>
             {meetUrl ? (
               <a
                 href={meetUrl}
@@ -853,8 +998,13 @@ export default function CollabRoom() {
               </a>
             ) : (
               <button
-                onClick={handleCreateMeet}
-                disabled={isCreatingMeet}
+                onClick={() => void handleCreateMeet()}
+                disabled={isCreatingMeet || !dualMeetOk}
+                title={
+                  dualMeetOk
+                    ? t('Start Meet', 'Έναρξη Meet')
+                    : t('Needs 2 opt-ins', 'Χρειάζονται 2 συναινέσεις')
+                }
                 className="px-3 py-2 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-semibold hover:shadow-md transition-all flex items-center gap-2 shadow-sm disabled:opacity-50"
               >
                 <img
@@ -862,7 +1012,11 @@ export default function CollabRoom() {
                   className="w-3.5 h-3.5"
                   alt="Meet"
                 />{" "}
-                {isCreatingMeet ? t('Creating...', 'Δημιουργία...') : t('Start Meet', 'Έναρξη Meet')}
+                {isCreatingMeet
+                  ? t('Creating...', 'Δημιουργία...')
+                  : dualMeetOk
+                    ? t('Start Meet', 'Έναρξη Meet')
+                    : t('Meet locked', 'Meet κλειδωμένο')}
               </button>
             )}
             <button

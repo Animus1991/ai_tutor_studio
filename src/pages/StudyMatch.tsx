@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Timer,
   Shield,
@@ -21,6 +21,7 @@ import CommunityGuidelinesModal from '../components/CommunityGuidelinesModal';
 import {
   hasAcceptedCommunityGuidelines,
 } from '../lib/safeSocial';
+import { parseMatchBridgeQuery } from '../lib/socialPolicy';
 import { heuristicModerateText } from '../../server/matchModeratorHeuristics';
 import {
   MATCH_DURATIONS,
@@ -56,14 +57,20 @@ const ENERGY_LABELS: Record<StudyEnergy, { en: string; el: string }> = {
 export default function StudyMatch() {
   const { t } = useLanguage();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const user = useAuthStore((s) => s.user);
   const isDemoMode = useAuthStore((s) => s.isDemoMode);
   const courses = useLibraryStore((s) => s.courses);
   const hydrate = useLibraryStore((s) => s.hydrate);
 
+  const bridge = useMemo(
+    () => parseMatchBridgeQuery(searchParams.toString()),
+    [searchParams],
+  );
+
   const demo = isDemoMode || isDemoModeActive();
   const [showGuidelines, setShowGuidelines] = useState(() => !hasAcceptedCommunityGuidelines());
-  const [topic, setTopic] = useState('');
+  const [topic, setTopic] = useState(() => bridge.topic);
   const [duration, setDuration] = useState<MatchDuration>(25);
   const [domainFilter, setDomainFilter] = useState('');
   const [flexibility, setFlexibility] = useState<MatchFlexibility>('prefer_topic');
@@ -78,6 +85,10 @@ export default function StudyMatch() {
   useEffect(() => {
     void hydrate();
   }, [hydrate]);
+
+  useEffect(() => {
+    if (bridge.topic) setTopic(bridge.topic);
+  }, [bridge.topic]);
 
   const suggestions = useMemo(() => {
     const fromCourses = courses.map((c) => c.title).filter(Boolean).slice(0, 12);
@@ -306,6 +317,15 @@ export default function StudyMatch() {
           </p>
         </div>
       </header>
+
+      {bridge.fromCircle && (
+        <div className="rounded-2xl border border-indigo-200/70 dark:border-indigo-900/40 bg-indigo-50/60 dark:bg-indigo-950/20 px-3.5 py-2.5 text-sm text-indigo-900 dark:text-indigo-200">
+          {t(
+            'Opened from a Study Circle — same safety envelope (guidelines, dual Meet consent, report & leave).',
+            'Άνοιξε από Study Circle — ίδιο πλαίσιο ασφαλείας (guidelines, διπλή συναίνεση Meet, αναφορά & έξοδος).',
+          )}
+        </div>
+      )}
 
       <div className="rounded-2xl border border-emerald-200/70 dark:border-emerald-900/40 bg-emerald-50/60 dark:bg-emerald-950/20 p-3.5 flex gap-3 text-sm text-emerald-900 dark:text-emerald-200">
         <Shield className="w-5 h-5 shrink-0 mt-0.5" />

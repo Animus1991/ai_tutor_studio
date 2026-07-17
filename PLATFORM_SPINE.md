@@ -12,17 +12,17 @@ Checklist for every route/API:
 | 0 | Identity & trust | **Partial** | Firebase Bearer middleware · optional App Check (`VITE_APPCHECK_SITE_KEY`, `APP_CHECK_ENFORCE`) · verified email gates on Match |
 | 0 | Authorization | **Partial** | `server/authz.ts` room ACL · Firestore rules · Yjs membership when `REQUIRE_API_AUTH` |
 | 0 | Data contracts | **Partial** | `validateObject` contracts (`server/requestSpine.ts`) · Match `notesVersion` concurrency |
-| 0 | Safety | **Live spine** | Heuristics→Gemini · `POST /api/moderate` · Match + Collab + Agent + Voice STT/TTS |
+| 0 | Safety | **Live spine** | Heuristics→Gemini · `POST /api/moderate` (+ `board`) · Match + Collab + Agent + Voice + whiteboard stickies |
 | 0 | Reliability | **Partial** | Gemini circuit breaker · Idempotency-Key middleware · Firestore Match queue when Admin SDK present |
-| 0 | Observability | **Partial** | `X-Request-Id` trace middleware · audit / room-reports / match metrics |
-| 0 | Pedagogy telemetry | **Existing** | xAPI tracker + FSRS/mastery client stores (server-authoritative next) |
+| 0 | Observability | **Partial** | `X-Request-Id` trace middleware · audit / room-reports / social-reports / match metrics |
+| 0 | Pedagogy telemetry | **Existing** | xAPI tracker + FSRS/mastery client stores · `/api/learning/*` |
 | 0 | Privacy | **Partial** | `GET /api/privacy/export` · `POST /api/privacy/delete-request` · Settings UI · no peer PII |
 | 0 | Deploy | **Done** | Dockerfile ships `server/` + `dist/server.cjs` · authenticated Yjs |
 | 1 | Auth / Google | **Partial** | App Check hooks · OAuth scopes exist · claims assignment still external |
-| 8–10 | Collab / Circles / Match | **Hardened** | Yjs token+ACL · guidelines **v2** re-accept · Match moderator/social |
 | 4 / 7 | Agent / Voice | **Learning wired** | Mode contracts · exam-coach refusal · hybrid server RAG · groundedness · STT/TTS mod |
-| 2–3 / 15 | Dashboard / Tasks / Mastery | **Partial** | Joint FSRS×mastery scheduler · Due reviews widget · MasteryDashboard mounted · `/api/learning/*` |
-| 5–6,8–14,16–17 | Remaining | **Next** | Social / institution / evidence spines |
+| 2–3 / 15 | Dashboard / Tasks / Mastery | **Partial** | Joint FSRS×mastery scheduler · Due reviews widget · MasteryDashboard · `/api/learning/*` |
+| 8–10 | Collab / Circles / Match | **Social spine** | Unified `socialPolicy` · dual Meet consent on Collab · Circle↔Match bridge · guidelines on Circles · board text mod · admin triage taxonomy |
+| 5–6,11–14,16–17 | Remaining | **Next** | Institution / evidence spines |
 
 ## Modules
 
@@ -31,6 +31,8 @@ Checklist for every route/API:
 | `server/firebaseToken.ts` | Shared ID-token verify |
 | `server/authz.ts` | Roles + room membership |
 | `server/platformModeration.ts` | Content moderation spine |
+| `server/socialPolicy.ts` | Circles+Match+Collab reports, triage, room Meet dual-consent |
+| `src/lib/socialPolicy.ts` | Client capability matrix, bridge URLs, board moderation |
 | `server/requestSpine.ts` | Trace IDs, idempotency, contracts |
 | `server/circuitBreaker.ts` | Gemini breaker |
 | `server/appCheck.ts` | Optional App Check enforce |
@@ -45,20 +47,24 @@ Checklist for every route/API:
 | `APP_CHECK_ENFORCE=true` | Reject API without valid App Check |
 | `VITE_APPCHECK_SITE_KEY` | Client App Check (reCAPTCHA v3) |
 | `VITE_APPCHECK_DEBUG_TOKEN` | Dev debug token |
-| `FIREBASE_SERVICE_ACCOUNT_JSON` | Durable queue, privacy export, App Check verify, Teacher |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | Durable queue, privacy export, App Check verify, Teacher, social triage |
 
 ## API additions
 
-- `POST /api/moderate`
+- `POST /api/moderate` (kinds include `board`)
+- `POST /api/social/report`
+- `POST /api/social/rooms/:roomId/meet-consent`
+- `POST /api/social/rooms/:roomId/meet`
+- `GET /api/admin/social-reports`
+- `PATCH /api/admin/social-reports/:reportId`
 - `GET /api/privacy/export`
 - `POST /api/privacy/delete-request`
 - Headers: `X-Request-Id`, `Idempotency-Key`, `X-Firebase-AppCheck`
 
-## Next implementation order (unchanged)
+## Next implementation order
 
 1. Trust — claims service, App Check enforce in prod, referrer keys
-2. Safety — multimodal upload moderation, board-text CRDT hooks
-3. Learning — joint FSRS×mastery×RAG groundedness
-4. Social — unified Circles+Match+Collab policy engine
-5. Institution — Teacher tenancy + DP aggregates
-6. Evidence — eval harnesses + xAPI retention jobs
+2. Institution — Teacher tenancy + DP aggregates
+3. Evidence — eval harnesses + xAPI retention jobs
+4. Offline packs — signed manifests + conflict UI
+5. Chaos/load — Match queue + Yjs

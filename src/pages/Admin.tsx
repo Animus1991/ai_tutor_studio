@@ -1,8 +1,24 @@
-import { Shield, Users, Database, Download, Activity, Search } from 'lucide-react';
+import { Shield, Users, Database, Download, Activity, Search, Flag } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { auditLogger, type AuditAction, type AuditEvent } from '../lib/auditLogger';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { buildAdminMetrics, fetchServerAdminMetrics, fetchTenantMetrics, type AdminMetrics, type ServerAdminMetrics, type TenantMetrics } from '../lib/adminMetrics';
+import { apiRequest } from '../lib/apiClient';
+import { TRIAGE_ACTIONS, type TriageAction } from '../lib/socialPolicy';
+import { toast } from 'sonner';
+
+type SocialReportRow = {
+  id: string;
+  surface?: string;
+  reason?: string;
+  note?: string;
+  reporterId?: string;
+  targetId?: string;
+  status?: string;
+  roomId?: string | null;
+  createdAt?: string;
+  triageAction?: string | null;
+};
 
 const ALL_ACTIONS: AuditAction[] = [
   'USER_LOGIN',
@@ -25,6 +41,24 @@ export default function Admin() {
   const [actionFilter, setActionFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [exportFormat, setExportFormat] = useState<'json' | 'csv'>('json');
+  const [socialReports, setSocialReports] = useState<SocialReportRow[]>([]);
+  const [socialBackend, setSocialBackend] = useState<string>('');
+  const [triageBusyId, setTriageBusyId] = useState<string | null>(null);
+
+  const loadSocialReports = async () => {
+    try {
+      const res = await apiRequest('/api/admin/social-reports?status=open&limit=40');
+      if (!res.ok) {
+        setSocialReports([]);
+        return;
+      }
+      const data = (await res.json()) as { reports?: SocialReportRow[]; backend?: string };
+      setSocialReports(data.reports ?? []);
+      setSocialBackend(data.backend ?? '');
+    } catch {
+      setSocialReports([]);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -40,11 +74,34 @@ export default function Admin() {
       setServerMetrics(serverM);
       setTenantMetrics(tenantM);
       setLogs(auditLogger.mergeLogs(auditLogger.getRecentLogs(200), serverLogs));
+      await loadSocialReports();
     })();
     return () => {
       cancelled = true;
     };
   }, []);
+
+  const handleTriage = async (reportId: string, action: TriageAction) => {
+    setTriageBusyId(reportId);
+    try {
+      const res = await apiRequest(`/api/admin/social-reports/${encodeURIComponent(reportId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      });
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as { error?: string };
+        toast.error(err.error || 'Triage failed — admin/instructor role required');
+        return;
+      }
+      toast.success(`Report ${action}`);
+      await loadSocialReports();
+    } catch {
+      toast.error('Triage request failed');
+    } finally {
+      setTriageBusyId(null);
+    }
+  };
 
   const filteredLogs = useMemo(
     () => auditLogger.filterLogs(logs, { action: actionFilter, query: search, limit: 50 }),
@@ -213,6 +270,61 @@ export default function Admin() {
           </div>
         </div>
       )}
+
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden mb-8">
+        <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <Flag className="w-4 h-4 text-rose-500" />
+              Social moderation triage
+            </h3>
+            <p className="text-xs text-slate-500 mt-1">
+              Match · Circles · Collab reports (cooldown / ban taxonomy)
+              {socialBackend ? ` · ${socialBackend}` : ''}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void loadSocialReports()}
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700"
+          >
+            Refresh
+          </button>
+        </div>
+        <div className="divide-y divide-slate-100 dark:divide-slate-800/50 max-h-[360px] overflow-y-auto">
+          {socialReports.map((r) => (
+            <div key={r.id} className="px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-semibold text-sm text-slate-900 dark:text-white">
+                  [{r.surface ?? '—'}] {r.reason ?? 'report'}
+                </p>
+                <p className="text-xs text-slate-500 font-mono mt-1 truncate">
+                  target: {r.targetId || 'n/a'} · room: {r.roomId || 'n/a'}
+                  {r.note ? ` · ${r.note}` : ''}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-1.5 shrink-0">
+                {TRIAGE_ACTIONS.map((action) => (
+                  <button
+                    key={action}
+                    type="button"
+                    disabled={triageBusyId === r.id}
+                    onClick={() => void handleTriage(r.id, action)}
+                    className="text-[11px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50"
+                  >
+                    {action}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+          {socialReports.length === 0 && (
+            <div className="px-6 py-8 text-center text-slate-500 text-sm">
+              No open social reports (or Admin SDK / role unavailable).
+            </div>
+          )}
+        </div>
+      </div>
 
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
