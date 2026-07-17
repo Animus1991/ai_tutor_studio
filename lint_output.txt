@@ -1,0 +1,399 @@
+
+> react-example@0.0.0 lint
+> eslint . --max-warnings 9999 && tsc --noEmit
+
+
+/app/applet/scripts/verify-gemini-key.mjs
+  14:21  error  'process' is not defined  no-undef
+  23:10  error  'process' is not defined  no-undef
+  23:28  error  'process' is not defined  no-undef
+  31:3   error  'process' is not defined  no-undef
+  32:3   error  'process' is not defined  no-undef
+  33:3   error  'process' is not defined  no-undef
+  35:15  error  'process' is not defined  no-undef
+  38:3   error  'console' is not defined  no-undef
+  39:3   error  'process' is not defined  no-undef
+  48:1   error  'console' is not defined  no-undef
+  49:1   error  'console' is not defined  no-undef
+  56:19  error  'fetch' is not defined    no-undef
+  73:3   error  'console' is not defined  no-undef
+  74:3   error  'console' is not defined  no-undef
+  75:3   error  'process' is not defined  no-undef
+  78:1   error  'console' is not defined  no-undef
+  79:1   error  'console' is not defined  no-undef
+  82:3   error  'console' is not defined  no-undef
+  90:1   error  'process' is not defined  no-undef
+
+/app/applet/server.ts
+   607:11  warning  'text' is never reassigned. Use 'const' instead                                               prefer-const
+   640:11  warning  'groundingUrls' is never reassigned. Use 'const' instead                                      prefer-const
+   863:9   warning  'getRelevantChunks' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+  1167:11  warning  'text' is never reassigned. Use 'const' instead                                               prefer-const
+  1176:14  warning  'error' is defined but never used                                                             @typescript-eslint/no-unused-vars
+  1199:11  warning  'content' is never reassigned. Use 'const' instead                                            prefer-const
+
+/app/applet/src/App.tsx
+  142:6  warning  React Hook useEffect has a missing dependency: 'setClaimRole'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+  170:9  warning  'handleLogin' is assigned a value but never used. Allowed unused vars must match /^_/u                           @typescript-eslint/no-unused-vars
+
+/app/applet/src/components/ActivityDrawer.tsx
+  1:20  warning  'useEffect' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+  2:41  warning  'FileText' is defined but never used. Allowed unused vars must match /^_/u   @typescript-eslint/no-unused-vars
+
+/app/applet/src/components/AudioController.tsx
+   27:6   warning  React Hook useEffect has a missing dependency: 'isPlaying'. Either include it or remove the dependency array                                                                                       react-hooks/exhaustive-deps
+   60:7   warning  A control must be associated with a text label                                                                                                                                                     jsx-a11y/control-has-associated-label
+   60:7   warning  Media elements such as <audio> and <video> must have a <track> for captions                                                                                                                        jsx-a11y/media-has-caption
+  101:15  warning  A control must be associated with a text label                                                                                                                                                     jsx-a11y/control-has-associated-label
+  133:11  warning  Visible, non-interactive elements with click handlers must have at least one keyboard listener                                                                                                     jsx-a11y/click-events-have-key-events
+  133:11  warning  Avoid non-native interactive elements. If using native HTML is not possible, add an appropriate role and support for tabbing, mouse, keyboard, and touch inputs to an interactive content element  jsx-a11y/no-static-element-interactions
+
+/app/applet/src/components/AudioNoteRecorder.tsx
+    3:23  warning  'Play' is defined but never used. Allowed unused vars must match /^_/u       @typescript-eslint/no-unused-vars
+    3:29  warning  'Trash2' is defined but never used. Allowed unused vars must match /^_/u     @typescript-eslint/no-unused-vars
+  106:13  warning  A control must be associated with a text label                               jsx-a11y/control-has-associated-label
+  106:13  warning  Media elements such as <audio> and <video> must have a <track> for captions  jsx-a11y/media-has-caption
+  122:19  warning  A control must be associated with a text label                               jsx-a11y/control-has-associated-label
+  122:19  warning  Media elements such as <audio> and <video> must have a <track> for captions  jsx-a11y/media-has-caption
+
+/app/applet/src/components/CommandPalette.tsx
+  326:17  warning  A control must be associated with a text label  jsx-a11y/control-has-associated-label
+
+/app/applet/src/components/ConceptGraph.tsx
+  166:17  warning  'setNodes' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+
+/app/applet/src/components/DailyGoalProgress.tsx
+  48:15  warning  A control must be associated with a text label  jsx-a11y/control-has-associated-label
+
+/app/applet/src/components/DailyGoalRing.tsx
+   8:24  warning  'setCurrentHours' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+  80:11  warning  A control must be associated with a text label                                              jsx-a11y/control-has-associated-label
+
+/app/applet/src/components/DailyStreak.tsx
+  4:10  warning  'Timestamp' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+
+/app/applet/src/components/DocumentWorkspace.tsx
+    15:3   warning  'Presentation' is defined but never used. Allowed unused vars must match /^_/u                                                              @typescript-eslint/no-unused-vars
+    33:22  warning  'globalCrdtStore' is defined but never used. Allowed unused vars must match /^_/u                                                           @typescript-eslint/no-unused-vars
+    69:11  warning  'userRole' is assigned a value but never used. Allowed unused vars must match /^_/u                                                         @typescript-eslint/no-unused-vars
+   170:6   warning  React Hook useEffect has a missing dependency: 'activeTab'. Either include it or remove the dependency array                                react-hooks/exhaustive-deps
+   178:6   warning  React Hook useEffect has missing dependencies: 'isFeynmanMode' and 'toggleFeynmanMode'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+   789:15  warning  Form label must have ALL of the following types of associated control: nesting, id                                                          jsx-a11y/label-has-for
+   797:17  warning  A control must be associated with a text label                                                                                              jsx-a11y/control-has-associated-label
+   818:19  warning  A control must be associated with a text label                                                                                              jsx-a11y/control-has-associated-label
+   914:25  warning  A control must be associated with a text label                                                                                              jsx-a11y/control-has-associated-label
+   915:27  warning  The autoFocus prop should not be used, as it can reduce usability and accessibility for users                                               jsx-a11y/no-autofocus
+  1260:25  warning  A control must be associated with a text label                                                                                              jsx-a11y/control-has-associated-label
+  1380:25  warning  A control must be associated with a text label                                                                                              jsx-a11y/control-has-associated-label
+
+/app/applet/src/components/EmailAuthPanel.tsx
+  50:11  warning  A control must be associated with a text label  jsx-a11y/control-has-associated-label
+  62:9   warning  A control must be associated with a text label  jsx-a11y/control-has-associated-label
+  74:9   warning  A control must be associated with a text label  jsx-a11y/control-has-associated-label
+
+/app/applet/src/components/FeedbackModal.tsx
+    6:14  warning  'auth' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+  116:19  warning  A control must be associated with a text label                          jsx-a11y/control-has-associated-label
+
+/app/applet/src/components/FlashcardGeneratorModal.tsx
+   3:23  warning  'FileText' is defined but never used. Allowed unused vars must match /^_/u          @typescript-eslint/no-unused-vars
+   3:33  warning  'CheckCircle2' is defined but never used. Allowed unused vars must match /^_/u      @typescript-eslint/no-unused-vars
+  96:19  warning  A form label must be associated with a control                                      jsx-a11y/label-has-associated-control
+  96:19  warning  Form label must have ALL of the following types of associated control: nesting, id  jsx-a11y/label-has-for
+  99:19  warning  A control must be associated with a text label                                      jsx-a11y/control-has-associated-label
+
+/app/applet/src/components/Flashcards.tsx
+    1:20  warning  'useEffect' is defined but never used. Allowed unused vars must match /^_/u                                                                                                                        @typescript-eslint/no-unused-vars
+    2:24  warning  'ChevronLeft' is defined but never used. Allowed unused vars must match /^_/u                                                                                                                      @typescript-eslint/no-unused-vars
+    2:37  warning  'ChevronRight' is defined but never used. Allowed unused vars must match /^_/u                                                                                                                     @typescript-eslint/no-unused-vars
+    2:51  warning  'Check' is defined but never used. Allowed unused vars must match /^_/u                                                                                                                            @typescript-eslint/no-unused-vars
+    5:30  warning  'State' is defined but never used. Allowed unused vars must match /^_/u                                                                                                                            @typescript-eslint/no-unused-vars
+   78:9   warning  'cardObj' is never reassigned. Use 'const' instead                                                                                                                                                 prefer-const
+  135:9   warning  'handleNext' is assigned a value but never used. Allowed unused vars must match /^_/u                                                                                                              @typescript-eslint/no-unused-vars
+  186:11  warning  Visible, non-interactive elements with click handlers must have at least one keyboard listener                                                                                                     jsx-a11y/click-events-have-key-events
+  186:11  warning  Avoid non-native interactive elements. If using native HTML is not possible, add an appropriate role and support for tabbing, mouse, keyboard, and touch inputs to an interactive content element  jsx-a11y/no-static-element-interactions
+  327:14  warning  A control must be associated with a text label                                                                                                                                                     jsx-a11y/control-has-associated-label
+  333:14  warning  A control must be associated with a text label                                                                                                                                                     jsx-a11y/control-has-associated-label
+
+/app/applet/src/components/GoalTracker.tsx
+  54:15  warning  A control must be associated with a text label                                                 jsx-a11y/control-has-associated-label
+  60:17  warning  The autoFocus prop should not be used, as it can reduce usability and accessibility for users  jsx-a11y/no-autofocus
+
+/app/applet/src/components/ImageGeneratorModal.tsx
+  68:17  warning  A control must be associated with a text label                                                 jsx-a11y/control-has-associated-label
+  69:19  warning  The autoFocus prop should not be used, as it can reduce usability and accessibility for users  jsx-a11y/no-autofocus
+
+/app/applet/src/components/ImageOcclusionModal.tsx
+    3:22  warning  'ImageIcon' is defined but never used. Allowed unused vars must match /^_/u                                                                                                                        @typescript-eslint/no-unused-vars
+   93:14  warning  'e' is defined but never used                                                                                                                                                                      @typescript-eslint/no-unused-vars
+  144:19  warning  Visible, non-interactive elements with click handlers must have at least one keyboard listener                                                                                                     jsx-a11y/click-events-have-key-events
+  144:19  warning  Avoid non-native interactive elements. If using native HTML is not possible, add an appropriate role and support for tabbing, mouse, keyboard, and touch inputs to an interactive content element  jsx-a11y/no-static-element-interactions
+  160:27  warning  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free                                                                                @typescript-eslint/ban-ts-comment
+  162:27  warning  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free                                                                                @typescript-eslint/ban-ts-comment
+  164:27  warning  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free                                                                                @typescript-eslint/ban-ts-comment
+  243:17  warning  A control must be associated with a text label                                                                                                                                                     jsx-a11y/control-has-associated-label
+
+/app/applet/src/components/KnowledgeGraph.tsx
+  3:42  warning  'OntologyLink' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+
+/app/applet/src/components/NotesEditor.tsx
+   39:10  warning  'isExplaining' is assigned a value but never used. Allowed unused vars must match /^_/u   @typescript-eslint/no-unused-vars
+  111:9   warning  'handleExplain' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+
+/app/applet/src/components/Onboarding.tsx
+  205:7   warning  A control must be associated with a text label                                      jsx-a11y/control-has-associated-label
+  279:21  warning  Form label must have ALL of the following types of associated control: nesting, id  jsx-a11y/label-has-for
+  283:21  warning  A control must be associated with a text label                                      jsx-a11y/control-has-associated-label
+  470:19  warning  A control must be associated with a text label                                      jsx-a11y/control-has-associated-label
+  500:21  warning  A control must be associated with a text label                                      jsx-a11y/control-has-associated-label
+
+/app/applet/src/components/PDFViewerModal.tsx
+  1:30  warning  'Maximize2' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+
+/app/applet/src/components/PostSessionModal.tsx
+  108:15  warning  A form label must be associated with a control                                                 jsx-a11y/label-has-associated-control
+  108:15  warning  Form label must have ALL of the following types of associated control: nesting, id             jsx-a11y/label-has-for
+  111:15  warning  A control must be associated with a text label                                                 jsx-a11y/control-has-associated-label
+  112:17  warning  The autoFocus prop should not be used, as it can reduce usability and accessibility for users  jsx-a11y/no-autofocus
+
+/app/applet/src/components/QuickAddModal.tsx
+    3:19  warning  'Search' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+  113:19  warning  A control must be associated with a text label                            jsx-a11y/control-has-associated-label
+  123:19  warning  A control must be associated with a text label                            jsx-a11y/control-has-associated-label
+
+/app/applet/src/components/Room.tsx
+    3:74  warning  'getDocs' is defined but never used. Allowed unused vars must match /^_/u                                       @typescript-eslint/no-unused-vars
+    4:10  warning  'Mic' is defined but never used. Allowed unused vars must match /^_/u                                           @typescript-eslint/no-unused-vars
+    4:23  warning  'Video' is defined but never used. Allowed unused vars must match /^_/u                                         @typescript-eslint/no-unused-vars
+    4:30  warning  'VideoOff' is defined but never used. Allowed unused vars must match /^_/u                                      @typescript-eslint/no-unused-vars
+   52:6   warning  React Hook useEffect has a missing dependency: 'localStream'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+  174:9   warning  A control must be associated with a text label                                                                  jsx-a11y/control-has-associated-label
+  196:9   warning  A control must be associated with a text label                                                                  jsx-a11y/control-has-associated-label
+  196:9   warning  Media elements such as <audio> and <video> must have a <track> for captions                                     jsx-a11y/media-has-caption
+
+/app/applet/src/components/SettingsModal.tsx
+  202:19  warning  A control must be associated with a text label                                      jsx-a11y/control-has-associated-label
+  233:19  warning  Form label must have ALL of the following types of associated control: nesting, id  jsx-a11y/label-has-for
+  235:21  warning  A control must be associated with a text label                                      jsx-a11y/control-has-associated-label
+  249:19  warning  Form label must have ALL of the following types of associated control: nesting, id  jsx-a11y/label-has-for
+  268:19  warning  Form label must have ALL of the following types of associated control: nesting, id  jsx-a11y/label-has-for
+  270:21  warning  A control must be associated with a text label                                      jsx-a11y/control-has-associated-label
+
+/app/applet/src/components/SpacedRepetition.tsx
+  1:31  warning  'useMemo' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+
+/app/applet/src/components/StudyProgressChart.tsx
+  4:27  warning  'startOfDay' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+
+/app/applet/src/components/StudyTimeChart.tsx
+  1:46  warning  'XAxis' is defined but never used. Allowed unused vars must match /^_/u       @typescript-eslint/no-unused-vars
+  3:27  warning  'startOfDay' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+
+/app/applet/src/components/StudyTipsWidget.tsx
+  3:10  warning  'motion' is defined but never used. Allowed unused vars must match /^_/u           @typescript-eslint/no-unused-vars
+  3:18  warning  'AnimatePresence' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+
+/app/applet/src/components/ThemeProvider.tsx
+  15:6  warning  React Hook useEffect has missing dependencies: 'isDarkMode' and 'toggleDarkMode'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+
+/app/applet/src/components/TimerManager.tsx
+    4:38  warning  'Maximize2' is defined but never used. Allowed unused vars must match /^_/u         @typescript-eslint/no-unused-vars
+    4:49  warning  'Minimize2' is defined but never used. Allowed unused vars must match /^_/u         @typescript-eslint/no-unused-vars
+  163:19  warning  A form label must be associated with a control                                      jsx-a11y/label-has-associated-control
+  163:19  warning  Form label must have ALL of the following types of associated control: nesting, id  jsx-a11y/label-has-for
+  164:19  warning  A control must be associated with a text label                                      jsx-a11y/control-has-associated-label
+  167:19  warning  A form label must be associated with a control                                      jsx-a11y/label-has-associated-control
+  167:19  warning  Form label must have ALL of the following types of associated control: nesting, id  jsx-a11y/label-has-for
+  168:19  warning  A control must be associated with a text label                                      jsx-a11y/control-has-associated-label
+
+/app/applet/src/components/UploadCourseModal.tsx
+  152:17  warning  A control must be associated with a text label                                      jsx-a11y/control-has-associated-label
+  156:17  warning  Form label must have ALL of the following types of associated control: nesting, id  jsx-a11y/label-has-for
+  159:17  warning  A control must be associated with a text label                                      jsx-a11y/control-has-associated-label
+
+/app/applet/src/components/UserAchievements.tsx
+  1:10  warning  'motion' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+
+/app/applet/src/components/VoiceNotesWidget.tsx
+    2:29  warning  'Loader2' is defined but never used. Allowed unused vars must match /^_/u                                       @typescript-eslint/no-unused-vars
+   56:6   warning  React Hook useEffect has a missing dependency: 'isRecording'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+  116:9   warning  A control must be associated with a text label                                                                  jsx-a11y/control-has-associated-label
+
+/app/applet/src/components/WebClipperModal.tsx
+  138:19  warning  A form label must be associated with a control                                      jsx-a11y/label-has-associated-control
+  138:19  warning  Form label must have ALL of the following types of associated control: nesting, id  jsx-a11y/label-has-for
+  143:21  warning  A control must be associated with a text label                                      jsx-a11y/control-has-associated-label
+
+/app/applet/src/components/Whiteboard.tsx
+  309:11  warning  A control must be associated with a text label  jsx-a11y/control-has-associated-label
+
+/app/applet/src/components/collab/CollabOverlay.tsx
+    3:37  warning  'Plus' is defined but never used. Allowed unused vars must match /^_/u                                                                                                                             @typescript-eslint/no-unused-vars
+  108:5   warning  Visible, non-interactive elements with click handlers must have at least one keyboard listener                                                                                                     jsx-a11y/click-events-have-key-events
+  108:5   warning  Avoid non-native interactive elements. If using native HTML is not possible, add an appropriate role and support for tabbing, mouse, keyboard, and touch inputs to an interactive content element  jsx-a11y/no-static-element-interactions
+  182:13  warning  A control must be associated with a text label                                                                                                                                                     jsx-a11y/control-has-associated-label
+  183:15  warning  The autoFocus prop should not be used, as it can reduce usability and accessibility for users                                                                                                      jsx-a11y/no-autofocus
+  191:13  warning  Non-interactive elements should not be assigned mouse or keyboard event listeners                                                                                                                  jsx-a11y/no-noninteractive-element-interactions
+
+/app/applet/src/components/collab/StudyRoomPanel.tsx
+  157:19  warning  'key' is assigned a value but never used. Allowed unused vars must match /^_/u      @typescript-eslint/no-unused-vars
+  403:15  warning  Form label must have ALL of the following types of associated control: nesting, id  jsx-a11y/label-has-for
+  405:17  warning  A control must be associated with a text label                                      jsx-a11y/control-has-associated-label
+  414:15  warning  Form label must have ALL of the following types of associated control: nesting, id  jsx-a11y/label-has-for
+  438:17  warning  A control must be associated with a text label                                      jsx-a11y/control-has-associated-label
+  516:17  warning  Form label must have ALL of the following types of associated control: nesting, id  jsx-a11y/label-has-for
+  519:21  warning  A control must be associated with a text label                                      jsx-a11y/control-has-associated-label
+  547:17  warning  Form label must have ALL of the following types of associated control: nesting, id  jsx-a11y/label-has-for
+  548:19  warning  A control must be associated with a text label                                      jsx-a11y/control-has-associated-label
+  731:17  warning  A control must be associated with a text label                                      jsx-a11y/control-has-associated-label
+  775:15  warning  A control must be associated with a text label                                      jsx-a11y/control-has-associated-label
+
+/app/applet/src/components/layout/Layout.tsx
+  60:6  warning  React Hook useEffect has a missing dependency: 't'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+/app/applet/src/components/workspace/AnnotationOverlay.tsx
+  168:7   warning  Avoid non-native interactive elements. If using native HTML is not possible, add an appropriate role and support for tabbing, mouse, keyboard, and touch inputs to an interactive content element  jsx-a11y/no-static-element-interactions
+  185:13  warning  Visible, non-interactive elements with click handlers must have at least one keyboard listener                                                                                                     jsx-a11y/click-events-have-key-events
+  185:13  warning  Non-interactive elements should not be assigned mouse or keyboard event listeners                                                                                                                  jsx-a11y/no-noninteractive-element-interactions
+  211:17  warning  A control must be associated with a text label                                                                                                                                                     jsx-a11y/control-has-associated-label
+  235:15  warning  A control must be associated with a text label                                                                                                                                                     jsx-a11y/control-has-associated-label
+  236:17  warning  The autoFocus prop should not be used, as it can reduce usability and accessibility for users                                                                                                      jsx-a11y/no-autofocus
+
+/app/applet/src/components/workspace/ComparePanel.tsx
+  29:11  warning  A control must be associated with a text label  jsx-a11y/control-has-associated-label
+
+/app/applet/src/components/workspace/ConceptLensBar.tsx
+  33:9  warning  'studiedHere' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+
+/app/applet/src/components/workspace/DashboardPanel.tsx
+  112:67  warning  React Hook useMemo has an unnecessary dependency: 'busVersion'. Either exclude it or remove the dependency array  react-hooks/exhaustive-deps
+
+/app/applet/src/components/workspace/DebatePanel.tsx
+  71:23  warning  A control must be associated with a text label  jsx-a11y/control-has-associated-label
+
+/app/applet/src/components/workspace/FeynmanToolPanel.tsx
+  120:9  warning  Form label must have ALL of the following types of associated control: nesting, id  jsx-a11y/label-has-for
+  123:9  warning  A control must be associated with a text label                                      jsx-a11y/control-has-associated-label
+
+/app/applet/src/components/workspace/LeitnerPanel.tsx
+   15:11  warning  'CardState' is defined but never used. Allowed unused vars must match /^_/u                                                                                                                        @typescript-eslint/no-unused-vars
+   23:52  warning  'courseId' is defined but never used. Allowed unused args must match /^_/u                                                                                                                         @typescript-eslint/no-unused-vars
+  108:9   warning  Visible, non-interactive elements with click handlers must have at least one keyboard listener                                                                                                     jsx-a11y/click-events-have-key-events
+  108:9   warning  Avoid non-native interactive elements. If using native HTML is not possible, add an appropriate role and support for tabbing, mouse, keyboard, and touch inputs to an interactive content element  jsx-a11y/no-static-element-interactions
+
+/app/applet/src/components/workspace/QuizStepPanel.tsx
+  22:11  warning  't' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+
+/app/applet/src/components/workspace/ReaderPanel.tsx
+  98:11  warning  A control must be associated with a text label  jsx-a11y/control-has-associated-label
+
+/app/applet/src/components/workspace/ScratchpadPanel.tsx
+  14:5   warning  Unused eslint-disable directive (no problems were reported from 'no-new-func')
+  81:13  warning  A control must be associated with a text label                                  jsx-a11y/control-has-associated-label
+
+/app/applet/src/components/workspace/SimulatorPanel.tsx
+   2:21  warning  'RefreshCw' is defined but never used. Allowed unused vars must match /^_/u         @typescript-eslint/no-unused-vars
+  76:19  warning  Form label must have ALL of the following types of associated control: nesting, id  jsx-a11y/label-has-for
+  81:17  warning  A control must be associated with a text label                                      jsx-a11y/control-has-associated-label
+
+/app/applet/src/components/workspace/SourcePanel.tsx
+    5:32  warning  'SourceIntelligence' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+  132:13  warning  A control must be associated with a text label                                        jsx-a11y/control-has-associated-label
+
+/app/applet/src/components/workspace/StudyWorkspace.tsx
+  392:9   warning  Visible, non-interactive elements with click handlers must have at least one keyboard listener                                                                                                     jsx-a11y/click-events-have-key-events
+  392:9   warning  Avoid non-native interactive elements. If using native HTML is not possible, add an appropriate role and support for tabbing, mouse, keyboard, and touch inputs to an interactive content element  jsx-a11y/no-static-element-interactions
+  393:11  warning  Visible, non-interactive elements with click handlers must have at least one keyboard listener                                                                                                     jsx-a11y/click-events-have-key-events
+  393:11  warning  Avoid non-native interactive elements. If using native HTML is not possible, add an appropriate role and support for tabbing, mouse, keyboard, and touch inputs to an interactive content element  jsx-a11y/no-static-element-interactions
+
+/app/applet/src/hooks/useGlobalShortcuts.ts
+  3:10  warning  'useMicrophone' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+
+/app/applet/src/lib/activity.ts
+  87:7  warning  'currentDate' is never reassigned. Use 'const' instead  prefer-const
+
+/app/applet/src/lib/adminMetrics.ts
+  78:7  warning  The value assigned to 'xapiStatements' is not used in subsequent statements  no-useless-assignment
+
+/app/applet/src/lib/bm25.ts
+  20:28  warning  'idx' is defined but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+
+/app/applet/src/lib/libraryExportStats.ts
+  1:10  warning  'isSameDay' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+
+/app/applet/src/lib/tiptap-extensions.tsx
+  31:60  warning  'extension' is assigned a value but never used. Allowed unused vars must match /^_/u   @typescript-eslint/no-unused-vars
+  38:9   warning  'mermaidRef' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+
+/app/applet/src/pages/Admin.tsx
+  223:15  warning  A control must be associated with a text label  jsx-a11y/control-has-associated-label
+
+/app/applet/src/pages/Agent.tsx
+  251:6  warning  React Hook useEffect has missing dependencies: 'modeName' and 't'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+
+/app/applet/src/pages/CollabRoom.tsx
+    17:3   warning  'MoreHorizontal' is defined but never used. Allowed unused vars must match /^_/u                  @typescript-eslint/no-unused-vars
+    19:3   warning  'Search' is defined but never used. Allowed unused vars must match /^_/u                          @typescript-eslint/no-unused-vars
+    22:3   warning  'Calendar' is defined but never used. Allowed unused vars must match /^_/u                        @typescript-eslint/no-unused-vars
+    25:3   warning  'Timer' is defined but never used. Allowed unused vars must match /^_/u                           @typescript-eslint/no-unused-vars
+    29:10  warning  'useStore' is defined but never used. Allowed unused vars must match /^_/u                        @typescript-eslint/no-unused-vars
+   105:10  warning  'pendingOauthAction' is assigned a value but never used. Allowed unused vars must match /^_/u     @typescript-eslint/no-unused-vars
+   105:30  warning  'setPendingOauthAction' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+   834:21  warning  A control must be associated with a text label                                                    jsx-a11y/control-has-associated-label
+  1300:15  warning  A control must be associated with a text label                                                    jsx-a11y/control-has-associated-label
+  1385:15  warning  A control must be associated with a text label                                                    jsx-a11y/control-has-associated-label
+
+/app/applet/src/pages/Dashboard.tsx
+   4:8   warning  'MasteryDashboard' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+  17:38  warning  'limit' is defined but never used. Allowed unused vars must match /^_/u             @typescript-eslint/no-unused-vars
+  17:45  warning  'orderBy' is defined but never used. Allowed unused vars must match /^_/u           @typescript-eslint/no-unused-vars
+  19:18  warning  'isFuture' is defined but never used. Allowed unused vars must match /^_/u          @typescript-eslint/no-unused-vars
+  19:28  warning  'isToday' is defined but never used. Allowed unused vars must match /^_/u           @typescript-eslint/no-unused-vars
+  19:37  warning  'isTomorrow' is defined but never used. Allowed unused vars must match /^_/u        @typescript-eslint/no-unused-vars
+
+/app/applet/src/pages/Library.tsx
+   30:8   warning  'TopicCompletionChart' is defined but never used. Allowed unused vars must match /^_/u                                                                                                             @typescript-eslint/no-unused-vars
+   54:3   warning  'deleteDoc' is defined but never used. Allowed unused vars must match /^_/u                                                                                                                        @typescript-eslint/no-unused-vars
+  306:9   warning  The value assigned to 'tasksData' is not used in subsequent statements                                                                                                                             no-useless-assignment
+  783:21  warning  A control must be associated with a text label                                                                                                                                                     jsx-a11y/control-has-associated-label
+  891:17  warning  Visible, non-interactive elements with click handlers must have at least one keyboard listener                                                                                                     jsx-a11y/click-events-have-key-events
+  891:17  warning  Avoid non-native interactive elements. If using native HTML is not possible, add an appropriate role and support for tabbing, mouse, keyboard, and touch inputs to an interactive content element  jsx-a11y/no-static-element-interactions
+  907:17  warning  Visible, non-interactive elements with click handlers must have at least one keyboard listener                                                                                                     jsx-a11y/click-events-have-key-events
+  907:17  warning  Avoid non-native interactive elements. If using native HTML is not possible, add an appropriate role and support for tabbing, mouse, keyboard, and touch inputs to an interactive content element  jsx-a11y/no-static-element-interactions
+
+/app/applet/src/pages/Tasks.tsx
+    35:3   warning  'deleteDoc' is defined but never used. Allowed unused vars must match /^_/u                  @typescript-eslint/no-unused-vars
+    76:11  warning  'pomodoroSessions' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+   182:17  warning  'tasksData' is never reassigned. Use 'const' instead                                         prefer-const
+   223:11  warning  'cardObj' is never reassigned. Use 'const' instead                                           prefer-const
+   735:41  warning  'i' is defined but never used. Allowed unused args must match /^_/u                          @typescript-eslint/no-unused-vars
+   784:25  warning  A control must be associated with a text label                                               jsx-a11y/control-has-associated-label
+   985:19  warning  A form label must be associated with a control                                               jsx-a11y/label-has-associated-control
+   985:19  warning  Form label must have ALL of the following types of associated control: nesting, id           jsx-a11y/label-has-for
+   988:19  warning  A control must be associated with a text label                                               jsx-a11y/control-has-associated-label
+   998:21  warning  A form label must be associated with a control                                               jsx-a11y/label-has-associated-control
+   998:21  warning  Form label must have ALL of the following types of associated control: nesting, id           jsx-a11y/label-has-for
+  1035:19  warning  A control must be associated with a text label                                               jsx-a11y/control-has-associated-label
+  1044:19  warning  A form label must be associated with a control                                               jsx-a11y/label-has-associated-control
+  1044:19  warning  Form label must have ALL of the following types of associated control: nesting, id           jsx-a11y/label-has-for
+  1061:19  warning  A form label must be associated with a control                                               jsx-a11y/label-has-associated-control
+  1061:19  warning  Form label must have ALL of the following types of associated control: nesting, id           jsx-a11y/label-has-for
+  1064:19  warning  A control must be associated with a text label                                               jsx-a11y/control-has-associated-label
+
+/app/applet/src/pages/Teacher.tsx
+  127:13  warning  A control must be associated with a text label  jsx-a11y/control-has-associated-label
+  131:13  warning  A control must be associated with a text label  jsx-a11y/control-has-associated-label
+
+/app/applet/src/pages/VoiceTutor.tsx
+  91:14  warning  'e' is defined but never used  @typescript-eslint/no-unused-vars
+
+/app/applet/src/store/useLibraryStore.ts
+   3:45  warning  'saveLibrary' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+  49:27  warning  'uploadedFile' is never reassigned. Use 'const' instead                        prefer-const
+  49:41  warning  'quality' is never reassigned. Use 'const' instead                             prefer-const
+  97:27  warning  'uploadedFile' is never reassigned. Use 'const' instead                        prefer-const
+  97:41  warning  'quality' is never reassigned. Use 'const' instead                             prefer-const
+
+✖ 253 problems (19 errors, 234 warnings)
+  0 errors and 9 warnings potentially fixable with the `--fix` option.
+

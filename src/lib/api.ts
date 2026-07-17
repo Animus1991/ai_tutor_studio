@@ -175,3 +175,12 @@ export async function checkHealth(): Promise<boolean> {
     return false;
   }
 }
+export async function transcribeAudio(blob: Blob): Promise<string> {
+  // Not fully implemented yet
+  return "Audio transcription placeholder";
+}
+
+export async function synthesizeSpeech(text: string): Promise<Blob> {
+  // Not fully implemented yet
+  return new Blob(["dummy audio"], { type: "audio/mp3" });
+}
