@@ -20,18 +20,26 @@ import {
   createRateLimiter,
   emailDomain,
   emptyMatchMetrics,
+  ENCOURAGE_REACTIONS,
   isInCooldown,
   isPeerOnline,
-  isSafeMatchChat,
+  isValidStudyEnergy,
+  isValidStudyVibe,
   normalizeTopicKey,
   REPORT_COOLDOWN_MS,
   resumeFocusPhase,
+  scoreMatchCandidate,
   shouldEmitMidpointCheckIn,
   startBreakPhase,
+  type EncourageReaction,
   type MatchDuration,
+  type MatchFlexibility,
   type MatchMetricsSnapshot,
   type PomodoroState,
+  type StudyEnergy,
+  type StudyVibe,
 } from './studyMatchCore.js';
+import { moderateMatchContent } from './matchModerator.js';
 
 export { canonicalTopicKey, emailDomain, normalizeTopicKey } from './studyMatchCore.js';
 
@@ -62,6 +70,10 @@ export type QueueEntry = {
   topicLabel: string;
   durationMin: MatchDuration;
   domainFilter: string;
+  flexibility: MatchFlexibility;
+  vibe: StudyVibe;
+  energy: StudyEnergy;
+  sessionGoal: string;
   status: QueueStatus;
   createdAt: string;
   expiresAt: string;
@@ -74,12 +86,14 @@ export type MatchChatMessage = {
   displayName: string;
   text: string;
   createdAt: string;
+  reactions?: Partial<Record<EncourageReaction, string[]>>;
 };
 
 export type MatchSession = {
   id: string;
   topicKey: string;
   topicLabel: string;
+  topicMatched: boolean;
   durationMin: MatchDuration;
   memberIds: [string, string];
   memberEmails: [string, string];
@@ -97,6 +111,11 @@ export type MatchSession = {
   presence: Record<string, string>;
   quietFocus: Record<string, boolean>;
   midpointSent: boolean;
+  /** Discrete learning-social signals (not a public profile). */
+  vibes: Record<string, StudyVibe>;
+  energies: Record<string, StudyEnergy>;
+  sessionGoal: string;
+  respectVotes: Record<string, boolean>;
   createdAt: string;
   updatedAt: string;
 };
@@ -208,6 +227,13 @@ function toSessionView(session: MatchSession, selfId: string) {
     quietFocusSelf: Boolean(quietFocus[selfId]),
     quietFocusPeer: Boolean(quietFocus[peerId]),
     midpointSent: Boolean(session.midpointSent),
+    topicMatched: Boolean(session.topicMatched),
+    sessionGoal: session.sessionGoal ?? '',
+    selfVibe: session.vibes?.[selfId] ?? 'balanced',
+    peerVibe: session.vibes?.[peerId] ?? 'balanced',
+    selfEnergy: session.energies?.[selfId] ?? 'steady',
+    peerEnergy: session.energies?.[peerId] ?? 'steady',
+    respectVoted: session.respectVotes?.[selfId] !== undefined,
   };
 }
 
@@ -233,10 +259,21 @@ function buildSessionDoc(a: QueueEntry, b: QueueEntry): MatchSession {
   const now = new Date();
   const pomo = buildInitialPomodoro(a.durationMin, now);
   const roomId = roomIdFor(id);
+  const topicMatched =
+    Boolean(a.topicKey) &&
+    a.topicKey === b.topicKey &&
+    a.topicKey !== 'general-study';
+  const topicLabel = topicMatched
+    ? a.topicLabel || b.topicLabel
+    : a.topicLabel && b.topicLabel && a.topicLabel !== b.topicLabel
+      ? `${a.topicLabel} + ${b.topicLabel}`
+      : a.topicLabel || b.topicLabel || 'General study';
+  const goal = [a.sessionGoal, b.sessionGoal].filter(Boolean).join(' · ').slice(0, 240);
   return {
     id,
-    topicKey: a.topicKey,
-    topicLabel: a.topicLabel,
+    topicKey: topicMatched ? a.topicKey : 'mixed-study',
+    topicLabel,
+    topicMatched,
     durationMin: a.durationMin,
     memberIds: [a.uid, b.uid],
     memberEmails: [a.email, b.email],
@@ -251,9 +288,22 @@ function buildSessionDoc(a: QueueEntry, b: QueueEntry): MatchSession {
         id: newId('msg'),
         userId: 'system',
         displayName: 'Memora',
-        text: `Focus Pomodoro started: ${a.topicLabel} · ${a.durationMin} min. Camera off by default. Be kind — learning only.`,
+        text: topicMatched
+          ? `Focus Pomodoro: ${topicLabel} · ${a.durationMin}′. Same topic match. Camera off. AI safety moderator is on.`
+          : `Focus Pomodoro · ${a.durationMin}′. You matched as study buddies (topics may differ). Camera off. AI safety moderator is on.`,
         createdAt: now.toISOString(),
       },
+      ...(goal
+        ? [
+            {
+              id: newId('msg'),
+              userId: 'system',
+              displayName: 'Memora',
+              text: `Session intention: ${goal}`,
+              createdAt: now.toISOString(),
+            },
+          ]
+        : []),
     ],
     meetConsent: { [a.uid]: false, [b.uid]: false },
     meetUrl: null,
@@ -262,6 +312,10 @@ function buildSessionDoc(a: QueueEntry, b: QueueEntry): MatchSession {
     presence: { [a.uid]: now.toISOString(), [b.uid]: now.toISOString() },
     quietFocus: { [a.uid]: false, [b.uid]: false },
     midpointSent: false,
+    vibes: { [a.uid]: a.vibe ?? 'balanced', [b.uid]: b.vibe ?? 'balanced' },
+    energies: { [a.uid]: a.energy ?? 'steady', [b.uid]: b.energy ?? 'steady' },
+    sessionGoal: goal,
+    respectVotes: {},
     createdAt: now.toISOString(),
     updatedAt: now.toISOString(),
   };
@@ -318,46 +372,32 @@ async function createCollabRoom(
 
 async function listWaitingCandidates(
   db: Firestore | null,
-  topicKey: string,
   durationMin: MatchDuration,
 ): Promise<QueueEntry[]> {
   const now = Date.now();
+  let pool: QueueEntry[] = [];
   if (db) {
     try {
       const snap = await db
         .collection('matchQueue')
         .where('status', '==', 'waiting')
-        .where('topicKey', '==', topicKey)
         .where('durationMin', '==', durationMin)
         .orderBy('createdAt', 'asc')
-        .limit(40)
+        .limit(80)
         .get();
-      return snap.docs
-        .map((d) => d.data() as QueueEntry)
-        .filter((e) => new Date(e.expiresAt).getTime() > now);
+      pool = snap.docs.map((d) => d.data() as QueueEntry);
     } catch {
-      // Composite index may be missing — fall through to memory scan + broader query
-      const snap = await db.collection('matchQueue').where('status', '==', 'waiting').limit(100).get();
-      return snap.docs
+      const snap = await db.collection('matchQueue').where('status', '==', 'waiting').limit(120).get();
+      pool = snap.docs
         .map((d) => d.data() as QueueEntry)
-        .filter(
-          (e) =>
-            e.topicKey === topicKey &&
-            e.durationMin === durationMin &&
-            new Date(e.expiresAt).getTime() > now,
-        )
-        .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+        .filter((e) => e.durationMin === durationMin);
     }
+  } else {
+    pool = [...memoryQueue.values()].filter(
+      (e) => e.status === 'waiting' && e.durationMin === durationMin,
+    );
   }
-  return [...memoryQueue.values()]
-    .filter(
-      (e) =>
-        e.status === 'waiting' &&
-        e.topicKey === topicKey &&
-        e.durationMin === durationMin &&
-        new Date(e.expiresAt).getTime() > now,
-    )
-    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  return pool.filter((e) => new Date(e.expiresAt).getTime() > now);
 }
 
 async function pairUsers(
@@ -378,12 +418,37 @@ async function pairUsers(
 }
 
 async function tryMatch(db: Firestore | null, entrant: QueueEntry): Promise<MatchSession | null> {
-  const candidates = await listWaitingCandidates(db, entrant.topicKey, entrant.durationMin);
+  const candidates = await listWaitingCandidates(db, entrant.durationMin);
+  const ranked: QueueEntry[] = [];
   for (const other of candidates) {
     if (other.uid === entrant.uid) continue;
     if (await isBlocked(db, entrant.uid, other.uid)) continue;
     if (!domainsCompatible(entrant, other)) continue;
+    ranked.push(other);
+  }
+  ranked.sort((x, y) => {
+    const sy = scoreMatchCandidate({
+      entrantTopicKey: entrant.topicKey,
+      otherTopicKey: y.topicKey,
+      entrantFlexibility: entrant.flexibility ?? 'prefer_topic',
+      otherFlexibility: y.flexibility ?? 'prefer_topic',
+      entrantVibe: entrant.vibe ?? 'balanced',
+      otherVibe: y.vibe ?? 'balanced',
+      createdAt: y.createdAt,
+    });
+    const sx = scoreMatchCandidate({
+      entrantTopicKey: entrant.topicKey,
+      otherTopicKey: x.topicKey,
+      entrantFlexibility: entrant.flexibility ?? 'prefer_topic',
+      otherFlexibility: x.flexibility ?? 'prefer_topic',
+      entrantVibe: entrant.vibe ?? 'balanced',
+      otherVibe: x.vibe ?? 'balanced',
+      createdAt: x.createdAt,
+    });
+    return sy - sx;
+  });
 
+  for (const other of ranked) {
     if (db) {
       // Transactional claim — avoids double-pairing under concurrent polls
       try {
@@ -452,14 +517,27 @@ export async function enqueueMatchHandler(req: Request, res: Response): Promise<
   if (req.body?.guidelinesAccepted !== true) {
     throw new HttpError(403, 'Accept community guidelines before joining Study Match');
   }
-  const topicLabel = String(req.body?.topicLabel ?? '').trim().slice(0, 120);
-  if (!topicLabel || topicLabel.length < 2) {
-    throw new HttpError(400, 'Choose a subject / topic (at least 2 characters)');
-  }
-  const topicKey = canonicalTopicKey(topicLabel);
+  // Topic is optional — same subject preferred, not required.
+  const topicLabelRaw = String(req.body?.topicLabel ?? '').trim().slice(0, 120);
+  const topicLabel = topicLabelRaw || 'General study';
+  const topicKey = topicLabelRaw ? canonicalTopicKey(topicLabelRaw) : 'general-study';
   if (!topicKey) throw new HttpError(400, 'Topic could not be normalized');
 
   const durationMin = parseDuration(req.body?.durationMin);
+  const flexibility: MatchFlexibility =
+    req.body?.flexibility === 'any_study' ? 'any_study' : 'prefer_topic';
+  const vibe: StudyVibe = isValidStudyVibe(req.body?.vibe) ? req.body.vibe : 'balanced';
+  const energy: StudyEnergy = isValidStudyEnergy(req.body?.energy)
+    ? req.body.energy
+    : 'steady';
+  let sessionGoal = String(req.body?.sessionGoal ?? '')
+    .trim()
+    .slice(0, 160);
+  if (sessionGoal) {
+    const mod = await moderateMatchContent(sessionGoal, 'goal');
+    if (!mod.allowed) throw new HttpError(400, mod.reason);
+  }
+
   let domainFilter = String(req.body?.domainFilter ?? '')
     .trim()
     .toLowerCase()
@@ -499,6 +577,10 @@ export async function enqueueMatchHandler(req: Request, res: Response): Promise<
     topicLabel,
     durationMin,
     domainFilter,
+    flexibility,
+    vibe,
+    energy,
+    sessionGoal,
     status: 'waiting',
     createdAt: now.toISOString(),
     expiresAt: new Date(now.getTime() + 15 * 60_000).toISOString(),
@@ -776,6 +858,10 @@ export async function saveNotesHandler(req: Request, res: Response): Promise<voi
     throw new HttpError(404, 'Session not found');
   }
   if (session.status !== 'active') throw new HttpError(409, 'Session is not active');
+  if (notes.trim()) {
+    const mod = await moderateMatchContent(notes.slice(0, 2000), 'notes');
+    if (!mod.allowed) throw new HttpError(400, mod.reason);
+  }
   const currentVersion = session.notesVersion ?? 0;
   if (expectedVersion !== undefined && expectedVersion !== currentVersion) {
     throw new HttpError(409, 'Notes were updated by your buddy — refresh and try again');
@@ -793,10 +879,12 @@ export async function postMessageHandler(req: Request, res: Response): Promise<v
   const text = String(req.body?.text ?? '')
     .trim()
     .slice(0, 1000);
-  const safety = isSafeMatchChat(text);
-  if (safety.ok === false) throw new HttpError(400, safety.reason);
   if (!chatLimiter.allow(user.uid)) {
     throw new HttpError(429, 'Slow down — chat rate limit reached');
+  }
+  const moderation = await moderateMatchContent(text, 'chat');
+  if (!moderation.allowed) {
+    throw new HttpError(400, moderation.reason);
   }
 
   const db = await getAdminFirestore();
@@ -812,6 +900,7 @@ export async function postMessageHandler(req: Request, res: Response): Promise<v
     displayName: buddyDisplayName(user.uid),
     text,
     createdAt: new Date().toISOString(),
+    reactions: {},
   };
   session.messages = [...(session.messages ?? []), msg].slice(-100);
   session.presence = {
@@ -955,6 +1044,52 @@ export async function pomodoroHandler(req: Request, res: Response): Promise<void
   res.json(toSessionView(session, user.uid));
 }
 
+export async function reactMessageHandler(req: Request, res: Response): Promise<void> {
+  const user = getAuthUser(res);
+  const sessionId = String(req.params.sessionId ?? '');
+  const messageId = String(req.body?.messageId ?? '');
+  const kind = String(req.body?.kind ?? '') as EncourageReaction;
+  if (!(ENCOURAGE_REACTIONS as readonly string[]).includes(kind)) {
+    throw new HttpError(400, 'Invalid reaction');
+  }
+  const db = await getAdminFirestore();
+  const session = await getSession(db, sessionId);
+  if (!session || !session.memberIds.includes(user.uid)) {
+    throw new HttpError(404, 'Session not found');
+  }
+  if (session.status !== 'active') throw new HttpError(409, 'Session is not active');
+
+  session.messages = (session.messages ?? []).map((m) => {
+    if (m.id !== messageId || m.userId === 'system') return m;
+    if (m.userId === user.uid) return m; // no self-react
+    const reactions = { ...(m.reactions ?? {}) };
+    const list = new Set(reactions[kind] ?? []);
+    if (list.has(user.uid)) list.delete(user.uid);
+    else list.add(user.uid);
+    reactions[kind] = [...list];
+    return { ...m, reactions };
+  });
+  session.updatedAt = new Date().toISOString();
+  await setSession(db, session);
+  res.json(toSessionView(session, user.uid));
+}
+
+/** Private respect vote after session — never a public profile score. */
+export async function respectVoteHandler(req: Request, res: Response): Promise<void> {
+  const user = getAuthUser(res);
+  const sessionId = String(req.params.sessionId ?? '');
+  const respectful = Boolean(req.body?.respectful);
+  const db = await getAdminFirestore();
+  const session = await getSession(db, sessionId);
+  if (!session || !session.memberIds.includes(user.uid)) {
+    throw new HttpError(404, 'Session not found');
+  }
+  session.respectVotes = { ...(session.respectVotes ?? {}), [user.uid]: respectful };
+  session.updatedAt = new Date().toISOString();
+  await setSession(db, session);
+  res.json({ ok: true });
+}
+
 /** Test helpers (unit tests only). */
 export const __test__ = {
   memoryQueue,
@@ -968,4 +1103,5 @@ export const __test__ = {
   buddyDisplayName,
   blockKey,
   setCooldown,
+  scoreMatchCandidate,
 };

@@ -14,14 +14,21 @@ import {
   Circle,
   VolumeX,
   Volume2,
+  Bot,
+  ThumbsUp,
+  Sparkles,
+  HandHeart,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuthStore } from '../store/useAuthStore';
 import { useLanguage } from '../lib/i18n';
 import { isDemoModeActive } from '../lib/demoStorage';
 import { useGoogleOAuth } from '../hooks/useGoogleOAuth';
+import { heuristicModerateText } from '../../server/matchModeratorHeuristics';
 import {
+  ENCOURAGE_REACTIONS,
   MATCH_REPORT_REASONS,
+  type EncourageReaction,
   type MatchDuration,
   type MatchReportReason,
   type MatchSessionView,
@@ -31,12 +38,14 @@ import {
   leaveMatchSession,
   matchHeartbeat,
   matchPomodoro,
+  reactMatchMessage,
   reportMatchSession,
   saveMatchNotes,
   secondsRemaining,
   sendMatchMessage,
   setMeetConsent,
   setQuietFocus,
+  voteMatchRespect,
 } from '../lib/studyMatch';
 
 function loadDemoSession(id: string): MatchSessionView | null {
@@ -68,18 +77,24 @@ export default function MatchSession() {
   const [tab, setTab] = useState<'chat' | 'notes'>('chat');
   const [reportOpen, setReportOpen] = useState(false);
   const [reportReason, setReportReason] = useState<MatchReportReason>('off_topic');
+  const [respectOpen, setRespectOpen] = useState(false);
+  const [sessionClosed, setSessionClosed] = useState(false);
   const [busy, setBusy] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const notesTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const notesVersionRef = useRef(0);
+  const respectOpenRef = useRef(false);
+  respectOpenRef.current = respectOpen;
 
   const refresh = useCallback(async () => {
-    if (!sessionId) return;
+    if (!sessionId || respectOpenRef.current) return;
     if (demo) {
       const s = loadDemoSession(sessionId);
       if (!s) {
-        toast.error(t('Demo session expired', 'Το demo session έληξε'));
-        navigate('/match');
+        if (!respectOpenRef.current) {
+          toast.error(t('Demo session expired', 'Το demo session έληξε'));
+          navigate('/match');
+        }
         return;
       }
       setSession(s);
@@ -94,25 +109,27 @@ export default function MatchSession() {
       setNotes(s.notes);
       notesVersionRef.current = s.notesVersion ?? 0;
       setRemaining(secondsRemaining(s.pomodoro?.phaseEndsAt ?? s.endsAt));
-      if (s.status !== 'active') {
+      if (s.status !== 'active' && !respectOpenRef.current) {
         toast.message(t('Session ended', 'Η συνεδρία ολοκληρώθηκε'));
         navigate('/match', { replace: true });
       }
     } catch (e) {
+      if (respectOpenRef.current) return;
       toast.error(e instanceof Error ? e.message : 'Session error');
       navigate('/match', { replace: true });
     }
   }, [demo, navigate, sessionId, t]);
 
   useEffect(() => {
+    if (sessionClosed) return;
     void refresh();
     const id = window.setInterval(() => void refresh(), demo ? 1000 : 2000);
     return () => window.clearInterval(id);
-  }, [refresh, demo]);
+  }, [refresh, demo, sessionClosed]);
 
   // Presence heartbeat (signed-in sessions)
   useEffect(() => {
-    if (demo || !sessionId) return;
+    if (demo || !sessionId || sessionClosed) return;
     const tick = () => {
       void matchHeartbeat(sessionId)
         .then((r) => {
@@ -123,7 +140,7 @@ export default function MatchSession() {
     tick();
     const id = window.setInterval(tick, 8000);
     return () => window.clearInterval(id);
-  }, [demo, sessionId]);
+  }, [demo, sessionId, sessionClosed]);
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -155,6 +172,11 @@ export default function MatchSession() {
   const handleSend = async () => {
     const text = chatInput.trim();
     if (!text || !session) return;
+    const mod = heuristicModerateText(text);
+    if (!mod.allowed) {
+      toast.error(mod.reason);
+      return;
+    }
     setChatInput('');
     if (demo) {
       const next: MatchSessionView = {
@@ -167,6 +189,7 @@ export default function MatchSession() {
             displayName: 'You',
             text,
             createdAt: new Date().toISOString(),
+            reactions: {},
           },
         ],
       };
@@ -182,11 +205,71 @@ export default function MatchSession() {
     }
   };
 
+  const handleReact = async (messageId: string, kind: EncourageReaction) => {
+    if (!session) return;
+    if (demo) {
+      const selfId = 'demo';
+      const next: MatchSessionView = {
+        ...session,
+        messages: session.messages.map((m) => {
+          if (m.id !== messageId || m.userId === 'system' || m.userId === selfId) return m;
+          const reactions = { ...(m.reactions ?? {}) };
+          const list = new Set(reactions[kind] ?? []);
+          if (list.has(selfId)) list.delete(selfId);
+          else list.add(selfId);
+          reactions[kind] = [...list];
+          return { ...m, reactions };
+        }),
+      };
+      saveDemoSession(next);
+      setSession(next);
+      return;
+    }
+    try {
+      const next = await reactMatchMessage(session.id, messageId, kind);
+      setSession(next);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Reaction failed');
+    }
+  };
+
+  const submitRespect = async (respectful: boolean) => {
+    if (!session) return;
+    setBusy(true);
+    try {
+      if (demo) {
+        const next = { ...session, respectVoted: true };
+        saveDemoSession(next);
+        setSession(next);
+      } else {
+        await voteMatchRespect(session.id, respectful);
+      }
+      setRespectOpen(false);
+      toast.success(
+        respectful
+          ? t('Thanks — private respect noted', 'Ευχαριστούμε — ιδιωτικό respect καταχωρήθηκε')
+          : t('Noted — thanks for the feedback', 'Καταχωρήθηκε — ευχαριστούμε για το feedback'),
+      );
+      navigate('/match', { replace: true });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not save feedback');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const persistNotes = (value: string) => {
     setNotes(value);
     if (!session) return;
     if (notesTimer.current) clearTimeout(notesTimer.current);
     notesTimer.current = setTimeout(() => {
+      if (value.trim()) {
+        const mod = heuristicModerateText(value.slice(0, 1000));
+        if (!mod.allowed) {
+          toast.error(mod.reason);
+          return;
+        }
+      }
       if (demo) {
         const next = {
           ...session,
@@ -203,6 +286,11 @@ export default function MatchSession() {
           notesVersionRef.current = r.notesVersion;
         })
         .catch((e) => {
+          if (e instanceof Error && /buddy|blocked|Sexual|Dating|nude|moderator/i.test(e.message)) {
+            toast.error(e.message);
+            void refresh();
+            return;
+          }
           if (e instanceof Error && e.message.includes('buddy')) {
             toast.info(e.message);
             void refresh();
@@ -251,6 +339,11 @@ export default function MatchSession() {
             ),
           );
         }
+      }
+      setSessionClosed(true);
+      if (!session.respectVoted) {
+        setRespectOpen(true);
+        return;
       }
       navigate('/match', { replace: true });
     } catch (e) {
@@ -416,7 +509,7 @@ export default function MatchSession() {
               {session.topicLabel}
               <span className="text-slate-400 font-medium"> · {session.durationMin}′</span>
             </h1>
-            <p className="text-sm text-slate-500 mt-0.5 inline-flex items-center gap-1.5">
+            <p className="text-sm text-slate-500 mt-0.5 inline-flex items-center gap-1.5 flex-wrap">
               <Circle
                 className={`w-2.5 h-2.5 fill-current ${
                   session.peerOnline !== false ? 'text-emerald-500' : 'text-slate-300'
@@ -428,8 +521,26 @@ export default function MatchSession() {
                   ? t('· online', '· online')
                   : t('· away', '· away')}
               </span>
+              {session.topicMatched === false ? (
+                <span className="text-[11px] px-2 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500">
+                  {t('Flexible match', 'Εύκαμπτο match')}
+                </span>
+              ) : (
+                <span className="text-[11px] px-2 py-0.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300">
+                  {t('Same topic', 'Ίδιο θέμα')}
+                </span>
+              )}
               {demo ? ' (demo)' : ''}
             </p>
+            {(session.peerVibe || session.sessionGoal) && (
+              <p className="text-xs text-slate-400 mt-1">
+                {session.peerVibe
+                  ? t(`Buddy vibe: ${session.peerVibe}`, `Vibe buddy: ${session.peerVibe}`)
+                  : null}
+                {session.peerEnergy ? ` · ${session.peerEnergy}` : ''}
+                {session.sessionGoal ? ` · ${session.sessionGoal}` : ''}
+              </p>
+            )}
           </div>
           <div className="text-right">
             <div
@@ -583,6 +694,10 @@ export default function MatchSession() {
                 {(session.messages ?? []).map((m) => {
                   const mine = demo ? m.userId === 'demo' : m.userId === session.selfId;
                   const system = m.userId === 'system';
+                  const reactionCounts = ENCOURAGE_REACTIONS.map((kind) => ({
+                    kind,
+                    count: m.reactions?.[kind]?.length ?? 0,
+                  })).filter((r) => r.count > 0);
                   return (
                     <div
                       key={m.id}
@@ -604,6 +719,33 @@ export default function MatchSession() {
                       >
                         {m.text}
                       </div>
+                      {!system && !mine && (
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {ENCOURAGE_REACTIONS.map((kind) => (
+                            <button
+                              key={kind}
+                              type="button"
+                              onClick={() => void handleReact(m.id, kind)}
+                              className="text-[10px] px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-indigo-600 hover:border-indigo-200"
+                            >
+                              {kind === 'helpful'
+                                ? t('Helpful', 'Χρήσιμο')
+                                : kind === 'focus'
+                                  ? t('Focus', 'Focus')
+                                  : t('Encourage', 'Μπράβο')}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {reactionCounts.length > 0 && (
+                        <div className="mt-1 flex gap-1 text-[10px] text-slate-400">
+                          {reactionCounts.map((r) => (
+                            <span key={r.kind} className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800">
+                              {r.kind} · {r.count}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -653,6 +795,35 @@ export default function MatchSession() {
             <li>{t('Peer email is never shown', 'Το email του άλλου δεν εμφανίζεται')}</li>
             <li>{t('Report ends the session and blocks rematch', 'Η αναφορά τερματίζει και μπλοκάρει rematch')}</li>
           </ul>
+          <div className="rounded-xl border border-slate-100 dark:border-slate-800 p-3 space-y-2">
+            <p className="text-xs font-semibold text-slate-500 inline-flex items-center gap-1.5">
+              <Bot className="w-3.5 h-3.5 text-emerald-500" />
+              {t('AI safety moderator', 'AI safety moderator')}
+            </p>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              {t(
+                'Nudity, sexual content, and flirt talk are rejected before they reach your buddy.',
+                'Γυμνό, σεξουαλικό υλικό και φλερτ απορρίπτονται πριν φτάσουν στον buddy σου.',
+              )}
+            </p>
+          </div>
+          <div className="rounded-xl border border-slate-100 dark:border-slate-800 p-3 space-y-2">
+            <p className="text-xs font-semibold text-slate-500 inline-flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+              {t('Learning-safe social', 'Learning-safe social')}
+            </p>
+            <ul className="text-xs text-slate-500 space-y-1.5">
+              <li className="inline-flex items-center gap-1.5">
+                <ThumbsUp className="w-3 h-3" />
+                {t('Helpful / Focus / Encourage reactions', 'Reactions: Χρήσιμο / Focus / Μπράβο')}
+              </li>
+              <li className="inline-flex items-center gap-1.5">
+                <HandHeart className="w-3 h-3" />
+                {t('Private respect vote at leave — never a public score', 'Ιδιωτικό respect στο τέλος — ποτέ δημόσιο score')}
+              </li>
+              <li>{t('Quiet focus · vibe · energy · session intention', 'Quiet focus · vibe · ενέργεια · στόχος')}</li>
+            </ul>
+          </div>
           <div className="pt-2 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-400 space-y-1">
             <p>Room: <code className="text-slate-500">{session.roomId}</code></p>
             {session.domainFilter ? <p>Domain: @{session.domainFilter}</p> : null}
@@ -698,6 +869,51 @@ export default function MatchSession() {
                 {t('Submit report', 'Υποβολή')}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {respectOpen && (
+        <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-slate-900/40 p-0 sm:p-6">
+          <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-2xl border border-slate-200 dark:border-slate-800 p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-2xl space-y-3">
+            <h3 className="text-base font-display font-bold text-slate-900 dark:text-white">
+              {t('Was this a respectful study session?', 'Ήταν σεβαστή η συνεδρία;')}
+            </h3>
+            <p className="text-xs text-slate-500">
+              {t(
+                'Private only — never shown as a public profile score. Helps keep Match learning-safe.',
+                'Μόνο ιδιωτικά — ποτέ δημόσιο score. Βοηθά να μείνει το Match ασφαλές για μάθηση.',
+              )}
+            </p>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void submitRespect(true)}
+                className="flex-1 min-h-11 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold inline-flex items-center justify-center gap-1.5"
+              >
+                <HandHeart className="w-4 h-4" />
+                {t('Yes — respectful', 'Ναι — σεβαστή')}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void submitRespect(false)}
+                className="flex-1 min-h-11 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-semibold"
+              >
+                {t('Not really', 'Όχι ιδιαίτερα')}
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setRespectOpen(false);
+                navigate('/match', { replace: true });
+              }}
+              className="w-full text-xs text-slate-400 hover:text-slate-600 py-1"
+            >
+              {t('Skip', 'Παράλειψη')}
+            </button>
           </div>
         </div>
       )}

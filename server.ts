@@ -62,6 +62,8 @@ import {
   pomodoroHandler,
   postMessageHandler,
   quietFocusHandler,
+  reactMessageHandler,
+  respectVoteHandler,
   reportSessionHandler,
   saveNotesHandler,
 } from './server/studyMatch.js';
@@ -1739,6 +1741,20 @@ Use pixel coordinates relative to the image. Include 1-12 labels. confidence is 
       await matchMetricsHandler(req, res);
     } catch (error) {
       sendRouteError(res, error, 'Match Metrics Error', 'Failed to load match metrics');
+    }
+  });
+  app.post('/api/match/session/:sessionId/react', async (req, res) => {
+    try {
+      await reactMessageHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Match React Error', 'Failed to react');
+    }
+  });
+  app.post('/api/match/session/:sessionId/respect', async (req, res) => {
+    try {
+      await respectVoteHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Match Respect Error', 'Failed to save respect vote');
     }
   });
 

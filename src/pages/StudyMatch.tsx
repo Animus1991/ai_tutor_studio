@@ -8,6 +8,9 @@ import {
   Loader2,
   GraduationCap,
   Users,
+  Target,
+  HeartHandshake,
+  Bot,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuthStore } from '../store/useAuthStore';
@@ -18,9 +21,15 @@ import CommunityGuidelinesModal from '../components/CommunityGuidelinesModal';
 import {
   hasAcceptedCommunityGuidelines,
 } from '../lib/safeSocial';
+import { heuristicModerateText } from '../../server/matchModeratorHeuristics';
 import {
   MATCH_DURATIONS,
+  STUDY_ENERGIES,
+  STUDY_VIBES,
   type MatchDuration,
+  type MatchFlexibility,
+  type StudyEnergy,
+  type StudyVibe,
   buddyDisplayName,
   canonicalTopicKey,
   emailDomain,
@@ -31,6 +40,18 @@ import {
 } from '../lib/studyMatch';
 
 type Phase = 'form' | 'waiting';
+
+const VIBE_LABELS: Record<StudyVibe, { en: string; el: string }> = {
+  quiet: { en: 'Quiet focus', el: 'Ήσυχη συγκέντρωση' },
+  balanced: { en: 'Soft check-ins', el: 'Ήπια check-ins' },
+  chatty: { en: 'Explain & trade', el: 'Εξήγηση & ανταλλαγή' },
+};
+
+const ENERGY_LABELS: Record<StudyEnergy, { en: string; el: string }> = {
+  focused: { en: 'Sprint', el: 'Sprint' },
+  steady: { en: 'Steady', el: 'Σταθερή' },
+  low_energy: { en: 'Calm', el: 'Ήρεμη' },
+};
 
 export default function StudyMatch() {
   const { t } = useLanguage();
@@ -45,6 +66,10 @@ export default function StudyMatch() {
   const [topic, setTopic] = useState('');
   const [duration, setDuration] = useState<MatchDuration>(25);
   const [domainFilter, setDomainFilter] = useState('');
+  const [flexibility, setFlexibility] = useState<MatchFlexibility>('prefer_topic');
+  const [vibe, setVibe] = useState<StudyVibe>('balanced');
+  const [energy, setEnergy] = useState<StudyEnergy>('steady');
+  const [sessionGoal, setSessionGoal] = useState('');
   const [phase, setPhase] = useState<Phase>('form');
   const [busy, setBusy] = useState(false);
   const [queuedAt, setQueuedAt] = useState<string | null>(null);
@@ -99,38 +124,55 @@ export default function StudyMatch() {
   }, [phase]);
 
   const startDemoMatch = () => {
-    const label = topic.trim() || 'Organic Chemistry';
+    const label = topic.trim() || (flexibility === 'any_study' ? 'General study' : 'Organic Chemistry');
     const id = `demo-ms-${Date.now()}`;
     const now = Date.now();
     const endsAt = new Date(now + duration * 60_000).toISOString();
     const peerName = buddyDisplayName('demo-peer');
+    const topicMatched = Boolean(topic.trim()) && flexibility !== 'any_study';
+    const goal = sessionGoal.trim();
     const session = {
       id,
-      topicLabel: label,
-      topicKey: canonicalTopicKey(label),
+      topicLabel: topicMatched ? label : topic.trim() ? `${label} + Mixed study` : 'General study',
+      topicKey: topicMatched ? canonicalTopicKey(label) : 'mixed-study',
+      topicMatched,
       durationMin: duration,
       roomId: `match-${id}`.slice(0, 64),
       status: 'active' as const,
       startedAt: new Date(now).toISOString(),
       endsAt,
-      notes: `# ${label}\n\n- Shared scratchpad (demo)\n- No stranger DMs after this block\n`,
+      notes: `# Focus block\n\n- Shared scratchpad (demo)\n- AI moderator on · no stranger DMs after\n`,
       messages: [
         {
           id: 'sys1',
           userId: 'system',
           displayName: 'Memora',
-          text: `Focus Pomodoro: ${label} · ${duration}′. Camera off. ${peerName} joined.`,
+          text: topicMatched
+            ? `Focus Pomodoro: ${label} · ${duration}′. Same topic. Camera off. AI safety moderator is on.`
+            : `Focus Pomodoro · ${duration}′. Study buddies (topic optional). Camera off. AI safety moderator is on.`,
           createdAt: new Date(now).toISOString(),
         },
+        ...(goal
+          ? [
+              {
+                id: 'sys-goal',
+                userId: 'system',
+                displayName: 'Memora',
+                text: `Session intention: ${goal}`,
+                createdAt: new Date(now + 200).toISOString(),
+              },
+            ]
+          : []),
         {
           id: 'peer1',
           userId: 'demo-peer',
           displayName: peerName,
           text: t(
-            "Hey — I'm reviewing the same topic. Let's stay muted and check in at the halfway mark?",
-            'Γεια — διαβάζω το ίδιο θέμα. Μένουμε focused και check-in στη μέση;',
+            "Hey — ready to focus. Soft check-in at the halfway mark?",
+            'Γεια — έτοιμος/η για focus. Ήπιο check-in στη μέση;',
           ),
           createdAt: new Date(now + 800).toISOString(),
+          reactions: {},
         },
       ],
       meetConsent: { demo: false, peer: false },
@@ -149,6 +191,12 @@ export default function StudyMatch() {
       },
       peerOnline: true,
       selfOnline: true,
+      sessionGoal: goal,
+      selfVibe: vibe,
+      peerVibe: vibe === 'quiet' ? 'quiet' : 'balanced',
+      selfEnergy: energy,
+      peerEnergy: 'steady' as const,
+      respectVoted: false,
     };
     sessionStorage.setItem(`memora-demo-match:${id}`, JSON.stringify(session));
     toast.success(t('Matched with a demo study buddy', 'Match με demo study buddy'));
@@ -161,9 +209,21 @@ export default function StudyMatch() {
       return;
     }
     const label = topic.trim();
-    if (label.length < 2) {
-      toast.error(t('Enter a subject / topic', 'Βάλε μάθημα / θέμα'));
+    if (flexibility === 'prefer_topic' && label.length < 2) {
+      toast.error(
+        t(
+          'Enter a subject, or switch to “Any study buddy”',
+          'Βάλε μάθημα, ή διάλεξε «Οποιοσδήποτε study buddy»',
+        ),
+      );
       return;
+    }
+    if (sessionGoal.trim()) {
+      const mod = heuristicModerateText(sessionGoal);
+      if (!mod.allowed) {
+        toast.error(mod.reason);
+        return;
+      }
     }
     if (demo) {
       setPhase('waiting');
@@ -193,6 +253,10 @@ export default function StudyMatch() {
         durationMin: duration,
         domainFilter: domainFilter || undefined,
         guidelinesAccepted: hasAcceptedCommunityGuidelines(),
+        flexibility,
+        vibe,
+        energy,
+        sessionGoal: sessionGoal.trim(),
       });
       if (result.status === 'matched') {
         navigate(`/match/${result.session.id}`, { replace: true });
@@ -224,6 +288,8 @@ export default function StudyMatch() {
     setQueuedAt(null);
   };
 
+  const waitLabel = topic.trim() || t('Any study', 'Οποιοδήποτε διάβασμα');
+
   return (
     <div className="max-w-3xl mx-auto space-y-5" data-testid="study-match-page">
       <header className="ux-page-header">
@@ -234,8 +300,8 @@ export default function StudyMatch() {
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
             {t(
-              'Time-boxed focus with someone reading the same topic — no public profiles, no stranger DMs after.',
-              'Χρονισμένη συγκέντρωση με κάποιον στο ίδιο θέμα — χωρίς δημόσια προφίλ, χωρίς DM μετά.',
+              'Time-boxed focus with a study buddy — same topic preferred, not required. No public profiles, no stranger DMs after.',
+              'Χρονισμένη συγκέντρωση με study buddy — ίδιο θέμα προτιμητέο, όχι υποχρεωτικό. Χωρίς δημόσια προφίλ, χωρίς DM μετά.',
             )}
           </p>
         </div>
@@ -244,9 +310,16 @@ export default function StudyMatch() {
       <div className="rounded-2xl border border-emerald-200/70 dark:border-emerald-900/40 bg-emerald-50/60 dark:bg-emerald-950/20 p-3.5 flex gap-3 text-sm text-emerald-900 dark:text-emerald-200">
         <Shield className="w-5 h-5 shrink-0 mt-0.5" />
         <ul className="space-y-1 list-disc pl-4">
-          <li>{t('Verified Google email required (outside demo)', 'Απαιτείται επαληθευμένο Google email (εκτός demo)')}</li>
+          <li>{t('Verified Google email + guidelines before join', 'Επαληθευμένο Google email + guidelines πριν μπεις')}</li>
           <li>{t('Camera off by default — chat, notes, whiteboard', 'Κάμερα off — chat, σημειώσεις, whiteboard')}</li>
           <li>{t('Meet only if both opt in · Instant report & leave', 'Meet μόνο με διπλή συναίνεση · Άμεση αναφορά & έξοδος')}</li>
+          <li className="inline-flex items-start gap-1.5">
+            <Bot className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+            {t(
+              'AI moderator blocks nude / sexual content & talk',
+              'AI moderator απορρίπτει γυμνό / σεξουαλικό υλικό & συζητήσεις',
+            )}
+          </li>
         </ul>
       </div>
 
@@ -260,8 +333,13 @@ export default function StudyMatch() {
               {t('Finding a focus buddy…', 'Βρίσκουμε focus buddy…')}
             </p>
             <p className="text-sm text-slate-500 mt-1">
-              {topic} · {duration} {t('min', 'λεπτά')}
+              {waitLabel} · {duration} {t('min', 'λεπτά')}
               {queuedAt ? ` · ${waitSecs}s` : ''}
+            </p>
+            <p className="text-xs text-slate-400 mt-2">
+              {flexibility === 'any_study'
+                ? t('Open to any study buddy on this timer', 'Ανοιχτό σε οποιονδήποτε study buddy σε αυτό το timer')
+                : t('Preferring same topic · may still match nearby vibes', 'Προτίμηση ίδιου θέματος · μπορεί να γίνει και εύκαμπτο match')}
             </p>
           </div>
           <button
@@ -274,10 +352,46 @@ export default function StudyMatch() {
         </div>
       ) : (
         <div className="rounded-2xl border border-slate-200/60 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-5 space-y-4 shadow-sm">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2 flex items-center gap-1.5">
+              <HeartHandshake className="w-3.5 h-3.5" />
+              {t('Who to match with', 'Με ποιον να γίνει match')}
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setFlexibility('prefer_topic')}
+                className={`min-h-11 px-3 rounded-xl border text-left text-sm font-semibold ${
+                  flexibility === 'prefer_topic'
+                    ? 'bg-indigo-600 border-indigo-600 text-white'
+                    : 'border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200'
+                }`}
+              >
+                {t('Prefer same topic', 'Προτίμηση ίδιου θέματος')}
+              </button>
+              <button
+                type="button"
+                onClick={() => setFlexibility('any_study')}
+                className={`min-h-11 px-3 rounded-xl border text-left text-sm font-semibold ${
+                  flexibility === 'any_study'
+                    ? 'bg-indigo-600 border-indigo-600 text-white'
+                    : 'border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200'
+                }`}
+              >
+                {t('Any study buddy', 'Οποιοσδήποτε study buddy')}
+              </button>
+            </div>
+          </div>
+
           <label className="block space-y-1.5">
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-400 flex items-center gap-1.5">
               <BookOpen className="w-3.5 h-3.5" />
               {t('Subject / topic', 'Μάθημα / θέμα')}
+              {flexibility === 'any_study' ? (
+                <span className="normal-case font-medium text-slate-400">
+                  ({t('optional', 'προαιρετικό')})
+                </span>
+              ) : null}
             </span>
             <input
               value={topic}
@@ -327,6 +441,64 @@ export default function StudyMatch() {
               ))}
             </div>
           </div>
+
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">
+              {t('Study vibe', 'Ύφος μελέτης')}
+            </p>
+            <div className="grid grid-cols-3 gap-2">
+              {STUDY_VIBES.map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setVibe(v)}
+                  className={`min-h-11 px-2 rounded-xl border text-xs font-semibold ${
+                    vibe === v
+                      ? 'bg-slate-900 text-white border-slate-900 dark:bg-slate-100 dark:text-slate-900'
+                      : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+                  }`}
+                >
+                  {t(VIBE_LABELS[v].en, VIBE_LABELS[v].el)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">
+              {t('Energy', 'Ενέργεια')}
+            </p>
+            <div className="grid grid-cols-3 gap-2">
+              {STUDY_ENERGIES.map((e) => (
+                <button
+                  key={e}
+                  type="button"
+                  onClick={() => setEnergy(e)}
+                  className={`min-h-11 px-2 rounded-xl border text-xs font-semibold ${
+                    energy === e
+                      ? 'bg-slate-900 text-white border-slate-900 dark:bg-slate-100 dark:text-slate-900'
+                      : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+                  }`}
+                >
+                  {t(ENERGY_LABELS[e].en, ENERGY_LABELS[e].el)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <label className="block space-y-1.5">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-400 flex items-center gap-1.5">
+              <Target className="w-3.5 h-3.5" />
+              {t('Session intention (optional)', 'Στόχος συνεδρίας (προαιρετικό)')}
+            </span>
+            <input
+              value={sessionGoal}
+              onChange={(e) => setSessionGoal(e.target.value)}
+              placeholder={t('e.g. Finish chapter 4 problems', 'π.χ. Να τελειώσω τις ασκήσεις κεφ. 4')}
+              maxLength={160}
+              className="w-full min-h-11 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm"
+            />
+          </label>
 
           <label className="block space-y-1.5">
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-400 flex items-center gap-1.5">

@@ -94,25 +94,72 @@ export function resumeFocusPhase(
   };
 }
 
-/** Light student-safety filter — blocks contact-seeking / off-platform solicitations. */
-const UNSAFE_CHAT =
-  /\b(whatsapp|telegram|snapchat|instagram|onlyfans|add\s*me|dm\s*me|text\s*me|call\s*me|my\s*number|meet\s*up\s*irl)\b/i;
+export const STUDY_VIBES = ['quiet', 'balanced', 'chatty'] as const;
+export type StudyVibe = (typeof STUDY_VIBES)[number];
 
-export function isSafeMatchChat(text: string): { ok: true } | { ok: false; reason: string } {
-  const t = text.trim();
-  if (!t) return { ok: false, reason: 'Message is empty' };
-  if (t.length > 1000) return { ok: false, reason: 'Message too long' };
-  if (UNSAFE_CHAT.test(t)) {
-    return {
-      ok: false,
-      reason: 'Keep conversation inside Memora — no off-platform contact requests',
-    };
+export const STUDY_ENERGIES = ['focused', 'steady', 'low_energy'] as const;
+export type StudyEnergy = (typeof STUDY_ENERGIES)[number];
+
+export const ENCOURAGE_REACTIONS = ['helpful', 'focus', 'encourage'] as const;
+export type EncourageReaction = (typeof ENCOURAGE_REACTIONS)[number];
+
+export type MatchFlexibility = 'prefer_topic' | 'any_study';
+
+export function isValidStudyVibe(v: unknown): v is StudyVibe {
+  return typeof v === 'string' && (STUDY_VIBES as readonly string[]).includes(v);
+}
+
+export function isValidStudyEnergy(v: unknown): v is StudyEnergy {
+  return typeof v === 'string' && (STUDY_ENERGIES as readonly string[]).includes(v);
+}
+
+/** Higher score = better candidate. Topic match preferred but not required. */
+export function scoreMatchCandidate(input: {
+  entrantTopicKey: string;
+  otherTopicKey: string;
+  entrantFlexibility: MatchFlexibility;
+  otherFlexibility: MatchFlexibility;
+  entrantVibe: StudyVibe;
+  otherVibe: StudyVibe;
+  createdAt: string;
+}): number {
+  let score = 0;
+  const sameTopic =
+    input.entrantTopicKey &&
+    input.otherTopicKey &&
+    input.entrantTopicKey === input.otherTopicKey &&
+    input.entrantTopicKey !== 'general-study';
+
+  if (sameTopic) score += 100;
+  else if (
+    input.entrantFlexibility === 'prefer_topic' &&
+    input.otherFlexibility === 'prefer_topic' &&
+    input.entrantTopicKey !== 'general-study' &&
+    input.otherTopicKey !== 'general-study'
+  ) {
+    // Both wanted a topic match but topics differ — still allowed, lower priority
+    score += 10;
+  } else {
+    score += 40; // open / any-study pairing
   }
-  // Block long digit runs that look like phone numbers
-  if (/(?:\d[\s-]*){8,}/.test(t)) {
-    return { ok: false, reason: 'Do not share phone numbers in Study Match' };
+
+  if (input.entrantVibe === input.otherVibe) score += 25;
+  else if (
+    (input.entrantVibe === 'quiet' && input.otherVibe === 'chatty') ||
+    (input.entrantVibe === 'chatty' && input.otherVibe === 'quiet')
+  ) {
+    score -= 15;
+  } else {
+    score += 10;
   }
-  return { ok: true };
+
+  // Slight FIFO preference among similar scores
+  const ageMin = Math.min(
+    30,
+    Math.max(0, (Date.now() - new Date(input.createdAt).getTime()) / 60_000),
+  );
+  score += ageMin;
+  return score;
 }
 
 /** Sliding-window rate limiter (pure, injectable clock). */

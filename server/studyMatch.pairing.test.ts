@@ -23,6 +23,10 @@ describe('studyMatch in-memory pairing', () => {
       topicLabel: 'Organic Chem',
       durationMin: 25,
       domainFilter: '',
+      flexibility: 'prefer_topic',
+      vibe: 'balanced',
+      energy: 'focused',
+      sessionGoal: 'Finish chapter 4 problems',
       status: 'waiting',
       createdAt: now,
       expiresAt,
@@ -51,5 +55,41 @@ describe('studyMatch in-memory pairing', () => {
     const until = new Date(Date.now() + 60_000).toISOString();
     await __test__.setCooldown(null, 'u-alice', until);
     expect(__test__.memoryCooldowns.get('u-alice')).toBe(until);
+  });
+
+  it('allows cross-topic study buddies when duration matches', async () => {
+    const now = new Date().toISOString();
+    const expiresAt = new Date(Date.now() + 60_000).toISOString();
+    const a: QueueEntry = {
+      uid: 'u-chem',
+      email: 'chem@uni.edu',
+      topicKey: 'organic-chem',
+      topicLabel: 'Organic Chem',
+      durationMin: 25,
+      domainFilter: '',
+      flexibility: 'any_study',
+      vibe: 'quiet',
+      energy: 'steady',
+      sessionGoal: '',
+      status: 'waiting',
+      createdAt: now,
+      expiresAt,
+      sessionId: null,
+    };
+    const b: QueueEntry = {
+      ...a,
+      uid: 'u-calc',
+      email: 'calc@uni.edu',
+      topicKey: 'calculus',
+      topicLabel: 'Calculus',
+      flexibility: 'prefer_topic',
+      vibe: 'balanced',
+      createdAt: new Date(Date.now() + 10).toISOString(),
+    };
+    const session = await __test__.pairUsers(null, a, b);
+    expect(session.topicMatched).toBe(false);
+    expect(session.topicKey).toBe('mixed-study');
+    expect(session.topicLabel).toContain('Organic Chem');
+    expect(session.topicLabel).toContain('Calculus');
   });
 });

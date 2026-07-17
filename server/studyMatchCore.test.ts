@@ -3,15 +3,16 @@ import {
   canonicalTopicKey,
   createRateLimiter,
   isPeerOnline,
-  isSafeMatchChat,
   normalizeTopicKey,
   buildInitialPomodoro,
   startBreakPhase,
   shouldEmitMidpointCheckIn,
   isInCooldown,
+  scoreMatchCandidate,
   PRESENCE_ONLINE_MS,
   REPORT_COOLDOWN_MS,
 } from './studyMatchCore';
+import { heuristicModerateText } from './matchModerator';
 
 describe('studyMatchCore', () => {
   it('canonicalizes topic synonyms', () => {
@@ -35,9 +36,24 @@ describe('studyMatchCore', () => {
   });
 
   it('filters unsafe off-platform contact chat', () => {
-    expect(isSafeMatchChat('Can you explain resonance?').ok).toBe(true);
-    expect(isSafeMatchChat('add me on whatsapp').ok).toBe(false);
-    expect(isSafeMatchChat('call me at 6912345678 please').ok).toBe(false);
+    expect(heuristicModerateText('Can you explain resonance?').allowed).toBe(true);
+    expect(heuristicModerateText('add me on whatsapp').allowed).toBe(false);
+    expect(heuristicModerateText('call me at 6912345678 please').allowed).toBe(false);
+  });
+
+  it('prefers same-topic matches but allows cross-topic study buddies', () => {
+    const base = {
+      entrantTopicKey: 'organic-chem',
+      entrantFlexibility: 'prefer_topic' as const,
+      otherFlexibility: 'any_study' as const,
+      entrantVibe: 'balanced' as const,
+      otherVibe: 'balanced' as const,
+      createdAt: new Date().toISOString(),
+    };
+    const same = scoreMatchCandidate({ ...base, otherTopicKey: 'organic-chem' });
+    const other = scoreMatchCandidate({ ...base, otherTopicKey: 'calculus' });
+    expect(same).toBeGreaterThan(other);
+    expect(other).toBeGreaterThan(0);
   });
 
   it('rate-limits sliding windows', () => {

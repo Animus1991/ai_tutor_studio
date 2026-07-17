@@ -73,12 +73,22 @@ export type MatchQueueStatus = 'waiting' | 'matched' | 'cancelled';
 
 export type MatchSessionStatus = 'active' | 'ended' | 'reported';
 
+export type EncourageReaction = 'helpful' | 'focus' | 'encourage';
+export type StudyVibe = 'quiet' | 'balanced' | 'chatty';
+export type StudyEnergy = 'focused' | 'steady' | 'low_energy';
+export type MatchFlexibility = 'prefer_topic' | 'any_study';
+
+export const STUDY_VIBES: StudyVibe[] = ['quiet', 'balanced', 'chatty'];
+export const STUDY_ENERGIES: StudyEnergy[] = ['focused', 'steady', 'low_energy'];
+export const ENCOURAGE_REACTIONS: EncourageReaction[] = ['helpful', 'focus', 'encourage'];
+
 export type MatchChatMessage = {
   id: string;
   userId: string;
   displayName: string;
   text: string;
   createdAt: string;
+  reactions?: Partial<Record<EncourageReaction, string[]>>;
 };
 
 export type PomodoroPhase = 'focus' | 'break';
@@ -96,6 +106,7 @@ export type MatchSessionView = {
   id: string;
   topicLabel: string;
   topicKey: string;
+  topicMatched?: boolean;
   durationMin: MatchDuration;
   roomId: string;
   status: MatchSessionStatus;
@@ -116,6 +127,12 @@ export type MatchSessionView = {
   quietFocusSelf?: boolean;
   quietFocusPeer?: boolean;
   midpointSent?: boolean;
+  sessionGoal?: string;
+  selfVibe?: StudyVibe;
+  peerVibe?: StudyVibe;
+  selfEnergy?: StudyEnergy;
+  peerEnergy?: StudyEnergy;
+  respectVoted?: boolean;
 };
 
 export type MatchEnqueueResult =
@@ -136,19 +153,27 @@ async function parseJson<T>(res: Response): Promise<T> {
 }
 
 export async function enqueueMatch(input: {
-  topicLabel: string;
+  topicLabel?: string;
   durationMin: MatchDuration;
   domainFilter?: string;
   guidelinesAccepted?: boolean;
+  flexibility?: MatchFlexibility;
+  vibe?: StudyVibe;
+  energy?: StudyEnergy;
+  sessionGoal?: string;
 }): Promise<MatchEnqueueResult> {
   const res = await apiRequest('/api/match/enqueue', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      topicLabel: input.topicLabel.trim().slice(0, 120),
+      topicLabel: (input.topicLabel ?? '').trim().slice(0, 120),
       durationMin: input.durationMin,
       domainFilter: (input.domainFilter ?? '').trim().toLowerCase().slice(0, 120),
       guidelinesAccepted: input.guidelinesAccepted !== false,
+      flexibility: input.flexibility ?? 'prefer_topic',
+      vibe: input.vibe ?? 'balanced',
+      energy: input.energy ?? 'steady',
+      sessionGoal: (input.sessionGoal ?? '').trim().slice(0, 160),
     }),
   });
   return parseJson<MatchEnqueueResult>(res);
@@ -262,6 +287,31 @@ export async function sendMatchMessage(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text: text.trim().slice(0, 1000) }),
+  });
+  return parseJson(res);
+}
+
+export async function reactMatchMessage(
+  sessionId: string,
+  messageId: string,
+  kind: EncourageReaction,
+): Promise<MatchSessionView> {
+  const res = await apiRequest(`/api/match/session/${encodeURIComponent(sessionId)}/react`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messageId, kind }),
+  });
+  return parseJson(res);
+}
+
+export async function voteMatchRespect(
+  sessionId: string,
+  respectful: boolean,
+): Promise<{ ok: boolean }> {
+  const res = await apiRequest(`/api/match/session/${encodeURIComponent(sessionId)}/respect`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ respectful }),
   });
   return parseJson(res);
 }
