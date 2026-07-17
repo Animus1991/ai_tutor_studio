@@ -18,11 +18,13 @@ const Workspace = lazy(() => import("./pages/Workspace"));
 const StudyWorkspacePage = lazy(() => import("./pages/StudyWorkspacePage"));
 const VoiceTutor = lazy(() => import("./pages/VoiceTutor"));
 const Teacher = lazy(() => import("./pages/Teacher"));
+const StudyCircles = lazy(() => import("./pages/StudyCircles"));
 const OAuthCallback = lazy(() => import("./pages/OAuthCallback"));
 import ThemeProvider from "./components/ThemeProvider";
 import TimerManager from "./components/TimerManager";
 import AudioController from "./components/AudioController";
 import { bootstrapAuth, googleSignIn, describeAuthError, isCancelledAuthError } from "./lib/auth";
+import { startLibrarySync } from "./lib/serverSync";
 import { useAuthStore } from "./store/useAuthStore";
 import { motion } from "framer-motion";
 import { Sparkles } from "lucide-react";
@@ -60,6 +62,7 @@ export default function App() {
           setAccessToken(idToken);
           setClaimRole(tokenResult.claims.role);
           setNeedsAuth(false);
+          void startLibrarySync();
           toast.success('Signed in with Google');
         });
       },
@@ -73,6 +76,7 @@ export default function App() {
           setAccessToken(token);
           setClaimRole(tokenResult.claims.role);
           setNeedsAuth(false);
+          void startLibrarySync();
         });
       },
       onAuthFailure: () => {
@@ -142,6 +146,7 @@ export default function App() {
         const tokenResult = await result.user.getIdTokenResult();
         setClaimRole(tokenResult.claims.role);
         setNeedsAuth(false);
+        void startLibrarySync();
       }
       // null → redirect in progress on localhost
     } catch (err: unknown) {
@@ -308,6 +313,14 @@ export default function App() {
                 element={
                   <Suspense fallback={<RouteFallback />}>
                     <Teacher />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="circles"
+                element={
+                  <Suspense fallback={<RouteFallback />}>
+                    <StudyCircles />
                   </Suspense>
                 }
               />

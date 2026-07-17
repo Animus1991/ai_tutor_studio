@@ -2,6 +2,9 @@ import type { Server } from 'http';
 import { WebSocketServer } from 'ws';
 import { setupWSConnection } from '@y/websocket-server/utils';
 
+/** Room document names must be unguessable enough for trust-on-link collab. */
+const ROOM_DOC_PATTERN = /^\/?[a-zA-Z0-9_-]{8,128}$/;
+
 /** Attach a Yjs-compatible websocket endpoint at `/yjs/*` on the HTTP server. */
 export function attachYjsWebSocketServer(httpServer: Server): WebSocketServer {
   const wss = new WebSocketServer({ noServer: true });
@@ -20,6 +23,11 @@ export function attachYjsWebSocketServer(httpServer: Server): WebSocketServer {
     }
 
     const docPath = pathname.slice('/yjs'.length) || '/';
+    if (!ROOM_DOC_PATTERN.test(docPath)) {
+      socket.write('HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n');
+      socket.destroy();
+      return;
+    }
     request.url = docPath.startsWith('/') ? docPath : `/${docPath}`;
 
     wss.handleUpgrade(request, socket, head, (ws) => {

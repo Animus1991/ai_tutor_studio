@@ -42,6 +42,13 @@ import {
   listClassesHandler,
   reportProgressHandler,
 } from './server/teacher.js';
+import {
+  getLibraryHandler,
+  listRoomReportsHandler,
+  putLibraryHandler,
+  ragIndexHandler,
+  ragQueryHandler,
+} from './server/libraryRag.js';
 const _require = createRequire(typeof import.meta !== 'undefined' && import.meta.url ? import.meta.url : 'file://' + process.cwd() + '/server.ts');
 const pdfParse = _require('pdf-parse');
 
@@ -1619,6 +1626,38 @@ Use pixel coordinates relative to the image. Include 1-12 labels. confidence is 
     }
   });
 
+  // Cross-device library sync (Firebase Admin or local data/library-sync)
+  app.get('/api/library', async (req, res) => {
+    try {
+      await getLibraryHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Library GET Error', 'Failed to load library');
+    }
+  });
+  app.put('/api/library', async (req, res) => {
+    try {
+      await putLibraryHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Library PUT Error', 'Failed to save library');
+    }
+  });
+
+  // Lightweight per-user RAG index (complements client-side hybrid RAG)
+  app.post('/api/rag/index', async (req, res) => {
+    try {
+      await ragIndexHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'RAG Index Error', 'Failed to index document');
+    }
+  });
+  app.post('/api/rag/query', async (req, res) => {
+    try {
+      await ragQueryHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'RAG Query Error', 'Failed to query index');
+    }
+  });
+
   app.get('/api/admin/audit', async (req, res) => {
     const limit = Math.min(Number(req.query.limit) || 50, 200);
     const firestoreLogs = await fetchPlatformAuditFromFirestore(limit);
@@ -1628,6 +1667,14 @@ Use pixel coordinates relative to the image. Include 1-12 labels. confidence is 
     }
     const logs = merged.slice(-limit).reverse();
     res.json({ logs, persistedPath: process.env.AUDIT_STORE_PATH ?? 'data/audit-log.jsonl' });
+  });
+
+  app.get('/api/admin/room-reports', async (req, res) => {
+    try {
+      await listRoomReportsHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Room Reports Error', 'Failed to list reports');
+    }
   });
 
   app.get('/api/admin/tenant-metrics', async (_req, res) => {

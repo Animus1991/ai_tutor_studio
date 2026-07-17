@@ -10,6 +10,7 @@ import {
   getDoc,
   serverTimestamp,
   setDoc,
+  updateDoc,
 } from "firebase/firestore";
 import { afterAll, beforeAll, beforeEach, describe, it } from "vitest";
 
@@ -104,6 +105,22 @@ describe("collaboration membership", () => {
     await assertFails(getDoc(doc(strangerDb, roomPath)));
   });
 
+  it("matches member emails case-insensitively", async () => {
+    const ownerDb = authenticatedDb("owner", "owner@example.com");
+    // Token email mixed case; allow-list stored lowercased
+    const memberDb = authenticatedDb("member", "Member@Example.com");
+    const roomPath = "rooms/case-room-1234";
+
+    await assertSucceeds(
+      setDoc(doc(ownerDb, roomPath), {
+        ownerId: "owner",
+        memberEmails: ["owner@example.com", "member@example.com"],
+        createdAt: serverTimestamp(),
+      }),
+    );
+    await assertSucceeds(getDoc(doc(memberDb, roomPath)));
+  });
+
   it("allows room members to write messages and blocks non-members", async () => {
     const ownerDb = authenticatedDb("owner", "owner@example.com");
     const memberDb = authenticatedDb("member", "member@example.com");
@@ -133,6 +150,73 @@ describe("collaboration membership", () => {
         user: "Stranger",
         text: "Hello",
         userId: "stranger",
+        createdAt: serverTimestamp(),
+      }),
+    );
+  });
+});
+
+describe("student-safe social", () => {
+  it("enforces invite-only study circles", async () => {
+    const alice = authenticatedDb("alice", "alice@school.edu");
+    const bob = authenticatedDb("bob", "bob@school.edu");
+
+    await assertSucceeds(
+      setDoc(doc(alice, "studyCircles/circle1"), {
+        name: "Chem pod",
+        topic: "Midterm",
+        ownerId: "alice",
+        memberEmails: ["alice@school.edu"],
+        purpose: "learning",
+        createdAt: serverTimestamp(),
+      }),
+    );
+
+    await assertFails(getDoc(doc(bob, "studyCircles/circle1")));
+    await assertSucceeds(
+      updateDoc(doc(alice, "studyCircles/circle1"), {
+        memberEmails: ["alice@school.edu", "bob@school.edu"],
+      }),
+    );
+    await assertSucceeds(getDoc(doc(bob, "studyCircles/circle1")));
+  });
+
+  it("allows create-only reports and enum kudos", async () => {
+    const alice = authenticatedDb("alice", "alice@school.edu");
+    const bob = authenticatedDb("bob", "bob@school.edu");
+
+    await assertSucceeds(
+      setDoc(doc(alice, "rooms/roomsafe01"), {
+        ownerId: "alice",
+        memberEmails: ["alice@school.edu", "bob@school.edu"],
+        createdAt: serverTimestamp(),
+      }),
+    );
+
+    await assertSucceeds(
+      setDoc(doc(bob, "rooms/roomsafe01/reports/r1"), {
+        reporterId: "bob",
+        messageId: "m1",
+        reason: "harassment",
+        note: "",
+        createdAt: serverTimestamp(),
+      }),
+    );
+    await assertFails(getDoc(doc(alice, "rooms/roomsafe01/reports/r1")));
+
+    await assertSucceeds(
+      setDoc(doc(bob, "rooms/roomsafe01/kudos/k1"), {
+        fromUserId: "bob",
+        toUserId: "alice",
+        kind: "helpful",
+        createdAt: serverTimestamp(),
+      }),
+    );
+    await assertFails(
+      setDoc(doc(bob, "rooms/roomsafe01/kudos/k2"), {
+        fromUserId: "bob",
+        toUserId: "alice",
+        kind: "superlike",
         createdAt: serverTimestamp(),
       }),
     );
