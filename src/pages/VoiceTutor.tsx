@@ -7,6 +7,8 @@ import { useMicrophone } from '../hooks/useMicrophone';
 import { useLanguage } from '../lib/i18n';
 import { useAuthStore } from '../store/useAuthStore';
 import { ensureDemoSandboxReady } from '../lib/demoMode';
+import { VIEW_SHELL } from '../components/layout/pageLayout';
+import { cn } from '../lib/utils';
 
 type Phase = 'idle' | 'listening' | 'transcribing' | 'thinking' | 'speaking';
 interface Turn { id: string; role: 'user' | 'model'; content: string }
@@ -140,29 +142,33 @@ export default function VoiceTutor() {
 
   return (
     <div
-      className="h-full flex flex-col min-h-[calc(100dvh-8rem)] bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200/60 dark:border-slate-800/60 overflow-hidden"
+      className={cn(
+        VIEW_SHELL,
+        'bg-white dark:bg-slate-900 md:rounded-3xl md:shadow-sm md:border md:border-slate-200/60 dark:md:border-slate-800/60 overflow-hidden',
+        'max-md:pb-[calc(var(--mobile-tab-h)+env(safe-area-inset-bottom,0px))]',
+      )}
       data-testid="voice-tutor-page"
     >
-      <header className="px-6 py-4 border-b border-slate-100 dark:border-slate-800/60 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="bg-gradient-to-br from-indigo-500 to-fuchsia-500 p-2.5 rounded-xl shadow-lg shadow-indigo-500/25">
+      <header className="px-3 sm:px-5 md:px-6 py-3 sm:py-4 border-b border-slate-100 dark:border-slate-800/60 flex items-center justify-between gap-2 shrink-0">
+        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+          <div className="bg-gradient-to-br from-indigo-500 to-fuchsia-500 p-2 sm:p-2.5 rounded-xl shadow-lg shadow-indigo-500/25 shrink-0">
             <AudioLines className="w-5 h-5 text-white" strokeWidth={1.5} />
           </div>
-          <div>
-            <h2 className="text-lg font-display font-bold text-slate-900 dark:text-white leading-none tracking-tight">
+          <div className="min-w-0">
+            <h2 className="text-base sm:text-lg font-display font-bold text-slate-900 dark:text-white leading-none tracking-tight truncate">
               {t('Voice Tutor', 'Φωνητικός Δάσκαλος')}
             </h2>
-            <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mt-1">
-              {t('Speak with Memora — powered by Whisper + neural TTS', 'Μίλα με τον Memora — Whisper + νευρωνικό TTS')}
+            <p className="text-[11px] sm:text-xs font-medium text-slate-500 dark:text-slate-400 mt-1 truncate">
+              {t('Speak with Memora — Gemini STT + TTS', 'Μίλα με τον Memora — Gemini STT + TTS')}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           <select
             data-testid="voice-select"
             value={voice}
             onChange={(e) => setVoice(e.target.value)}
-            className="text-xs font-medium px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 capitalize"
+            className="text-xs font-medium px-2.5 sm:px-3 py-2 min-h-10 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 capitalize"
             title={t('Choose the tutor voice', 'Επίλεξε φωνή δασκάλου')}
           >
             {VOICES.map((v) => <option key={v} value={v}>{v}</option>)}
@@ -172,7 +178,7 @@ export default function VoiceTutor() {
               onClick={reset}
               data-testid="voice-reset"
               title={t('Reset conversation', 'Επαναφορά συνομιλίας')}
-              className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-rose-600 hover:border-rose-200 dark:hover:border-rose-800 transition-colors"
+              className="touch-target w-10 h-10 flex items-center justify-center rounded-xl border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-rose-600 hover:border-rose-200 dark:hover:border-rose-800 transition-colors"
             >
               <RotateCcw className="w-4 h-4" />
             </button>
@@ -180,13 +186,13 @@ export default function VoiceTutor() {
         </div>
       </header>
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 bg-slate-50/40 dark:bg-slate-950/30">
+      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-3 sm:p-5 md:p-6 space-y-3 sm:space-y-4 bg-slate-50/40 dark:bg-slate-950/30">
         {turns.length === 0 && !transcript && (
-          <div className="flex flex-col items-center justify-center h-full min-h-[240px] text-center gap-3">
-            <div className="w-16 h-16 rounded-2xl bg-indigo-50 dark:bg-indigo-900/20 border-2 border-indigo-100 dark:border-indigo-800/40 flex items-center justify-center">
-              <Volume2 className="w-8 h-8 text-indigo-500" strokeWidth={1.5} />
+          <div className="flex flex-col items-center justify-center h-full min-h-[200px] sm:min-h-[240px] text-center gap-3 px-2">
+            <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-indigo-50 dark:bg-indigo-900/20 border-2 border-indigo-100 dark:border-indigo-800/40 flex items-center justify-center">
+              <Volume2 className="w-7 h-7 sm:w-8 sm:h-8 text-indigo-500" strokeWidth={1.5} />
             </div>
-            <h3 className="text-lg font-display font-bold text-slate-900 dark:text-white tracking-tight">
+            <h3 className="text-base sm:text-lg font-display font-bold text-slate-900 dark:text-white tracking-tight">
               {t('Have a conversation, out loud', 'Κάνε μια συνομιλία, φωναχτά')}
             </h3>
             <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm leading-relaxed">
@@ -211,7 +217,7 @@ export default function VoiceTutor() {
               }`}>
                 {turn.role === 'model' ? <Sparkles className="w-3.5 h-3.5" strokeWidth={1.5} /> : <User className="w-3.5 h-3.5" strokeWidth={1.5} />}
               </div>
-              <div className={`px-4 py-3 rounded-2xl max-w-[85%] text-sm leading-relaxed ${
+              <div className={`px-3.5 sm:px-4 py-2.5 sm:py-3 rounded-2xl max-w-[min(90%,28rem)] sm:max-w-[85%] text-sm leading-relaxed ${
                 turn.role === 'user'
                   ? 'bg-slate-900 dark:bg-indigo-600 text-white rounded-tr-sm'
                   : 'bg-white dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-700/60 text-slate-800 dark:text-slate-200 rounded-tl-sm'
@@ -223,14 +229,14 @@ export default function VoiceTutor() {
         </AnimatePresence>
 
         {transcript && phase !== 'speaking' && (
-          <div className="text-center text-sm text-slate-400 dark:text-slate-500 italic" data-testid="live-transcript">
+          <div className="text-center text-sm text-slate-400 dark:text-slate-500 italic px-2" data-testid="live-transcript">
             “{transcript}”
           </div>
         )}
       </div>
 
       {/* Voice control dock */}
-      <div className="p-8 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800/60 flex flex-col items-center gap-4">
+      <div className="px-4 pt-4 pb-5 sm:p-6 md:p-8 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800/60 flex flex-col items-center gap-3 sm:gap-4 shrink-0">
         <div className="relative flex items-center justify-center" data-testid="voice-status" aria-live="polite">
           <AnimatePresence>
             {(phase === 'listening' || phase === 'speaking') && (
@@ -239,7 +245,7 @@ export default function VoiceTutor() {
                 animate={{ scale: [1, 1.35, 1], opacity: [0.5, 0.15, 0.5] }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
-                className="absolute w-24 h-24 rounded-full"
+                className="absolute w-20 h-20 sm:w-24 sm:h-24 rounded-full"
                 style={{ background: 'linear-gradient(to right, #4f46e5, #ec4899, #8b5cf6)' }}
               />
             )}
@@ -250,7 +256,7 @@ export default function VoiceTutor() {
             disabled={isBusy}
             data-testid="voice-mic-button"
             aria-label={statusText}
-            className={`relative z-10 w-20 h-20 rounded-full flex items-center justify-center shadow-xl transition-colors ${
+            className={`relative z-10 w-[4.5rem] h-[4.5rem] sm:w-20 sm:h-20 rounded-full flex items-center justify-center shadow-xl transition-colors touch-manipulation ${
               phase === 'listening'
                 ? 'bg-rose-500 text-white'
                 : phase === 'speaking'
@@ -267,7 +273,7 @@ export default function VoiceTutor() {
           </motion.button>
         </div>
         {phase === 'speaking' ? <SoundWaves /> : (
-          <p className="text-sm font-medium text-slate-500 dark:text-slate-400 h-8 flex items-center" data-testid="voice-status-text">
+          <p className="text-xs sm:text-sm font-medium text-slate-500 dark:text-slate-400 min-h-8 flex items-center text-center px-4" data-testid="voice-status-text">
             {statusText}
           </p>
         )}

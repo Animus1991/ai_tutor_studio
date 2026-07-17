@@ -666,7 +666,7 @@ export default function CollabRoom() {
   };
 
   return (
-    <div className="min-h-[calc(100dvh-3.5rem)] flex flex-col xl:flex-row gap-6 pb-6 w-full">
+    <div className="min-h-[calc(100dvh-4rem)] max-md:pb-[calc(var(--mobile-tab-h)+env(safe-area-inset-bottom,0px))] flex flex-col xl:flex-row gap-3 sm:gap-4 xl:gap-6 p-2 sm:p-3 md:p-4 xl:p-0 w-full">
       <GoogleOAuthConsentModal
         open={oauthModalOpen}
         scopes={pendingOauthScopes}

@@ -187,39 +187,39 @@ export default function Teacher() {
   }
 
   return (
-    <div className="space-y-6" data-testid="teacher-page">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-display font-bold text-slate-900 dark:text-white tracking-tight">{t('Teacher Dashboard', 'Πίνακας Εκπαιδευτικού')}</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
+    <div className="space-y-4 sm:space-y-6 max-w-6xl mx-auto" data-testid="teacher-page">
+      <div className="ux-page-header">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-display font-bold text-slate-900 dark:text-white tracking-tight">{t('Teacher Dashboard', 'Πίνακας Εκπαιδευτικού')}</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
             {isDemoMode
               ? t('Demo sandbox — sample class with live UI (sign in for real Firestore classes).',
                   'Demo sandbox — δείγμα τάξης με ζωντανό UI (σύνδεση για πραγματικές τάξεις Firestore).')
               : t('Class analytics, mastery heatmap and pending reviews.', 'Ανάλυση τάξης, θερμικός χάρτης κατάκτησης & εκκρεμείς επαναλήψεις.')}
           </p>
         </div>
-        <button onClick={() => void refresh()} data-testid="teacher-refresh" className="flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800">
+        <button onClick={() => void refresh()} data-testid="teacher-refresh" className="touch-target inline-flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 shrink-0">
           <RefreshCw className="w-4 h-4" /> {t('Refresh', 'Ανανέωση')}
         </button>
       </div>
 
       {/* Class controls */}
-      <div className="grid md:grid-cols-3 gap-3">
-        <div className="md:col-span-1 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/60 dark:border-slate-800/60 p-4 shadow-sm space-y-3">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="md:col-span-1 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/60 dark:border-slate-800/60 p-3.5 sm:p-4 shadow-sm space-y-3">
           <div className="flex gap-2">
-            <input data-testid="new-class-input" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder={t('New class name', 'Όνομα νέας τάξης')} className="flex-1 text-sm px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white" />
-            <button data-testid="create-class-btn" onClick={() => void handleCreate()} className="px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold flex items-center gap-1"><Plus className="w-4 h-4" /></button>
+            <input data-testid="new-class-input" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder={t('New class name', 'Όνομα νέας τάξης')} className="flex-1 min-w-0 text-sm px-3 py-2.5 min-h-11 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white" />
+            <button data-testid="create-class-btn" aria-label={t('Create class', 'Δημιουργία τάξης')} onClick={() => void handleCreate()} className="touch-target w-11 h-11 shrink-0 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold inline-flex items-center justify-center"><Plus className="w-4 h-4" /></button>
           </div>
           <div className="flex gap-2">
-            <input data-testid="join-code-input" value={code} onChange={(e) => setCode(e.target.value)} placeholder={t('Join code', 'Κωδικός εγγραφής')} className="flex-1 text-sm px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white uppercase" />
-            <button data-testid="join-class-btn" onClick={() => void handleJoin()} className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold flex items-center gap-1"><LogIn className="w-4 h-4" /></button>
+            <input data-testid="join-code-input" value={code} onChange={(e) => setCode(e.target.value)} placeholder={t('Join code', 'Κωδικός εγγραφής')} className="flex-1 min-w-0 text-sm px-3 py-2.5 min-h-11 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white uppercase" />
+            <button data-testid="join-class-btn" aria-label={t('Join class', 'Εγγραφή στην τάξη')} onClick={() => void handleJoin()} className="touch-target w-11 h-11 shrink-0 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold inline-flex items-center justify-center"><LogIn className="w-4 h-4" /></button>
           </div>
         </div>
-        <div className="md:col-span-2 flex flex-wrap gap-2 items-start">
+        <div className="md:col-span-2 flex flex-wrap gap-2 items-start content-start">
           {classes.length === 0 && <p className="text-sm text-slate-400 p-2">{t('No classes yet — create one or join with a code.', 'Καμία τάξη ακόμη — δημιούργησε ή μπες με κωδικό.')}</p>}
           {classes.map((c) => (
             <button key={c.id} data-testid={`class-pill-${c.id}`} onClick={() => setSelected(c.id)}
-              className={`px-4 py-2 rounded-xl border text-sm font-medium transition-colors ${selected === c.id ? 'bg-indigo-50 dark:bg-indigo-900/30 border-indigo-200 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300' : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
+              className={`px-3.5 sm:px-4 py-2.5 min-h-11 rounded-xl border text-sm font-medium transition-colors touch-manipulation ${selected === c.id ? 'bg-indigo-50 dark:bg-indigo-900/30 border-indigo-200 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300' : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
               {c.name} <span className="text-xs opacity-60">· {c.memberCount} · {c.role === 'teacher' ? t('Teacher', 'Εκπ/κός') : t('Student', 'Μαθητής')}</span>
             </button>
           ))}

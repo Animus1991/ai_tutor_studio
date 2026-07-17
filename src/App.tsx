@@ -170,7 +170,7 @@ export default function App() {
 
   if (authBootstrapping) {
     return (
-      <div className="flex h-screen w-full items-center justify-center bg-slate-50 dark:bg-slate-900">
+      <div className="flex min-h-dvh w-full items-center justify-center bg-slate-50 dark:bg-slate-900 pt-safe pb-safe">
         <p className="text-sm text-slate-500 dark:text-slate-400">Loading Memora…</p>
       </div>
     );
@@ -178,22 +178,22 @@ export default function App() {
 
   if (needsAuth) {
     return (
-      <div className="flex h-screen w-full items-center justify-center bg-slate-50 dark:bg-slate-900">
+      <div className="flex min-h-dvh w-full items-center justify-center bg-gradient-to-b from-slate-50 via-indigo-50/40 to-slate-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 px-4 py-8 pt-safe pb-safe">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white dark:bg-slate-800 p-6 md:p-8 rounded-2xl md:rounded-3xl shadow-xl max-w-md w-full text-center border border-slate-100 dark:border-slate-700"
+          className="bg-white/95 dark:bg-slate-800/95 backdrop-blur p-6 sm:p-8 rounded-2xl sm:rounded-3xl shadow-xl max-w-md w-full text-center border border-slate-100 dark:border-slate-700"
         >
-          <h1 className="text-2xl md:text-3xl font-display font-bold text-slate-900 dark:text-white mb-2">
+          <h1 className="text-2xl sm:text-3xl font-display font-bold text-slate-900 dark:text-white mb-2">
             Memora
           </h1>
-          <p className="text-slate-500 dark:text-slate-400 mb-6">
+          <p className="text-sm sm:text-base text-slate-500 dark:text-slate-400 mb-6 leading-relaxed">
             Sign in to access your AI tutoring workspace, or try the demo locally without Firebase.
           </p>
           <button
             onClick={handleEnterDemo}
             disabled={isEnteringDemo}
-            className="w-full mb-3 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl px-4 py-3 font-semibold transition-colors shadow-sm disabled:opacity-50"
+            className="w-full mb-3 min-h-12 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl px-4 py-3 font-semibold transition-colors shadow-sm disabled:opacity-50 touch-manipulation"
           >
             <Sparkles className="w-5 h-5" />
             {isEnteringDemo ? 'Loading demo…' : 'Try Demo Sandbox'}
@@ -252,9 +252,9 @@ export default function App() {
         <PwaInstallBanner />
         <QuickAddModal />
         <PostSessionModal />
-        <div className="md:contents fixed bottom-16 left-0 right-0 z-40 flex items-center justify-between px-4 py-2 bg-white/90 dark:bg-slate-900/90 backdrop-blur border-t border-slate-200 dark:border-slate-800 md:bg-transparent md:backdrop-blur-none md:border-none md:p-0 pointer-events-auto">
-          <div className="md:contents"><AudioController /></div>
-          <div className="md:contents"><TimerManager /></div>
+        <div className="md:contents fixed bottom-[calc(var(--mobile-tab-h)+env(safe-area-inset-bottom,0px))] left-0 right-0 z-40 flex items-center justify-between gap-2 px-3 py-2 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-t border-slate-200/80 dark:border-slate-800 md:static md:bg-transparent md:backdrop-blur-none md:border-none md:p-0 pointer-events-auto">
+          <div className="md:contents min-w-0 flex-1"><AudioController /></div>
+          <div className="md:contents shrink-0"><TimerManager /></div>
         </div>
         <BrowserRouter>
           <DemoSandboxBanner />

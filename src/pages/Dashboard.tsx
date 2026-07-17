@@ -132,7 +132,7 @@ export default function Dashboard() {
 
   const blocks: Record<string, React.ReactNode> = {
     stats: (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <DailyStreak />
         <DailyGoalRing />
         
@@ -306,9 +306,9 @@ export default function Dashboard() {
   };
 
   return (
-    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: "easeOut" }} className="flex-1 overflow-y-auto relative">
-      <header className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-slate-200/60 dark:border-slate-800/60 sticky top-0 z-40 px-4 sm:px-6 py-3 sm:py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
+    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, ease: "easeOut" }} className="relative w-full">
+      <header className="ux-page-header mb-4 sm:mb-5">
+        <div className="min-w-0">
           <h1 className="text-xl sm:text-2xl font-display font-bold text-slate-900 dark:text-white tracking-tight">
             Dashboard
           </h1>
@@ -316,33 +316,56 @@ export default function Dashboard() {
             Welcome back! Here's your study overview.
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto">
           <button 
             onClick={handleDownloadReport}
             disabled={isExporting}
-            className="flex items-center gap-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 text-slate-700 dark:text-slate-200 px-4 py-2 rounded-lg font-medium text-sm transition-colors shadow-sm disabled:opacity-50"
+            className="touch-target flex-1 sm:flex-none inline-flex items-center justify-center gap-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 text-slate-700 dark:text-slate-200 px-3 sm:px-4 py-2.5 rounded-xl font-medium text-sm transition-colors shadow-sm disabled:opacity-50"
           >
             {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
             <span className="hidden sm:inline">{isExporting ? 'Exporting...' : 'Download Report'}</span>
           </button>
           <button 
             onClick={() => navigate('/agent')}
-            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium text-sm transition-colors shadow-sm"
+            className="touch-target flex-[1.4] sm:flex-none inline-flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-3 sm:px-4 py-2.5 rounded-xl font-medium text-sm transition-colors shadow-sm"
           >
             <Play className="w-3.5 h-3.5 fill-current" />
-            Quick Start Session
+            <span className="truncate">Quick Start</span>
           </button>
         </div>
       </header>
+
+      {/* Mobile/tablet quick jumps */}
+      <div className="ux-chip-scroll mb-4 md:hidden -mx-1 px-1">
+        {[
+          { to: '/voice', label: 'Voice', icon: Brain },
+          { to: '/library', label: 'Library', icon: Upload },
+          { to: '/tasks', label: 'Tasks', icon: CheckCircle2 },
+          { to: '/collab', label: 'Collab', icon: Users },
+          { to: '/workspace', label: 'Workspace', icon: Calendar },
+        ].map((item) => {
+          const Icon = item.icon;
+          return (
+            <Link
+              key={item.to}
+              to={item.to}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 min-h-10 rounded-full bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-sm"
+            >
+              <Icon className="w-3.5 h-3.5 text-indigo-500" />
+              {item.label}
+            </Link>
+          );
+        })}
+      </div>
       
-      <div id="dashboard-content" className="p-4 sm:p-6 max-w-7xl mx-auto min-h-screen">
+      <div id="dashboard-content" className="max-w-7xl mx-auto">
         <DragDropContext onDragEnd={handleDragEnd}>
           <Droppable droppableId="dashboard-sections">
             {(provided) => (
               <div 
                 {...provided.droppableProps}
                 ref={provided.innerRef}
-                className="space-y-6"
+                className="space-y-4 sm:space-y-6"
               >
                 {layoutOrder.map((blockId, index) => (
                   <Draggable key={blockId} draggableId={blockId} index={index}>
@@ -354,7 +377,7 @@ export default function Dashboard() {
                       >
                         <div 
                           {...provided.dragHandleProps}
-                          className={`absolute -left-3 top-1/2 -translate-y-1/2 p-1 text-slate-300 hover:text-slate-600 dark:text-slate-700 dark:hover:text-slate-400 cursor-grab active:cursor-grabbing transition-colors opacity-0 hover:opacity-100 lg:opacity-100 ${snapshot.isDragging ? 'opacity-100' : ''}`}
+                          className={`absolute -left-3 top-1/2 -translate-y-1/2 p-1 text-slate-300 hover:text-slate-600 dark:text-slate-700 dark:hover:text-slate-400 cursor-grab active:cursor-grabbing transition-colors opacity-0 hover:opacity-100 lg:opacity-100 hidden md:block ${snapshot.isDragging ? 'opacity-100' : ''}`}
                           title="Drag to reorder"
                         >
                           <GripHorizontal className="w-5 h-5" />

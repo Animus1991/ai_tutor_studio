@@ -479,7 +479,7 @@ Format responses nicely using markdown structure if helpful.${ragContext}`;
   };
 
   return (
-    <div className="h-full flex flex-col min-h-[calc(100dvh-8rem)] bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200/60 dark:border-slate-800/60 overflow-hidden relative transition-colors duration-300 w-full">
+    <div className="flex flex-col w-full min-h-0 h-[calc(100dvh-4rem-env(safe-area-inset-top,0px))] md:h-[calc(100dvh-4rem)] max-md:pb-[calc(var(--mobile-tab-h)+env(safe-area-inset-bottom,0px))] bg-white dark:bg-slate-900 md:rounded-3xl md:shadow-sm md:border md:border-slate-200/60 dark:md:border-slate-800/60 overflow-hidden relative transition-colors duration-300">
       
       <AnimatePresence>
         {!hasSelectedMode && (
@@ -487,26 +487,29 @@ Format responses nicely using markdown structure if helpful.${ragContext}`;
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-6"
+            className="absolute inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-6"
             role="dialog"
             aria-modal="true"
             aria-labelledby="agent-mode-title"
           >
             <motion.div 
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl p-6 max-w-xl w-full border border-slate-200/60 dark:border-slate-800/60"
+              initial={{ scale: 0.98, opacity: 0, y: 24 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.98, opacity: 0, y: 24 }}
+              className="bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-2xl shadow-2xl p-4 sm:p-6 max-w-xl w-full max-h-[min(92dvh,720px)] overflow-y-auto border border-slate-200/60 dark:border-slate-800/60 pb-[max(1rem,env(safe-area-inset-bottom))]"
             >
-              <div className="text-center mb-6">
-                <div className="w-14 h-14 bg-gradient-to-br from-indigo-500 to-violet-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-indigo-500/30 animate-float">
-                  <Brain className="w-7 h-7 text-white" strokeWidth={1.5} />
+              <div className="flex justify-center sm:hidden pb-2" aria-hidden="true">
+                <div className="w-10 h-1 rounded-full bg-slate-200 dark:bg-slate-700" />
+              </div>
+              <div className="text-center mb-4 sm:mb-6">
+                <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-indigo-500 to-violet-600 rounded-2xl flex items-center justify-center mx-auto mb-3 sm:mb-4 shadow-lg shadow-indigo-500/30 animate-float">
+                  <Brain className="w-6 h-6 sm:w-7 sm:h-7 text-white" strokeWidth={1.5} />
                 </div>
-                <h2 id="agent-mode-title" className="text-xl font-display font-bold text-slate-900 dark:text-white mb-1.5">{t('Select Study Mode', 'Επιλογή Τρόπου Μελέτης')}</h2>
+                <h2 id="agent-mode-title" className="text-lg sm:text-xl font-display font-bold text-slate-900 dark:text-white mb-1.5">{t('Select Study Mode', 'Επιλογή Τρόπου Μελέτης')}</h2>
                 <p className="text-sm text-slate-500 dark:text-slate-400">{t('Choose how Memora should guide your session.', 'Επίλεξε πώς ο Memora θα καθοδηγήσει την περίοδό σου.')}</p>
               </div>
               
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-6 stagger">
+              <div className="grid grid-cols-1 min-[420px]:grid-cols-2 gap-2 mb-4 sm:mb-6 stagger">
                 {MODES.map(mode => {
                   const ModeIcon = mode.icon;
                   const isSelected = activeMode.id === mode.id;
@@ -514,7 +517,7 @@ Format responses nicely using markdown structure if helpful.${ragContext}`;
                     <button
                       key={mode.id}
                       onClick={() => setActiveMode(mode)}
-                      className={`w-full text-left px-4 py-3 rounded-xl border-2 transition-all flex items-start gap-3 animate-fade-in-up ${
+                      className={`w-full text-left px-3.5 sm:px-4 py-3 min-h-[3.5rem] rounded-xl border-2 transition-all flex items-start gap-3 animate-fade-in-up touch-manipulation ${
                         isSelected
                           ? `${mode.border} ${mode.bg} shadow-sm`
                           : 'border-slate-200 dark:border-slate-700/60 hover:border-slate-300 dark:hover:border-slate-600 bg-transparent'
@@ -523,9 +526,9 @@ Format responses nicely using markdown structure if helpful.${ragContext}`;
                       <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${isSelected ? mode.bg : 'bg-slate-100 dark:bg-slate-800'}`}>
                         <ModeIcon className={`w-4 h-4 ${isSelected ? mode.color : 'text-slate-400'}`} strokeWidth={1.5} />
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <div className={`text-sm font-bold ${isSelected ? 'text-slate-900 dark:text-white' : 'text-slate-700 dark:text-slate-300'}`}>{modeName(mode.id)}</div>
-                        <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">{modeDesc(mode.id)}</div>
+                        <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed line-clamp-2">{modeDesc(mode.id)}</div>
                       </div>
                     </button>
                   );
@@ -534,7 +537,7 @@ Format responses nicely using markdown structure if helpful.${ragContext}`;
               
               <button 
                 onClick={() => void handleStartSession()}
-                className="w-full py-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-sm text-white rounded-xl font-semibold transition-all shadow-md shadow-indigo-500/25 hover:shadow-lg hover:shadow-indigo-500/30"
+                className="w-full min-h-12 py-3 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-sm text-white rounded-xl font-semibold transition-all shadow-md shadow-indigo-500/25 hover:shadow-lg hover:shadow-indigo-500/30 touch-manipulation"
               >
                 {t('Start Session', 'Έναρξη Περιόδου')}
               </button>
@@ -544,19 +547,19 @@ Format responses nicely using markdown structure if helpful.${ragContext}`;
       </AnimatePresence>
 
       {/* Header */}
-      <header className="px-6 py-4 border-b border-slate-100 dark:border-slate-800/60 flex items-center justify-between bg-white dark:bg-slate-900 z-20 transition-colors duration-300">
-        <div className="flex items-center gap-4">
-          <div className="relative">
-            <div className="bg-slate-900 dark:bg-indigo-600 p-2.5 rounded-xl shadow-lg shadow-indigo-500/20">
+      <header className="px-3 sm:px-5 md:px-6 py-3 sm:py-4 border-b border-slate-100 dark:border-slate-800/60 flex items-center justify-between gap-2 bg-white dark:bg-slate-900 z-20 transition-colors duration-300 shrink-0">
+        <div className="flex items-center gap-2.5 sm:gap-4 min-w-0">
+          <div className="relative shrink-0">
+            <div className="bg-slate-900 dark:bg-indigo-600 p-2 sm:p-2.5 rounded-xl shadow-lg shadow-indigo-500/20">
               <Bot className="w-5 h-5 text-white" strokeWidth={1.5} />
             </div>
             <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-emerald-500 rounded-full border-2 border-white dark:border-slate-900"></div>
           </div>
-          <div>
-            <h2 className="text-lg font-display font-bold text-slate-900 dark:text-white leading-none">{t('Memora Agent', 'Memora Agent')}</h2>
+          <div className="min-w-0">
+            <h2 className="text-base sm:text-lg font-display font-bold text-slate-900 dark:text-white leading-none truncate">{t('Memora Agent', 'Memora Agent')}</h2>
             <div className="flex items-center gap-1.5 mt-1">
-              <Activity className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" />
-              <p className="text-xs font-medium text-slate-500 dark:text-slate-400">{t('Adaptive Engine Active', 'Προσαρμοστική Μηχανή Ενεργή')}</p>
+              <Activity className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 shrink-0" />
+              <p className="text-[11px] sm:text-xs font-medium text-slate-500 dark:text-slate-400 truncate">{t('Adaptive Engine Active', 'Προσαρμοστική Μηχανή Ενεργή')}</p>
             </div>
           </div>
         </div>
