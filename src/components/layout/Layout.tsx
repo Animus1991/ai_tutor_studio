@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { BookOpen, CheckSquare, MessageSquare, Settings, BrainCircuit, Bell, Menu, Users, Shield, LayoutDashboard, Calendar as CalendarIcon, HelpCircle, Type, Sparkles, Upload, Zap, Sun, Moon, Mic, GraduationCap, UsersRound } from 'lucide-react';
+import { BookOpen, CheckSquare, MessageSquare, Settings, BrainCircuit, Bell, Menu, Users, Shield, LayoutDashboard, Calendar as CalendarIcon, HelpCircle, Type, Sparkles, Upload, Zap, Sun, Moon, Mic, GraduationCap, UsersRound, Timer } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../../store/useStore';
@@ -87,6 +87,7 @@ export default function Layout() {
     { name: t('Voice Tutor', 'Φωνητικός Βοηθός'), subtitle: t('Speak with Memora', 'Μίλα με τον Memora'), path: '/voice', icon: Mic },
     { name: t('Collab Space', 'Συνεργασία'), subtitle: t('Work with peers', 'Συνεργασία'), path: '/collab', icon: Users },
     { name: t('Study Circles', 'Κύκλοι Μελέτης'), subtitle: t('Invite-only peer groups', 'Ομάδες μόνο με πρόσκληση'), path: '/circles', icon: UsersRound },
+    { name: t('Study Match', 'Study Match'), subtitle: t('Focus buddy by topic', 'Focus buddy ανά θέμα'), path: '/match', icon: Timer },
     { name: t('Workspace', 'Χώρος Εργασίας'), subtitle: t('Deep study tools', 'Εργαλεία μελέτης'), path: '/workspace', icon: CalendarIcon },
   ];
 
@@ -366,7 +367,7 @@ export default function Layout() {
           ].map((item) => {
             const isMore = item.path === '__more__';
             const isActive = isMore
-              ? isMobileMenuOpen || ['/collab', '/workspace', '/teacher', '/admin', '/tasks', '/circles'].includes(location.pathname)
+              ? isMobileMenuOpen || ['/collab', '/workspace', '/teacher', '/admin', '/tasks', '/circles', '/match'].includes(location.pathname) || location.pathname.startsWith('/match/')
               : location.pathname === item.path;
             const Icon = item.icon;
             const tabClass = 'relative flex flex-col items-center justify-center w-full min-h-[48px] touch-manipulation select-none';

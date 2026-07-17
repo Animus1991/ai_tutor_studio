@@ -382,6 +382,27 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Study Match — queue/blocks are Admin-only; members may read own session docs
+    match /matchQueue/{userId} {
+      allow read: if isSignedIn() && isVerified() && request.auth.uid == userId;
+      allow write: if false;
+    }
+
+    match /matchSessions/{sessionId} {
+      allow read: if isSignedIn() && isVerified() && isValidId(sessionId) &&
+                     resource.data.memberIds is list &&
+                     request.auth.uid in resource.data.memberIds;
+      allow create, update, delete: if false;
+
+      match /reports/{reportId} {
+        allow read, write: if false;
+      }
+    }
+
+    match /matchBlocks/{blockId} {
+      allow read, write: if false;
+    }
+
     // Platform audit — written only via Firebase Admin SDK on the server
     match /platform_audit/{eventId} {
       allow read, write: if false;

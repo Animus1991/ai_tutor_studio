@@ -31,6 +31,7 @@
 | Circle↔Collab ACL sync + email normalization | Live |
 | `/api/library` + `/api/rag/*` + room-report triage | Live |
 | Yjs room-id length/charset guard | Live |
+| **Study Match** (topic + duration focus buddy) | Live — see `STUDY_MATCH.md` |
 
 ## Google / Firebase — production checklist
 

@@ -11,5 +11,5 @@ export const VIEW_SHELL =
   'flex flex-col w-full min-h-0 h-[calc(100dvh-4rem-env(safe-area-inset-top,0px))] md:h-[calc(100dvh-4rem)] max-md:rounded-none max-md:border-x-0 max-md:border-b-0';
 
 export function isFullBleedRoute(pathname: string): boolean {
-  return /^\/(study|collab|voice|agent)$/.test(pathname);
+  return /^\/(study|collab|voice|agent|match\/.+)$/.test(pathname);
 }

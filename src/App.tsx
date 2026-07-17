@@ -19,6 +19,8 @@ const StudyWorkspacePage = lazy(() => import("./pages/StudyWorkspacePage"));
 const VoiceTutor = lazy(() => import("./pages/VoiceTutor"));
 const Teacher = lazy(() => import("./pages/Teacher"));
 const StudyCircles = lazy(() => import("./pages/StudyCircles"));
+const StudyMatch = lazy(() => import("./pages/StudyMatch"));
+const MatchSession = lazy(() => import("./pages/MatchSession"));
 const OAuthCallback = lazy(() => import("./pages/OAuthCallback"));
 import ThemeProvider from "./components/ThemeProvider";
 import TimerManager from "./components/TimerManager";
@@ -321,6 +323,22 @@ export default function App() {
                 element={
                   <Suspense fallback={<RouteFallback />}>
                     <StudyCircles />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="match"
+                element={
+                  <Suspense fallback={<RouteFallback />}>
+                    <StudyMatch />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="match/:sessionId"
+                element={
+                  <Suspense fallback={<RouteFallback />}>
+                    <MatchSession />
                   </Suspense>
                 }
               />

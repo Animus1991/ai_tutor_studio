@@ -21,6 +21,7 @@ Memora is a **learning product**, not a general social network. Peer features ar
 | Message reports | `rooms/{id}/reports` | Create by members; read via Admin SDK `GET /api/admin/room-reports` |
 | Kudos | `rooms/{id}/kudos` | Members of room |
 | Presence activity | Yjs awareness | Room peers only (doc id ≥ 8 chars enforced server-side) |
+| Study Match | `/match`, `matchQueue` / `matchSessions` | Server matchmaking by topic+duration; dual Meet consent; report blocks rematch |
 
 ## Explicitly **not** shipped
 

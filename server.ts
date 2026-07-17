@@ -49,6 +49,18 @@ import {
   ragIndexHandler,
   ragQueryHandler,
 } from './server/libraryRag.js';
+import {
+  createMeetHandler,
+  enqueueMatchHandler,
+  getSessionHandler,
+  leaveQueueHandler,
+  leaveSessionHandler,
+  matchStatusHandler,
+  meetConsentHandler,
+  postMessageHandler,
+  reportSessionHandler,
+  saveNotesHandler,
+} from './server/studyMatch.js';
 const _require = createRequire(typeof import.meta !== 'undefined' && import.meta.url ? import.meta.url : 'file://' + process.cwd() + '/server.ts');
 const pdfParse = _require('pdf-parse');
 
@@ -1623,6 +1635,78 @@ Use pixel coordinates relative to the image. Include 1-12 labels. confidence is 
       await reportProgressHandler(req, res);
     } catch (error) {
       sendRouteError(res, error, 'Progress Error', 'Failed to report progress');
+    }
+  });
+
+  // Study Match — server-side focus-buddy matchmaking (no public queue)
+  app.post('/api/match/enqueue', async (req, res) => {
+    try {
+      await enqueueMatchHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Match Enqueue Error', 'Failed to join match queue');
+    }
+  });
+  app.delete('/api/match/queue', async (req, res) => {
+    try {
+      await leaveQueueHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Match Queue Error', 'Failed to leave match queue');
+    }
+  });
+  app.get('/api/match/status', async (req, res) => {
+    try {
+      await matchStatusHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Match Status Error', 'Failed to load match status');
+    }
+  });
+  app.get('/api/match/session/:sessionId', async (req, res) => {
+    try {
+      await getSessionHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Match Session Error', 'Failed to load session');
+    }
+  });
+  app.post('/api/match/session/:sessionId/leave', async (req, res) => {
+    try {
+      await leaveSessionHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Match Leave Error', 'Failed to leave session');
+    }
+  });
+  app.post('/api/match/session/:sessionId/report', async (req, res) => {
+    try {
+      await reportSessionHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Match Report Error', 'Failed to submit report');
+    }
+  });
+  app.post('/api/match/session/:sessionId/meet-consent', async (req, res) => {
+    try {
+      await meetConsentHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Meet Consent Error', 'Failed to update Meet consent');
+    }
+  });
+  app.post('/api/match/session/:sessionId/meet', async (req, res) => {
+    try {
+      await createMeetHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Match Meet Error', 'Failed to create Meet link');
+    }
+  });
+  app.patch('/api/match/session/:sessionId/notes', async (req, res) => {
+    try {
+      await saveNotesHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Match Notes Error', 'Failed to save notes');
+    }
+  });
+  app.post('/api/match/session/:sessionId/message', async (req, res) => {
+    try {
+      await postMessageHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Match Chat Error', 'Failed to send message');
     }
   });
 

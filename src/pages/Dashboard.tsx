@@ -342,6 +342,7 @@ export default function Dashboard() {
           { to: '/library', label: 'Library', icon: Upload },
           { to: '/tasks', label: 'Tasks', icon: CheckCircle2 },
           { to: '/circles', label: 'Circles', icon: Users },
+          { to: '/match', label: 'Match', icon: Users },
           { to: '/collab', label: 'Collab', icon: Users },
           { to: '/workspace', label: 'Workspace', icon: Calendar },
         ].map((item) => {
