@@ -34,6 +34,56 @@ function Kpi({ icon: Icon, label, value, tint }: { icon: typeof Users; label: st
   );
 }
 
+const DEMO_CLASS: ClassSummary = {
+  id: 'demo-chem',
+  name: 'Demo Chemistry',
+  teacherName: 'You',
+  role: 'teacher',
+  memberCount: 3,
+  joinCode: 'DEMO01',
+};
+
+const DEMO_DETAIL: ClassDetail = {
+  id: 'demo-chem',
+  name: 'Demo Chemistry',
+  joinCode: 'DEMO01',
+  role: 'teacher',
+  subjects: ['Acids', 'Bonds', 'Stoichiometry'],
+  aggregates: { studentCount: 2, avgMastery: 78, totalDue: 17, activeCount: 2 },
+  students: [
+    {
+      userId: 'demo-s1',
+      name: 'Alex',
+      email: 'alex@demo.local',
+      masteryPct: 82,
+      cardsDue: 5,
+      streak: 4,
+      studyMinutes: 120,
+      subjects: [
+        { name: 'Acids', mastery: 88 },
+        { name: 'Bonds', mastery: 76 },
+        { name: 'Stoichiometry', mastery: 81 },
+      ],
+      updatedAt: new Date().toISOString(),
+    },
+    {
+      userId: 'demo-s2',
+      name: 'Maria',
+      email: 'maria@demo.local',
+      masteryPct: 74,
+      cardsDue: 12,
+      streak: 2,
+      studyMinutes: 90,
+      subjects: [
+        { name: 'Acids', mastery: 70 },
+        { name: 'Bonds', mastery: 68 },
+        { name: 'Stoichiometry', mastery: 84 },
+      ],
+      updatedAt: new Date().toISOString(),
+    },
+  ],
+};
+
 export default function Teacher() {
   const { t } = useLanguage();
   const isDemoMode = useAuthStore((s) => s.isDemoMode);
@@ -46,27 +96,51 @@ export default function Teacher() {
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const authed = !!user && !isDemoMode;
+  const authed = isDemoMode || !!user;
 
   const refresh = useCallback(async () => {
     if (!authed) return;
+    if (isDemoMode) {
+      setClasses([DEMO_CLASS]);
+      setSelected((prev) => prev ?? DEMO_CLASS.id);
+      return;
+    }
     try {
       const { classes: cs } = await listClasses();
       setClasses(cs);
       if (cs.length && !selected) setSelected(cs[0].id);
     } catch { /* not authed */ }
-  }, [authed, selected]);
+  }, [authed, isDemoMode, selected]);
 
   useEffect(() => { void refresh(); }, [refresh]);
 
   useEffect(() => {
     if (!selected) { setDetail(null); return; }
+    if (isDemoMode) {
+      setDetail(DEMO_DETAIL);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     classDetail(selected).then(setDetail).catch(() => setDetail(null)).finally(() => setLoading(false));
-  }, [selected]);
+  }, [selected, isDemoMode]);
 
   const handleCreate = async () => {
     if (!newName.trim()) return;
+    if (isDemoMode) {
+      const c: ClassSummary = {
+        id: `demo-${Date.now()}`,
+        name: newName.trim(),
+        role: 'teacher',
+        memberCount: 1,
+        joinCode: Math.random().toString(36).slice(2, 8).toUpperCase(),
+      };
+      setClasses((prev) => [...prev, c]);
+      setNewName('');
+      setSelected(c.id);
+      toast.success(t('Class created (demo)', 'Η τάξη δημιουργήθηκε (demo)'));
+      return;
+    }
     try {
       const c = await createClass(newName.trim());
       setNewName('');
@@ -78,6 +152,10 @@ export default function Teacher() {
 
   const handleJoin = async () => {
     if (!code.trim()) return;
+    if (isDemoMode) {
+      toast.info(t('Join requires a signed-in account outside demo.', 'Η εγγραφή απαιτεί λογαριασμό εκτός demo.'));
+      return;
+    }
     try {
       const c = await joinClass(code.trim());
       setCode('');
@@ -113,7 +191,12 @@ export default function Teacher() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-display font-bold text-slate-900 dark:text-white tracking-tight">{t('Teacher Dashboard', 'Πίνακας Εκπαιδευτικού')}</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400">{t('Class analytics, mastery heatmap and pending reviews.', 'Ανάλυση τάξης, θερμικός χάρτης κατάκτησης & εκκρεμείς επαναλήψεις.')}</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            {isDemoMode
+              ? t('Demo sandbox — sample class with live UI (sign in for real Firestore classes).',
+                  'Demo sandbox — δείγμα τάξης με ζωντανό UI (σύνδεση για πραγματικές τάξεις Firestore).')
+              : t('Class analytics, mastery heatmap and pending reviews.', 'Ανάλυση τάξης, θερμικός χάρτης κατάκτησης & εκκρεμείς επαναλήψεις.')}
+          </p>
         </div>
         <button onClick={() => void refresh()} data-testid="teacher-refresh" className="flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800">
           <RefreshCw className="w-4 h-4" /> {t('Refresh', 'Ανανέωση')}

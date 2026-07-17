@@ -41,7 +41,7 @@ import Onboarding from "./components/Onboarding";
 import { hasCompletedOnboarding } from "./lib/onboardingProfile";
 
 export default function App() {
-  const { needsAuth, setNeedsAuth, setUser, setAccessToken, enterDemoMode, isDemoMode } = useAuthStore();
+  const { needsAuth, setNeedsAuth, setUser, setAccessToken, setClaimRole, enterDemoMode, isDemoMode } = useAuthStore();
   const hydrateLibrary = useLibraryStore((s) => s.hydrate);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isEnteringDemo, setIsEnteringDemo] = useState(false);
@@ -54,9 +54,11 @@ export default function App() {
 
     void bootstrapAuth({
       onRedirectSuccess: (session) => {
-        void session.user.getIdToken().then((idToken) => {
+        void session.user.getIdToken().then(async (idToken) => {
+          const tokenResult = await session.user.getIdTokenResult();
           setUser(session.user);
           setAccessToken(idToken);
+          setClaimRole(tokenResult.claims.role);
           setNeedsAuth(false);
           toast.success('Signed in with Google');
         });
@@ -66,9 +68,12 @@ export default function App() {
         toast.error(describeAuthError(err));
       },
       onAuthSuccess: (user, token) => {
-        setUser(user);
-        setAccessToken(token);
-        setNeedsAuth(false);
+        void user.getIdTokenResult().then((tokenResult) => {
+          setUser(user);
+          setAccessToken(token);
+          setClaimRole(tokenResult.claims.role);
+          setNeedsAuth(false);
+        });
       },
       onAuthFailure: () => {
         // Demo flag may live in storage before enterDemoMode() runs in .then()
@@ -86,7 +91,15 @@ export default function App() {
       } else if (isDemoModeActive() && useAuthStore.getState().needsAuth) {
         enterDemoMode();
       } else if (isDemoModeActive()) {
-        useAuthStore.setState({ isDemoMode: true, needsAuth: false });
+        const roleParam = new URLSearchParams(window.location.search).get('role');
+        useAuthStore.setState({
+          isDemoMode: true,
+          needsAuth: false,
+          accessToken: useAuthStore.getState().accessToken || 'demo-token',
+          userRole: roleParam === 'student' || roleParam === 'admin' || roleParam === 'instructor'
+            ? roleParam
+            : 'instructor',
+        });
       }
 
       if (useAuthStore.getState().isDemoMode || isDemoModeActive()) {
@@ -99,7 +112,7 @@ export default function App() {
     });
 
     return () => unsubscribe();
-  }, [enterDemoMode, setUser, setAccessToken, setNeedsAuth, hydrateLibrary]);
+  }, [enterDemoMode, setUser, setAccessToken, setNeedsAuth, setClaimRole, hydrateLibrary]);
 
   // Check onboarding status after auth resolves (demo sandbox skips the wizard)
   useEffect(() => {
@@ -126,6 +139,8 @@ export default function App() {
       if (result) {
         setUser(result.user);
         if (result.accessToken) setAccessToken(result.accessToken);
+        const tokenResult = await result.user.getIdTokenResult();
+        setClaimRole(tokenResult.claims.role);
         setNeedsAuth(false);
       }
       // null → redirect in progress on localhost

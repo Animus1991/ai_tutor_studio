@@ -337,19 +337,47 @@ export default function Layout() {
         </div>
       </main>
 
-      {/* Mobile Bottom Navigation */}
+      {/* Mobile Bottom Navigation — includes Voice so upgrades are visible on phones */}
       {!isFocusMode && (
       <nav aria-label="Mobile Navigation" className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-900 border-t border-slate-200/60 dark:border-slate-800/60 z-30 pb-safe no-print">
-        <div className="flex items-center justify-around h-16 px-4">
+        <div className="flex items-center justify-around h-16 px-1">
           {[
-            { name: t('Dashboard', 'Πίνακας'), path: '/', icon: LayoutDashboard },
+            { name: t('Home', 'Αρχική'), path: '/', icon: LayoutDashboard },
             { name: t('Library', 'Βιβλιοθήκη'), path: '/library', icon: BookOpen },
-            { name: t('Tasks', 'Εργασίες'), path: '/tasks', icon: CheckSquare },
+            { name: t('Voice', 'Φωνή'), path: '/voice', icon: Mic },
             { name: t('Agent', 'Βοηθός'), path: '/agent', icon: MessageSquare },
+            { name: t('More', 'Άλλα'), path: '__more__', icon: Menu },
           ].map((item) => {
-            const isActive = location.pathname === item.path;
+            const isMore = item.path === '__more__';
+            const isActive = isMore
+              ? isMobileMenuOpen || ['/collab', '/workspace', '/teacher', '/admin', '/tasks'].includes(location.pathname)
+              : location.pathname === item.path;
             const Icon = item.icon;
-            
+
+            if (isMore) {
+              return (
+                <button
+                  key="more"
+                  type="button"
+                  onClick={() => setIsMobileMenuOpen(true)}
+                  aria-label={t('More pages', 'Περισσότερες σελίδες')}
+                  aria-expanded={isMobileMenuOpen}
+                  className="relative flex flex-col items-center justify-center w-full h-full"
+                >
+                  {isActive && (
+                    <motion.div
+                      layoutId="activeBottomNavIndicator"
+                      className="absolute inset-x-1 top-1.5 bottom-1.5 bg-indigo-50 dark:bg-indigo-900/30 rounded-xl -z-10 border border-indigo-100 dark:border-indigo-800/40"
+                      initial={false}
+                      transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                    />
+                  )}
+                  <Icon className={cn('w-5 h-5 mb-0.5 transition-all duration-200', isActive ? 'text-indigo-600 dark:text-indigo-400 scale-110' : 'text-slate-500 dark:text-slate-400')} strokeWidth={isActive ? 2 : 1.5} />
+                  <span className={cn('text-[10px] font-semibold transition-colors', isActive ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500 dark:text-slate-400')}>{item.name}</span>
+                </button>
+              );
+            }
+
             return (
               <Link
                 key={item.path}
@@ -360,13 +388,13 @@ export default function Layout() {
                 {isActive && (
                   <motion.div
                     layoutId="activeBottomNavIndicator"
-                    className="absolute inset-x-2 top-1.5 bottom-1.5 bg-indigo-50 dark:bg-indigo-900/30 rounded-xl -z-10 border border-indigo-100 dark:border-indigo-800/40"
+                    className="absolute inset-x-1 top-1.5 bottom-1.5 bg-indigo-50 dark:bg-indigo-900/30 rounded-xl -z-10 border border-indigo-100 dark:border-indigo-800/40"
                     initial={false}
                     transition={{ type: 'spring', stiffness: 400, damping: 30 }}
                   />
                 )}
-                <Icon className={cn('w-5 h-5 mb-1 transition-all duration-200', isActive ? 'text-indigo-600 dark:text-indigo-400 scale-110' : 'text-slate-500 dark:text-slate-400')} strokeWidth={isActive ? 2 : 1.5} />
-                <span className={cn('text-xs font-semibold transition-colors', isActive ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500 dark:text-slate-400')}>{item.name}</span>
+                <Icon className={cn('w-5 h-5 mb-0.5 transition-all duration-200', isActive ? 'text-indigo-600 dark:text-indigo-400 scale-110' : 'text-slate-500 dark:text-slate-400')} strokeWidth={isActive ? 2 : 1.5} />
+                <span className={cn('text-[10px] font-semibold transition-colors', isActive ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500 dark:text-slate-400')}>{item.name}</span>
               </Link>
             );
           })}
@@ -374,7 +402,7 @@ export default function Layout() {
       </nav>
       )}
 
-      {/* Mobile Settings Drawer overlay */}
+      {/* Mobile More drawer — full nav + role switcher */}
       <AnimatePresence>
         {isMobileMenuOpen && (
           <>
@@ -390,17 +418,55 @@ export default function Layout() {
               animate={{ y: 0 }} 
               exit={{ y: "100%" }}
               transition={{ type: "spring", damping: 25, stiffness: 300 }}
-              className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 rounded-t-2xl z-50 p-4 pb-8"
+              className="md:hidden fixed bottom-0 left-0 right-0 max-h-[80vh] overflow-y-auto bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 rounded-t-2xl z-50 p-4 pb-8"
             >
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-1">
+                <p className="px-2 pb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  {t('All pages', 'Όλες οι σελίδες')}
+                </p>
+                {navItems.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = location.pathname === item.path;
+                  return (
+                    <Link
+                      key={item.path}
+                      to={item.path}
+                      onClick={() => setIsMobileMenuOpen(false)}
+                      className={cn(
+                        'flex items-center gap-3 px-4 py-3 w-full rounded-xl font-medium transition-colors',
+                        isActive
+                          ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300'
+                          : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/50',
+                      )}
+                    >
+                      <Icon className="w-5 h-5" strokeWidth={1.5} />
+                      <span className="flex-1 text-left">{item.name}</span>
+                      <span className="text-[11px] text-slate-400 truncate max-w-[40%]">{item.subtitle}</span>
+                    </Link>
+                  );
+                })}
                 <button 
-                  onClick={() => setIsSettingsOpen(true)}
+                  onClick={() => { setIsSettingsOpen(true); setIsMobileMenuOpen(false); }}
                   className="flex items-center gap-3 px-4 py-3 w-full rounded-xl font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
                 >
                   <Settings className="w-5 h-5" strokeWidth={1.5} />
                   <span>{t('Settings', 'Ρυθμίσεις')}</span>
                 </button>
-                <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700/50 mt-2">
+                <div className="flex items-center gap-2 px-4 py-3 mt-1 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700/50">
+                  <Shield className="w-4 h-4 text-indigo-500 shrink-0" />
+                  <label className="text-xs font-medium text-slate-500 dark:text-slate-400 shrink-0">{t('Role', 'Ρόλος')}</label>
+                  <select
+                    value={userRole}
+                    onChange={handleRoleChange}
+                    aria-label={t('Select user role', 'Επιλογή ρόλου')}
+                    className="flex-1 bg-transparent text-sm font-medium text-slate-700 dark:text-slate-300 outline-none"
+                  >
+                    <option value="student">{t('Student', 'Μαθητής')}</option>
+                    <option value="instructor">{t('Instructor', 'Εκπαιδευτής')}</option>
+                    <option value="admin">{t('Admin', 'Διαχειριστής')}</option>
+                  </select>
+                </div>
+                <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700/50 mt-1">
                   <AuthUserMenu variant="sidebar" />
                 </div>
               </div>

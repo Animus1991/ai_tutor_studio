@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import firebaseConfig from '../../firebase-applet-config.json';
 
 const STORAGE_KEY = 'memora-google-oauth-token';
 const POPUP_WIDTH = 500;
@@ -12,8 +13,14 @@ const SCOPE_MAP: Record<GoogleOAuthScopes, string> = {
   classroom: 'https://www.googleapis.com/auth/classroom.courses.readonly',
 };
 
+function resolveGoogleClientId(): string {
+  const fromEnv = String(import.meta.env.VITE_GOOGLE_CLIENT_ID ?? '').trim();
+  if (fromEnv) return fromEnv;
+  return String((firebaseConfig as { oAuthClientId?: string }).oAuthClientId ?? '').trim();
+}
+
 function buildAuthUrl(scopes: GoogleOAuthScopes[], redirectUri: string): string {
-  const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID ?? '';
+  const clientId = resolveGoogleClientId();
   const scopeStr = scopes.map((s) => SCOPE_MAP[s]).join(' ');
   const params = new URLSearchParams({
     client_id: clientId,
