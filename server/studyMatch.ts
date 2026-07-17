@@ -39,7 +39,7 @@ import {
   type StudyEnergy,
   type StudyVibe,
 } from './studyMatchCore.js';
-import { moderateMatchContent } from './matchModerator.js';
+import { moderatePlatformContent as moderateMatchContent } from './platformModeration.js';
 
 export { canonicalTopicKey, emailDomain, normalizeTopicKey } from './studyMatchCore.js';
 

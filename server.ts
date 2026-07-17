@@ -67,6 +67,7 @@ import {
   reportSessionHandler,
   saveNotesHandler,
 } from './server/studyMatch.js';
+import { moderateContentHandler } from './server/platformModeration.js';
 const _require = createRequire(typeof import.meta !== 'undefined' && import.meta.url ? import.meta.url : 'file://' + process.cwd() + '/server.ts');
 const pdfParse = _require('pdf-parse');
 
@@ -1743,6 +1744,16 @@ Use pixel coordinates relative to the image. Include 1-12 labels. confidence is 
       sendRouteError(res, error, 'Match Metrics Error', 'Failed to load match metrics');
     }
   });
+
+  // Platform spine — shared content moderation preflight
+  app.post('/api/moderate', async (req, res) => {
+    try {
+      await moderateContentHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Moderation Error', 'Failed to moderate content');
+    }
+  });
+
   app.post('/api/match/session/:sessionId/react', async (req, res) => {
     try {
       await reactMessageHandler(req, res);
@@ -1858,8 +1869,14 @@ Use pixel coordinates relative to the image. Include 1-12 labels. confidence is 
 
   try {
     const { attachYjsWebSocketServer } = await import('./yjsServer.js');
-    attachYjsWebSocketServer(httpServer);
-    console.log(`Yjs websocket on ws://localhost:${PORT}/yjs`);
+    const requireApiAuth = process.env.REQUIRE_API_AUTH === 'true';
+    attachYjsWebSocketServer(httpServer, {
+      projectId: firebaseConfig.projectId,
+      requireAuth: requireApiAuth,
+    });
+    console.log(
+      `Yjs websocket on ws://localhost:${PORT}/yjs (auth=${requireApiAuth ? 'required' : 'optional'})`,
+    );
   } catch (err) {
     console.warn('[Memora] Yjs websocket unavailable (collab uses IndexedDB offline):', err);
   }

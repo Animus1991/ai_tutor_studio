@@ -1,13 +1,7 @@
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import type { RequestHandler } from "express";
-import { createRemoteJWKSet, jwtVerify } from "jose";
-
-const FIREBASE_JWKS = createRemoteJWKSet(
-  new URL(
-    "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com",
-  ),
-);
+import { extractBearerToken, verifyFirebaseIdToken } from "./firebaseToken.js";
 
 export class HttpError extends Error {
   constructor(
@@ -24,8 +18,7 @@ export function createFirebaseAuthMiddleware(
   required: boolean,
 ): RequestHandler {
   return async (req, res, next) => {
-    const authorization = req.header("authorization");
-    const token = authorization?.match(/^Bearer (.+)$/i)?.[1];
+    const token = extractBearerToken(req.header("authorization"));
 
     // Even when auth is optional, parse a present Bearer so handlers can
     // use res.locals.user (e.g. Teacher dashboard in local/preview mode).
@@ -39,16 +32,8 @@ export function createFirebaseAuthMiddleware(
     }
 
     try {
-      const { payload } = await jwtVerify(token, FIREBASE_JWKS, {
-        audience: projectId,
-        issuer: `https://securetoken.google.com/${projectId}`,
-        algorithms: ["RS256"],
-      });
-
-      if (!payload.sub) {
-        throw new Error("Token does not contain a subject");
-      }
-      res.locals.user = { uid: payload.sub, claims: payload };
+      const user = await verifyFirebaseIdToken(token, projectId);
+      res.locals.user = { uid: user.uid, claims: user.claims };
       next();
     } catch {
       if (required) {

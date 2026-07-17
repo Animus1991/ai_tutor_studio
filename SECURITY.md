@@ -27,7 +27,10 @@ records, credentials or API keys.
 - [ ] Restrict the Firebase web API key by expected HTTP referrers and APIs.
 - [ ] Terminate TLS before the Node process and redirect HTTP to HTTPS.
 - [ ] Keep the default CSP; add origins narrowly when integrating new services.
-- [ ] Replace the public Yjs demo endpoint with an authenticated deployment.
+- [x] Authenticate Yjs upgrades with Firebase ID token + room membership when
+      `REQUIRE_API_AUTH=true` (see `yjsServer.ts`, `server/authz.ts`).
+- [x] Platform content moderation spine (`POST /api/moderate`) shared by Match
+      and Collab preflight.
 - [x] Use cryptographically random invite-scoped room IDs and enforce Firestore
       participant membership.
 - [ ] Define retention/deletion policy for Firestore, IndexedDB, local logs and

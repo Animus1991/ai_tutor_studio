@@ -62,7 +62,8 @@ import Whiteboard from "../components/Whiteboard";
 import KnowledgeGraph from "../components/KnowledgeGraph";
 import { FireProvider } from "y-fire";
 import { app } from "../lib/firebase";
-import { getCollabWebSocketUrl } from "../lib/collabProvider";
+import { getCollabWebSocketUrl, getCollabWsParams } from "../lib/collabProvider";
+import { moderatePlatformText } from "../lib/platformModeration";
 import { isDemoModeActive, DEMO_USER } from "../lib/demoStorage";
 import {
   loadCollabMessages,
@@ -151,133 +152,149 @@ export default function CollabRoom() {
     setYdoc(yCollabDoc);
 
     const roomDocName = `memora-collab-${roomId}`;
-    const wsProvider = new WebsocketProvider(getCollabWebSocketUrl(), roomDocName, yCollabDoc);
-    setProvider(wsProvider);
-    providerRef.current = wsProvider;
+    let cancelled = false;
+    let wsProvider: WebsocketProvider | null = null;
+    let indexeddbProvider: IndexeddbPersistence | null = null;
+    let unsubscribeAuth: (() => void) | null = null;
+    let roomDataCleanup: (() => void) | null = null;
 
-    const indexeddbProvider = new IndexeddbPersistence(roomDocName, yCollabDoc);
+    void (async () => {
+      const params = await getCollabWsParams();
+      if (cancelled) return;
 
-    const awareness = wsProvider.awareness;
-
-    const getLocalMemberId = (userObj: any) => {
-      const base = userObj?.uid ? `uid:${userObj.uid}` : userObj?.email ? `email:${userObj.email}` : 'guest';
-      if (typeof window === 'undefined') return base;
-      const key = `memora-member-id:${base}`;
-      const existing = window.localStorage.getItem(key);
-      if (existing) return existing;
-      const created = `${base}:${crypto.randomUUID()}`;
-      window.localStorage.setItem(key, created);
-      return created;
-    };
-    
-    // Set local awareness state (includes activity for PresenceIndicator)
-    const updateAwareness = (userObj: any, activity: ActivityStatus = 'online') => {
-      const memberId = getLocalMemberId(userObj);
-      awareness.setLocalStateField("user", {
-        memberId,
-        name: userObj?.email?.split('@')[0] || "Guest",
-        role: selfRole,
-        activity,
-        color: "#" + Math.floor(Math.random() * 16777215).toString(16),
-        avatar: `https://ui-avatars.com/api/?name=${userObj?.email || 'G'}`
+      wsProvider = new WebsocketProvider(getCollabWebSocketUrl(), roomDocName, yCollabDoc, {
+        params,
       });
-    };
+      setProvider(wsProvider);
+      providerRef.current = wsProvider;
+      indexeddbProvider = new IndexeddbPersistence(roomDocName, yCollabDoc);
 
-    awareness.on('change', () => {
-      const users = Array.from(awareness.getStates().values())
-        .filter((state: any) => state.user)
-        .map((state: any) => state.user);
-      setAwarenessUsers(users);
-    });
+      const awareness = wsProvider.awareness;
 
-    const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
-      if (isDemoModeActive()) {
-        setUser(DEMO_USER);
-        updateAwareness(DEMO_USER);
-        const [msgs, qzs] = await Promise.all([
-          loadCollabMessages(roomId),
-          loadCollabQuizzes(roomId),
-        ]);
-        setMessages(msgs);
-        setQuizzes(qzs);
-        return;
-      }
+      const getLocalMemberId = (userObj: any) => {
+        const base = userObj?.uid ? `uid:${userObj.uid}` : userObj?.email ? `email:${userObj.email}` : 'guest';
+        if (typeof window === 'undefined') return base;
+        const key = `memora-member-id:${base}`;
+        const existing = window.localStorage.getItem(key);
+        if (existing) return existing;
+        const created = `${base}:${crypto.randomUUID()}`;
+        window.localStorage.setItem(key, created);
+        return created;
+      };
 
-      setUser(currentUser);
-      updateAwareness(currentUser);
+      const updateAwareness = (userObj: any, activity: ActivityStatus = 'online') => {
+        const memberId = getLocalMemberId(userObj);
+        awareness.setLocalStateField("user", {
+          memberId,
+          name: userObj?.email?.split('@')[0] || "Guest",
+          role: selfRole,
+          activity,
+          color: "#" + Math.floor(Math.random() * 16777215).toString(16),
+          avatar: `https://ui-avatars.com/api/?name=${userObj?.email || 'G'}`
+        });
+      };
 
-      if (currentUser && !isDemoModeActive()) {
-        const roomRef = doc(db, "rooms", roomId);
-        try {
-          const roomSnapshot = await getDoc(roomRef);
-          if (!roomSnapshot.exists()) {
-            const creatorEmail = currentUser.email ? normalizeEmail(currentUser.email) : '';
-            await setDoc(roomRef, {
-              ownerId: currentUser.uid,
-              memberEmails: creatorEmail ? [creatorEmail] : [],
-              createdAt: serverTimestamp(),
-            });
-            setRoomOwnerId(currentUser.uid);
-          } else {
-            setRoomOwnerId(String(roomSnapshot.data()?.ownerId ?? ''));
-          }
-        } catch (error) {
-          console.error("Unable to access collaboration room:", error);
-          toast.error("You do not have access to this collaboration room.");
+      awareness.on('change', () => {
+        const users = Array.from(awareness.getStates().values())
+          .filter((state: any) => state.user)
+          .map((state: any) => state.user);
+        setAwarenessUsers(users);
+      });
+
+      unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
+        roomDataCleanup?.();
+        roomDataCleanup = null;
+
+        if (isDemoModeActive()) {
+          setUser(DEMO_USER);
+          updateAwareness(DEMO_USER);
+          const [msgs, qzs] = await Promise.all([
+            loadCollabMessages(roomId),
+            loadCollabQuizzes(roomId),
+          ]);
+          setMessages(msgs);
+          setQuizzes(qzs);
           return;
         }
 
-        const fireProvider = new FireProvider({
-          firebaseApp: app,
-          ydoc: yCollabDoc,
-          path: `yjs_state/${roomId}`,
-        });
+        setUser(currentUser);
+        updateAwareness(currentUser);
 
-        const qMessages = query(
-          collection(db, "rooms", roomId, "messages"),
-          orderBy("createdAt", "asc"),
-        );
-        const unsubMessages = onSnapshot(qMessages, (snapshot) => {
-          const msgs = snapshot.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-          }));
-          setMessages(msgs);
-        });
+        if (currentUser && !isDemoModeActive()) {
+          const roomRef = doc(db, "rooms", roomId);
+          try {
+            const roomSnapshot = await getDoc(roomRef);
+            if (!roomSnapshot.exists()) {
+              const creatorEmail = currentUser.email ? normalizeEmail(currentUser.email) : '';
+              await setDoc(roomRef, {
+                ownerId: currentUser.uid,
+                memberEmails: creatorEmail ? [creatorEmail] : [],
+                createdAt: serverTimestamp(),
+              });
+              setRoomOwnerId(currentUser.uid);
+            } else {
+              setRoomOwnerId(String(roomSnapshot.data()?.ownerId ?? ''));
+            }
+          } catch (error) {
+            console.error("Unable to access collaboration room:", error);
+            toast.error("You do not have access to this collaboration room.");
+            return;
+          }
 
-        const qParticipants = query(
-          collection(db, "rooms", roomId, "participants"),
-        );
-        const unsubParticipants = onSnapshot(qParticipants, (snapshot) => {
-          const parts = snapshot.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-          }));
-          setInvitedContacts(parts);
-        });
+          const fireProvider = new FireProvider({
+            firebaseApp: app,
+            ydoc: yCollabDoc,
+            path: `yjs_state/${roomId}`,
+          });
 
-        const qQuizzes = query(collection(db, "rooms", roomId, "quizzes"));
-        const unsubQuizzes = onSnapshot(qQuizzes, (snapshot) => {
-          const qzs = snapshot.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-          }));
-          setQuizzes(qzs);
-        });
+          const qMessages = query(
+            collection(db, "rooms", roomId, "messages"),
+            orderBy("createdAt", "asc"),
+          );
+          const unsubMessages = onSnapshot(qMessages, (snapshot) => {
+            const msgs = snapshot.docs.map((d) => ({
+              id: d.id,
+              ...d.data(),
+            }));
+            setMessages(msgs);
+          });
 
-        return () => {
-          unsubMessages();
-          unsubParticipants();
-          unsubQuizzes();
-          fireProvider.destroy();
-        };
-      }
-    });
+          const qParticipants = query(
+            collection(db, "rooms", roomId, "participants"),
+          );
+          const unsubParticipants = onSnapshot(qParticipants, (snapshot) => {
+            const parts = snapshot.docs.map((d) => ({
+              id: d.id,
+              ...d.data(),
+            }));
+            setInvitedContacts(parts);
+          });
+
+          const qQuizzes = query(collection(db, "rooms", roomId, "quizzes"));
+          const unsubQuizzes = onSnapshot(qQuizzes, (snapshot) => {
+            const qzs = snapshot.docs.map((d) => ({
+              id: d.id,
+              ...d.data(),
+            }));
+            setQuizzes(qzs);
+          });
+
+          roomDataCleanup = () => {
+            unsubMessages();
+            unsubParticipants();
+            unsubQuizzes();
+            fireProvider.destroy();
+          };
+        }
+      });
+    })();
 
     return () => {
-      unsubscribeAuth();
-      wsProvider.disconnect();
-      void indexeddbProvider.destroy();
+      cancelled = true;
+      roomDataCleanup?.();
+      unsubscribeAuth?.();
+      wsProvider?.disconnect();
+      void indexeddbProvider?.destroy();
       yCollabDoc.destroy();
     };
   }, [roomId, selfRole]);
@@ -678,6 +695,11 @@ export default function CollabRoom() {
     if (!chatMessage.trim()) return;
 
     const messageText = chatMessage;
+    const moderation = await moderatePlatformText(messageText, 'collab');
+    if (!moderation.allowed) {
+      toast.error(moderation.reason || 'Message blocked by safety moderator');
+      return;
+    }
     setChatMessage("");
 
     if (isDemoModeActive()) {
