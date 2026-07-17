@@ -82,6 +82,13 @@ import {
   privacyExportHandler,
 } from './server/privacy.js';
 import {
+  evidenceEvalHandler,
+  evidencePrinciplesHandler,
+  purgeExpiredXapiHandler,
+  researchExportHandler,
+  xapiStatementsHandler,
+} from './server/evidence.js';
+import {
   appendModeSafety,
   looksLikeExamAnswerDump,
   modeAllowsGoogleSearch,
@@ -666,31 +673,9 @@ async function startServer() {
 
   app.post('/api/xapi/statements', async (req, res) => {
     try {
-      const statement = req.body;
-      const lrsUrl = process.env.XAPI_LRS_ENDPOINT;
-      const lrsKey = process.env.XAPI_LRS_KEY;
-
-      if (lrsUrl && lrsKey) {
-        const auth = Buffer.from(`${lrsKey}:`).toString('base64');
-        const forward = await fetch(`${lrsUrl.replace(/\/$/, '')}/statements`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Basic ${auth}`,
-            'X-Experience-API-Version': '1.0.3',
-          },
-          body: JSON.stringify(statement),
-        });
-        if (!forward.ok) {
-          const detail = await forward.text();
-          return res.status(502).json({ error: 'LRS rejected statement', detail });
-        }
-      }
-
-      res.status(204).end();
+      await xapiStatementsHandler(req, res);
     } catch (error) {
-      console.error('xAPI Error:', error);
-      res.status(500).json({ error: 'Failed to record xAPI statement' });
+      sendRouteError(res, error, 'xAPI Error', 'Failed to record xAPI statement');
     }
   });
 
@@ -1898,6 +1883,36 @@ Use pixel coordinates relative to the image. Include 1-12 labels. confidence is 
       await privacyDeleteRequestHandler(req, res);
     } catch (error) {
       sendRouteError(res, error, 'Privacy Delete Error', 'Failed to queue deletion');
+    }
+  });
+
+  // Evidence spine — research export, eval harness, principles, xAPI purge
+  app.get('/api/research/export', async (req, res) => {
+    try {
+      await researchExportHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Research Export Error', 'Failed to export research data');
+    }
+  });
+  app.get('/api/evidence/principles', async (req, res) => {
+    try {
+      await evidencePrinciplesHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Evidence Principles Error', 'Failed to load principles');
+    }
+  });
+  app.post('/api/evidence/eval', async (req, res) => {
+    try {
+      await evidenceEvalHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Evidence Eval Error', 'Failed to run evaluation harness');
+    }
+  });
+  app.post('/api/admin/xapi/purge-expired', async (req, res) => {
+    try {
+      await purgeExpiredXapiHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'xAPI Purge Error', 'Failed to purge expired statements');
     }
   });
 

@@ -28,13 +28,16 @@ import {
   readLocalTasks,
 } from "../lib/localTasks";
 import { filterDueItems, rankReviewQueue } from "../lib/jointScheduler";
+import { explainWhyNow } from "../lib/evidencePrinciples";
+import { useLanguage } from "../lib/i18n";
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const { language } = useLanguage();
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
   const [upcomingTasks, setUpcomingTasks] = useState<any[]>([]);
   const [dueReviews, setDueReviews] = useState<
-    Array<{ id: string; title: string; domainKey: string; score: number }>
+    Array<{ id: string; title: string; domainKey: string; score: number; reasons: string[]; why: string }>
   >([]);
   const [tasksDone, setTasksDone] = useState(0);
   const [completionRate, setCompletionRate] = useState(0);
@@ -78,6 +81,8 @@ export default function Dashboard() {
           title: String(incomplete.find((t) => String(t.id) === r.id)?.title || r.domainKey),
           domainKey: r.domainKey,
           score: r.score,
+          reasons: r.reasons,
+          why: explainWhyNow(r.reasons, language === 'el' ? 'el' : 'en'),
         })),
       );
 
@@ -228,7 +233,7 @@ export default function Dashboard() {
             </Link>
           </div>
           <p className="text-[11px] text-slate-400 mb-3">
-            Ranked by FSRS due pressure × mastery gap (interleaved domains).
+            Ranked by FSRS × mastery × IRT fit — each item cites PRODUCT_BLUEPRINT evidence principles.
           </p>
           <div className="flex-1 overflow-y-auto pr-1 space-y-2">
             {loading ? (
@@ -245,11 +250,14 @@ export default function Dashboard() {
                   onClick={() => navigate("/tasks")}
                   className="w-full flex items-center justify-between p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700/50 text-left"
                 >
-                  <div>
+                  <div className="min-w-0 pr-2">
                     <h4 className="text-sm font-medium text-slate-900 dark:text-white">{item.title}</h4>
                     <p className="text-[10px] text-slate-500">{item.domainKey}</p>
+                    <p className="text-[10px] text-indigo-600/80 dark:text-indigo-400/80 mt-0.5 leading-snug">
+                      {item.why || explainWhyNow(item.reasons ?? [], language === 'el' ? 'el' : 'en')}
+                    </p>
                   </div>
-                  <span className="text-[10px] font-mono text-slate-400">{item.score.toFixed(2)}</span>
+                  <span className="text-[10px] font-mono text-slate-400 shrink-0">{item.score.toFixed(2)}</span>
                 </button>
               ))
             ) : (

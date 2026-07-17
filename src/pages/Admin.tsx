@@ -108,6 +108,47 @@ export default function Admin() {
     [logs, actionFilter, search],
   );
 
+  const handleResearchExport = async () => {
+    try {
+      const res = await apiRequest('/api/research/export');
+      if (!res.ok) {
+        toast.error('Research export failed — sign in required');
+        return;
+      }
+      const data = await res.json();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `memora_research_${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('Anonymized research export downloaded');
+    } catch {
+      toast.error('Research export failed');
+    }
+  };
+
+  const handleRunEvalHarness = async () => {
+    try {
+      const res = await apiRequest('/api/evidence/eval', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ answers: {} }),
+      });
+      if (!res.ok) {
+        toast.error('Eval harness requires auth');
+        return;
+      }
+      const report = (await res.json()) as { passRate?: number; passed?: number; total?: number };
+      toast.success(
+        `Eval harness: ${report.passed}/${report.total} passed (${Math.round((report.passRate ?? 0) * 100)}%)`,
+      );
+    } catch {
+      toast.error('Eval harness failed');
+    }
+  };
+
   const handleExport = () => {
     const exportData = {
       auditLogs: filteredLogs,
@@ -179,6 +220,22 @@ export default function Admin() {
             <option value="csv">CSV (Logs)</option>
           </select>
           <div className="w-px h-6 bg-slate-200 dark:bg-slate-700 mx-1" />
+          <button
+            type="button"
+            onClick={() => void handleResearchExport()}
+            className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 px-3 py-1.5 rounded-lg hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors font-semibold text-sm"
+            title="Anonymized xAPI + learning events"
+          >
+            Research
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleRunEvalHarness()}
+            className="flex items-center gap-2 bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-3 py-1.5 rounded-lg hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors font-semibold text-sm"
+            title="Golden-question evaluation harness"
+          >
+            Eval
+          </button>
           <button
             onClick={handleExport}
             className="flex items-center gap-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-3 py-1.5 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors font-semibold text-sm"

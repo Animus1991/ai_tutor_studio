@@ -92,6 +92,23 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     }
   };
 
+  const handleResearchExport = async () => {
+    try {
+      const { exportResearchData } = await import("../lib/privacyApi");
+      const data = await exportResearchData();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `memora-research-export-${Date.now()}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("Anonymized research export downloaded");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Research export failed");
+    }
+  };
+
   const handleDeletionRequest = async () => {
     try {
       await requestAccountDeletion("user_settings_request");
@@ -353,6 +370,13 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     className="mt-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
                   >
                     Server privacy export (Match / Circles / Library meta)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleResearchExport()}
+                    className="mt-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                  >
+                    Anonymized research export (xAPI / learning events)
                   </button>
                   <button
                     type="button"
