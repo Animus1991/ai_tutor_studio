@@ -22,7 +22,8 @@ Checklist for every route/API:
 | 4 / 7 | Agent / Voice | **Learning wired** | Mode contracts · exam-coach refusal · hybrid server RAG · groundedness · STT/TTS mod |
 | 2–3 / 15 | Dashboard / Tasks / Mastery | **Partial** | Joint FSRS×mastery scheduler · Due reviews widget · MasteryDashboard · `/api/learning/*` |
 | 8–10 | Collab / Circles / Match | **Social spine** | Unified `socialPolicy` · dual Meet consent on Collab · Circle↔Match bridge · guidelines on Circles · board text mod · admin triage taxonomy |
-| 5–6,11–14,16–17 | Remaining | **Next** | Institution / evidence spines |
+| 11 | Teacher / Classroom | **Institution spine** | Class-scoped progress · peer-PII redaction for students · DP aggregates · at-risk heuristics · Classroom roster consent sync · assignment→Memora maps · domain tenancy |
+| 5–6,12–14,16–17 | Remaining | **Next** | Evidence / offline / Workspace spines |
 
 ## Modules
 
@@ -33,6 +34,8 @@ Checklist for every route/API:
 | `server/platformModeration.ts` | Content moderation spine |
 | `server/socialPolicy.ts` | Circles+Match+Collab reports, triage, room Meet dual-consent |
 | `src/lib/socialPolicy.ts` | Client capability matrix, bridge URLs, board moderation |
+| `server/institutionCore.ts` | DP aggregates, at-risk, domain tenancy helpers |
+| `server/teacher.ts` | Class ACL, Classroom sync, assignment maps, student-safe detail |
 | `server/requestSpine.ts` | Trace IDs, idempotency, contracts |
 | `server/circuitBreaker.ts` | Gemini breaker |
 | `server/appCheck.ts` | Optional App Check enforce |
@@ -57,6 +60,10 @@ Checklist for every route/API:
 - `POST /api/social/rooms/:roomId/meet`
 - `GET /api/admin/social-reports`
 - `PATCH /api/admin/social-reports/:reportId`
+- `POST /api/classes/:classId/classroom/sync`
+- `POST /api/classes/:classId/assignments/map`
+- `GET /api/classes/:classId/assignments`
+- `POST /api/progress` (optional `classId` → class-scoped write)
 - `GET /api/privacy/export`
 - `POST /api/privacy/delete-request`
 - Headers: `X-Request-Id`, `Idempotency-Key`, `X-Firebase-AppCheck`
@@ -64,7 +71,6 @@ Checklist for every route/API:
 ## Next implementation order
 
 1. Trust — claims service, App Check enforce in prod, referrer keys
-2. Institution — Teacher tenancy + DP aggregates
-3. Evidence — eval harnesses + xAPI retention jobs
-4. Offline packs — signed manifests + conflict UI
-5. Chaos/load — Match queue + Yjs
+2. Evidence — eval harnesses + xAPI retention jobs
+3. Offline packs — signed manifests + conflict UI
+4. Chaos/load — Match queue + Yjs

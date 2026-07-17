@@ -39,8 +39,11 @@ import {
   classDetailHandler,
   createClassHandler,
   joinClassHandler,
+  listAssignmentMapsHandler,
   listClassesHandler,
+  mapAssignmentHandler,
   reportProgressHandler,
+  syncClassroomRosterHandler,
 } from './server/teacher.js';
 import {
   getLibraryHandler,
@@ -1731,6 +1734,29 @@ Use pixel coordinates relative to the image. Include 1-12 labels. confidence is 
       await reportProgressHandler(req, res);
     } catch (error) {
       sendRouteError(res, error, 'Progress Error', 'Failed to report progress');
+    }
+  });
+
+  // Institution spine — Classroom roster consent sync + assignment maps
+  app.post('/api/classes/:classId/classroom/sync', async (req, res) => {
+    try {
+      await syncClassroomRosterHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Classroom Sync Error', 'Failed to sync Classroom roster');
+    }
+  });
+  app.post('/api/classes/:classId/assignments/map', async (req, res) => {
+    try {
+      await mapAssignmentHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Assignment Map Error', 'Failed to map assignment');
+    }
+  });
+  app.get('/api/classes/:classId/assignments', async (req, res) => {
+    try {
+      await listAssignmentMapsHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Assignment List Error', 'Failed to list assignment maps');
     }
   });
 

@@ -1,10 +1,32 @@
 import { useEffect, useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { GraduationCap, Users, Target, AlarmClock, Plus, LogIn, Copy, Check, RefreshCw, Activity } from 'lucide-react';
+import {
+  GraduationCap,
+  Users,
+  Target,
+  AlarmClock,
+  Plus,
+  LogIn,
+  Copy,
+  Check,
+  RefreshCw,
+  Activity,
+  ShieldAlert,
+  Link2,
+  BarChart3,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import {
-  listClasses, createClass, joinClass, classDetail,
-  type ClassSummary, type ClassDetail,
+  listClasses,
+  createClass,
+  joinClass,
+  classDetail,
+  syncClassroomRoster,
+  mapAssignment,
+  listAssignmentMaps,
+  type ClassSummary,
+  type ClassDetail,
+  type AssignmentMap,
 } from '../lib/teacher';
 import { useAuthStore } from '../store/useAuthStore';
 import { useLanguage } from '../lib/i18n';
@@ -41,6 +63,7 @@ const DEMO_CLASS: ClassSummary = {
   role: 'teacher',
   memberCount: 3,
   joinCode: 'DEMO01',
+  institutionDomain: 'demo.local',
 };
 
 const DEMO_DETAIL: ClassDetail = {
@@ -48,8 +71,36 @@ const DEMO_DETAIL: ClassDetail = {
   name: 'Demo Chemistry',
   joinCode: 'DEMO01',
   role: 'teacher',
+  institutionDomain: 'demo.local',
   subjects: ['Acids', 'Bonds', 'Stoichiometry'],
   aggregates: { studentCount: 2, avgMastery: 78, totalDue: 17, activeCount: 2 },
+  dpAggregates: {
+    studentCount: 2,
+    avgMastery: null,
+    totalDue: null,
+    activeCount: null,
+    suppressed: true,
+    epsilon: 1,
+    kAnonymity: 5,
+    note: 'Aggregates suppressed until ≥5 students (k-anonymity).',
+  },
+  masteryDistribution: [
+    { label: '0–39', min: 0, max: 39, count: 0 },
+    { label: '40–54', min: 40, max: 54, count: 0 },
+    { label: '55–69', min: 55, max: 69, count: 0 },
+    { label: '70–84', min: 70, max: 84, count: 2 },
+    { label: '85–100', min: 85, max: 100, count: 0 },
+  ],
+  atRisk: [
+    {
+      userId: 'demo-s2',
+      name: 'Maria',
+      score: 4,
+      reasons: ['high_due', 'low_mastery'],
+      explain: '12 reviews due · mastery 74%',
+    },
+  ],
+  peerPiiRedacted: false,
   students: [
     {
       userId: 'demo-s1',
@@ -92,11 +143,16 @@ export default function Teacher() {
   const [selected, setSelected] = useState<string | null>(null);
   const [detail, setDetail] = useState<ClassDetail | null>(null);
   const [newName, setNewName] = useState('');
+  const [domain, setDomain] = useState('');
   const [code, setCode] = useState('');
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [assignTitle, setAssignTitle] = useState('');
+  const [assignExtId, setAssignExtId] = useState('');
+  const [maps, setMaps] = useState<AssignmentMap[]>([]);
 
   const authed = isDemoMode || !!user;
+  const isTeacherView = detail?.role === 'teacher';
 
   const refresh = useCallback(async () => {
     if (!authed) return;
@@ -109,20 +165,51 @@ export default function Teacher() {
       const { classes: cs } = await listClasses();
       setClasses(cs);
       if (cs.length && !selected) setSelected(cs[0].id);
-    } catch { /* not authed */ }
+    } catch {
+      /* not authed */
+    }
   }, [authed, isDemoMode, selected]);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
 
   useEffect(() => {
-    if (!selected) { setDetail(null); return; }
+    if (!selected) {
+      setDetail(null);
+      setMaps([]);
+      return;
+    }
     if (isDemoMode) {
       setDetail(DEMO_DETAIL);
+      setMaps([
+        {
+          externalAssignmentId: 'cw-demo-1',
+          title: 'Acids worksheet → Memora quiz',
+          memoraQuizId: 'quiz-acids',
+          source: 'classroom',
+        },
+      ]);
       setLoading(false);
       return;
     }
     setLoading(true);
-    classDetail(selected).then(setDetail).catch(() => setDetail(null)).finally(() => setLoading(false));
+    classDetail(selected)
+      .then(async (d) => {
+        setDetail(d);
+        if (d.role === 'teacher') {
+          try {
+            const { maps: m } = await listAssignmentMaps(selected);
+            setMaps(m);
+          } catch {
+            setMaps([]);
+          }
+        } else {
+          setMaps([]);
+        }
+      })
+      .catch(() => setDetail(null))
+      .finally(() => setLoading(false));
   }, [selected, isDemoMode]);
 
   const handleCreate = async () => {
@@ -134,6 +221,7 @@ export default function Teacher() {
         role: 'teacher',
         memberCount: 1,
         joinCode: Math.random().toString(36).slice(2, 8).toUpperCase(),
+        institutionDomain: domain.trim() || null,
       };
       setClasses((prev) => [...prev, c]);
       setNewName('');
@@ -142,12 +230,14 @@ export default function Teacher() {
       return;
     }
     try {
-      const c = await createClass(newName.trim());
+      const c = await createClass(newName.trim(), domain.trim() || undefined);
       setNewName('');
       toast.success(t('Class created', 'Η τάξη δημιουργήθηκε'));
       await refresh();
       setSelected(c.id);
-    } catch (e) { toast.error(e instanceof Error ? e.message : 'Failed'); }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed');
+    }
   };
 
   const handleJoin = async () => {
@@ -162,7 +252,62 @@ export default function Teacher() {
       toast.success(t('Joined class', 'Εγγραφή στην τάξη'));
       await refresh();
       setSelected(c.id);
-    } catch (e) { toast.error(e instanceof Error ? e.message : 'Failed'); }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed');
+    }
+  };
+
+  const handleRosterSync = async () => {
+    if (!selected || !isTeacherView) return;
+    if (isDemoMode) {
+      toast.success(t('Demo roster sync recorded (consent)', 'Demo sync καταλόγου (consent)'));
+      return;
+    }
+    try {
+      await syncClassroomRoster(selected, {
+        consent: true,
+        members: [
+          { email: user?.email || 'teacher@example.com', name: user?.displayName || 'You' },
+        ],
+      });
+      toast.success(t('Roster sync saved with consent', 'Ο συγχρονισμός καταλόγου αποθηκεύτηκε με consent'));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Sync failed');
+    }
+  };
+
+  const handleMapAssignment = async () => {
+    if (!selected || !assignTitle.trim() || !assignExtId.trim()) return;
+    if (isDemoMode) {
+      setMaps((prev) => [
+        {
+          externalAssignmentId: assignExtId.trim(),
+          title: assignTitle.trim(),
+          memoraQuizId: `quiz-${assignExtId.trim()}`,
+          source: 'classroom',
+        },
+        ...prev,
+      ]);
+      setAssignTitle('');
+      setAssignExtId('');
+      toast.success(t('Assignment mapped (demo)', 'Αντιστοιχίστηκε εργασία (demo)'));
+      return;
+    }
+    try {
+      await mapAssignment(selected, {
+        externalAssignmentId: assignExtId.trim(),
+        title: assignTitle.trim(),
+        memoraQuizId: `quiz-${assignExtId.trim()}`,
+        source: 'classroom',
+      });
+      setAssignTitle('');
+      setAssignExtId('');
+      const { maps: m } = await listAssignmentMaps(selected);
+      setMaps(m);
+      toast.success(t('Assignment mapped to Memora', 'Η εργασία αντιστοιχίστηκε στο Memora'));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Map failed');
+    }
   };
 
   const copyCode = (jc: string) => {
@@ -177,10 +322,14 @@ export default function Teacher() {
         <div className="w-16 h-16 rounded-2xl bg-indigo-50 dark:bg-indigo-900/20 border-2 border-indigo-100 dark:border-indigo-800/40 flex items-center justify-center">
           <GraduationCap className="w-8 h-8 text-indigo-500" strokeWidth={1.5} />
         </div>
-        <h2 className="text-xl font-display font-bold text-slate-900 dark:text-white tracking-tight">{t('Teacher Dashboard', 'Πίνακας Εκπαιδευτικού')}</h2>
+        <h2 className="text-xl font-display font-bold text-slate-900 dark:text-white tracking-tight">
+          {t('Teacher Dashboard', 'Πίνακας Εκπαιδευτικού')}
+        </h2>
         <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm">
-          {t('Sign in with an account to create classes and track student mastery.',
-             'Συνδέσου με λογαριασμό για να δημιουργήσεις τάξεις και να παρακολουθείς την πρόοδο.')}
+          {t(
+            'Sign in with an account to create classes and track student mastery.',
+            'Συνδέσου με λογαριασμό για να δημιουργήσεις τάξεις και να παρακολουθείς την πρόοδο.',
+          )}
         </p>
       </div>
     );
@@ -190,37 +339,96 @@ export default function Teacher() {
     <div className="space-y-4 sm:space-y-6 max-w-6xl mx-auto" data-testid="teacher-page">
       <div className="ux-page-header">
         <div className="min-w-0">
-          <h1 className="text-xl sm:text-2xl font-display font-bold text-slate-900 dark:text-white tracking-tight">{t('Teacher Dashboard', 'Πίνακας Εκπαιδευτικού')}</h1>
+          <h1 className="text-xl sm:text-2xl font-display font-bold text-slate-900 dark:text-white tracking-tight">
+            {t('Teacher Dashboard', 'Πίνακας Εκπαιδευτικού')}
+          </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
             {isDemoMode
-              ? t('Demo sandbox — sample class with live UI (sign in for real Firestore classes).',
-                  'Demo sandbox — δείγμα τάξης με ζωντανό UI (σύνδεση για πραγματικές τάξεις Firestore).')
-              : t('Class analytics, mastery heatmap and pending reviews.', 'Ανάλυση τάξης, θερμικός χάρτης κατάκτησης & εκκρεμείς επαναλήψεις.')}
+              ? t(
+                  'Demo sandbox — DP aggregates, at-risk heuristics, assignment maps (no classmate social graph).',
+                  'Demo sandbox — DP aggregates, at-risk, αντιστοιχίσεις εργασιών (χωρίς social graph συμμαθητών).',
+                )
+              : t(
+                  'Class-scoped progress, explainable at-risk signals, privacy-preserving aggregates.',
+                  'Πρόοδος ανά τάξη, επεξηγήσιμα at-risk σήματα, aggregates με ιδιωτικότητα.',
+                )}
           </p>
         </div>
-        <button onClick={() => void refresh()} data-testid="teacher-refresh" className="touch-target inline-flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 shrink-0">
+        <button
+          onClick={() => void refresh()}
+          data-testid="teacher-refresh"
+          className="touch-target inline-flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 shrink-0"
+        >
           <RefreshCw className="w-4 h-4" /> {t('Refresh', 'Ανανέωση')}
         </button>
       </div>
 
-      {/* Class controls */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <div className="md:col-span-1 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/60 dark:border-slate-800/60 p-3.5 sm:p-4 shadow-sm space-y-3">
           <div className="flex gap-2">
-            <input data-testid="new-class-input" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder={t('New class name', 'Όνομα νέας τάξης')} className="flex-1 min-w-0 text-sm px-3 py-2.5 min-h-11 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white" />
-            <button data-testid="create-class-btn" aria-label={t('Create class', 'Δημιουργία τάξης')} onClick={() => void handleCreate()} className="touch-target w-11 h-11 shrink-0 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold inline-flex items-center justify-center"><Plus className="w-4 h-4" /></button>
+            <input
+              data-testid="new-class-input"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder={t('New class name', 'Όνομα νέας τάξης')}
+              className="flex-1 min-w-0 text-sm px-3 py-2.5 min-h-11 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
+            />
+            <button
+              data-testid="create-class-btn"
+              aria-label={t('Create class', 'Δημιουργία τάξης')}
+              onClick={() => void handleCreate()}
+              className="touch-target w-11 h-11 shrink-0 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold inline-flex items-center justify-center"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
           </div>
+          <input
+            data-testid="institution-domain-input"
+            value={domain}
+            onChange={(e) => setDomain(e.target.value)}
+            placeholder={t('Optional school domain (e.g. uni.edu)', 'Προαιρετικό domain (π.χ. uni.edu)')}
+            className="w-full text-sm px-3 py-2.5 min-h-11 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
+          />
           <div className="flex gap-2">
-            <input data-testid="join-code-input" value={code} onChange={(e) => setCode(e.target.value)} placeholder={t('Join code', 'Κωδικός εγγραφής')} className="flex-1 min-w-0 text-sm px-3 py-2.5 min-h-11 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white uppercase" />
-            <button data-testid="join-class-btn" aria-label={t('Join class', 'Εγγραφή στην τάξη')} onClick={() => void handleJoin()} className="touch-target w-11 h-11 shrink-0 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold inline-flex items-center justify-center"><LogIn className="w-4 h-4" /></button>
+            <input
+              data-testid="join-code-input"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              placeholder={t('Join code', 'Κωδικός εγγραφής')}
+              className="flex-1 min-w-0 text-sm px-3 py-2.5 min-h-11 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white uppercase"
+            />
+            <button
+              data-testid="join-class-btn"
+              aria-label={t('Join class', 'Εγγραφή στην τάξη')}
+              onClick={() => void handleJoin()}
+              className="touch-target w-11 h-11 shrink-0 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold inline-flex items-center justify-center"
+            >
+              <LogIn className="w-4 h-4" />
+            </button>
           </div>
         </div>
         <div className="md:col-span-2 flex flex-wrap gap-2 items-start content-start">
-          {classes.length === 0 && <p className="text-sm text-slate-400 p-2">{t('No classes yet — create one or join with a code.', 'Καμία τάξη ακόμη — δημιούργησε ή μπες με κωδικό.')}</p>}
+          {classes.length === 0 && (
+            <p className="text-sm text-slate-400 p-2">
+              {t('No classes yet — create one or join with a code.', 'Καμία τάξη ακόμη — δημιούργησε ή μπες με κωδικό.')}
+            </p>
+          )}
           {classes.map((c) => (
-            <button key={c.id} data-testid={`class-pill-${c.id}`} onClick={() => setSelected(c.id)}
-              className={`px-3.5 sm:px-4 py-2.5 min-h-11 rounded-xl border text-sm font-medium transition-colors touch-manipulation ${selected === c.id ? 'bg-indigo-50 dark:bg-indigo-900/30 border-indigo-200 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300' : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
-              {c.name} <span className="text-xs opacity-60">· {c.memberCount} · {c.role === 'teacher' ? t('Teacher', 'Εκπ/κός') : t('Student', 'Μαθητής')}</span>
+            <button
+              key={c.id}
+              data-testid={`class-pill-${c.id}`}
+              onClick={() => setSelected(c.id)}
+              className={`px-3.5 sm:px-4 py-2.5 min-h-11 rounded-xl border text-sm font-medium transition-colors touch-manipulation ${
+                selected === c.id
+                  ? 'bg-indigo-50 dark:bg-indigo-900/30 border-indigo-200 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300'
+                  : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+              }`}
+            >
+              {c.name}{' '}
+              <span className="text-xs opacity-60">
+                · {c.memberCount} · {c.role === 'teacher' ? t('Teacher', 'Εκπ/κός') : t('Student', 'Μαθητής')}
+                {c.institutionDomain ? ` · @${c.institutionDomain}` : ''}
+              </span>
             </button>
           ))}
         </div>
@@ -228,97 +436,293 @@ export default function Teacher() {
 
       {detail && (
         <>
-          {detail.joinCode && (
-            <div className="flex items-center gap-2 text-sm">
+          {detail.joinCode && isTeacherView && (
+            <div className="flex flex-wrap items-center gap-2 text-sm">
               <span className="text-slate-500 dark:text-slate-400">{t('Share join code:', 'Κωδικός εγγραφής:')}</span>
-              <button onClick={() => copyCode(detail.joinCode!)} data-testid="copy-join-code" className="inline-flex items-center gap-1.5 font-mono font-bold px-3 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400">
+              <button
+                onClick={() => copyCode(detail.joinCode!)}
+                data-testid="copy-join-code"
+                className="inline-flex items-center gap-1.5 font-mono font-bold px-3 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400"
+              >
                 {detail.joinCode} {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
               </button>
+              {detail.institutionDomain && (
+                <span className="text-xs text-slate-400">@{detail.institutionDomain}</span>
+              )}
+            </div>
+          )}
+
+          {detail.peerPiiRedacted && (
+            <div className="rounded-xl border border-emerald-200/70 dark:border-emerald-900/40 bg-emerald-50/60 dark:bg-emerald-950/20 px-3.5 py-2.5 text-sm text-emerald-900 dark:text-emerald-200">
+              {t(
+                'Student view: classmate emails and social graph are hidden. You only see your progress + privacy-preserving class aggregates.',
+                'Προβολή μαθητή: emails συμμαθητών και social graph είναι κρυφά. Βλέπεις μόνο τη δική σου πρόοδο + privacy-preserving aggregates.',
+              )}
             </div>
           )}
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3" data-testid="teacher-kpis">
-            <Kpi icon={Users} label={t('Students', 'Μαθητές')} value={detail.aggregates.studentCount} tint="bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400" />
-            <Kpi icon={Target} label={t('Avg. mastery', 'Μ.Ο. κατάκτησης')} value={`${detail.aggregates.avgMastery}%`} tint="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400" />
-            <Kpi icon={AlarmClock} label={t('Due reviews', 'Εκκρεμείς')} value={detail.aggregates.totalDue} tint="bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400" />
-            <Kpi icon={Activity} label={t('Active', 'Ενεργοί')} value={detail.aggregates.activeCount} tint="bg-fuchsia-100 dark:bg-fuchsia-900/30 text-fuchsia-600 dark:text-fuchsia-400" />
+            <Kpi
+              icon={Users}
+              label={t('Students', 'Μαθητές')}
+              value={detail.aggregates.studentCount}
+              tint="bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400"
+            />
+            <Kpi
+              icon={Target}
+              label={t('Avg. mastery', 'Μ.Ο. κατάκτησης')}
+              value={`${detail.aggregates.avgMastery}%`}
+              tint="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400"
+            />
+            <Kpi
+              icon={AlarmClock}
+              label={t('Due reviews', 'Εκκρεμείς')}
+              value={detail.aggregates.totalDue}
+              tint="bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400"
+            />
+            <Kpi
+              icon={Activity}
+              label={t('Active', 'Ενεργοί')}
+              value={detail.aggregates.activeCount}
+              tint="bg-fuchsia-100 dark:bg-fuchsia-900/30 text-fuchsia-600 dark:text-fuchsia-400"
+            />
           </div>
 
-          {/* Mastery heatmap */}
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/60 dark:border-slate-800/60 p-5 shadow-sm overflow-x-auto" data-testid="mastery-heatmap">
-            <h3 className="text-sm font-display font-bold text-slate-900 dark:text-white mb-3 tracking-tight">{t('Mastery heatmap (estimated)', 'Θερμικός χάρτης κατάκτησης (εκτίμηση)')}</h3>
-            {detail.students.length === 0 ? (
-              <p className="text-sm text-slate-400">{t('No students have joined or reported progress yet.', 'Κανένας μαθητής δεν έχει εγγραφεί/αναφέρει πρόοδο ακόμη.')}</p>
-            ) : (
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr>
-                    <th className="text-left font-medium text-slate-500 dark:text-slate-400 pb-2 pr-4">{t('Student', 'Μαθητής')}</th>
-                    {detail.subjects.slice(0, 8).map((s) => (
-                      <th key={s} className="px-1 pb-2 text-xs font-medium text-slate-400 max-w-[90px] truncate" title={s}>{s}</th>
-                    ))}
-                    {detail.subjects.length === 0 && <th className="text-xs font-medium text-slate-400 pb-2">{t('Overall', 'Συνολικά')}</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {detail.students.map((st) => {
-                    const map = new Map(st.subjects.map((s) => [s.name, s.mastery]));
-                    return (
-                      <tr key={st.userId} className="border-t border-slate-100 dark:border-slate-800">
-                        <td className="py-2 pr-4 text-slate-700 dark:text-slate-200 whitespace-nowrap">{st.name}</td>
-                        {detail.subjects.length > 0 ? detail.subjects.slice(0, 8).map((subj) => {
-                          const v = Math.round(map.get(subj) ?? 0);
-                          return (
-                            <td key={subj} className="px-1 py-1">
-                              <div className={`h-7 rounded-md ${masteryColor(v)} flex items-center justify-center text-[10px] font-bold text-white/90`} title={`${subj}: ${v}%`}>{v || ''}</div>
-                            </td>
-                          );
-                        }) : (
-                          <td className="px-1 py-1">
-                            <div className={`h-7 rounded-md ${masteryColor(st.masteryPct)} flex items-center justify-center text-[10px] font-bold text-white/90`}>{Math.round(st.masteryPct)}%</div>
-                          </td>
-                        )}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
-          </div>
-
-          {/* Pending reviews + roster */}
-          <div className="grid lg:grid-cols-2 gap-3">
-            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/60 dark:border-slate-800/60 p-5 shadow-sm">
-              <h3 className="text-sm font-display font-bold text-slate-900 dark:text-white mb-3 tracking-tight">{t('Pending reviews', 'Εκκρεμείς επαναλήψεις')}</h3>
-              <div className="space-y-2" data-testid="pending-reviews">
-                {[...detail.students].sort((a, b) => b.cardsDue - a.cardsDue).slice(0, 8).map((st) => (
-                  <div key={st.userId} className="flex items-center justify-between text-sm">
-                    <span className="text-slate-700 dark:text-slate-200">{st.name}</span>
-                    <span className={`font-semibold ${st.cardsDue > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-400'}`}>{st.cardsDue} {t('due', 'εκκρ.')}</span>
-                  </div>
-                ))}
-                {detail.students.length === 0 && <p className="text-sm text-slate-400">—</p>}
-              </div>
+          {detail.dpAggregates && (
+            <div className="rounded-2xl border border-slate-200/60 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 text-sm text-slate-600 dark:text-slate-300">
+              <p className="font-semibold text-slate-900 dark:text-white mb-1">
+                {t('Differential privacy aggregates', 'Aggregates με differential privacy')}
+              </p>
+              <p className="text-xs text-slate-500">
+                {detail.dpAggregates.suppressed
+                  ? detail.dpAggregates.note
+                  : `ε=${detail.dpAggregates.epsilon} · noisy avg ${detail.dpAggregates.avgMastery}% · ${detail.dpAggregates.note}`}
+              </p>
             </div>
-            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/60 dark:border-slate-800/60 p-5 shadow-sm">
-              <h3 className="text-sm font-display font-bold text-slate-900 dark:text-white mb-3 tracking-tight">{t('Roster', 'Κατάλογος')}</h3>
-              <div className="space-y-2">
-                {detail.students.map((st) => (
-                  <motion.div key={st.userId} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className="w-7 h-7 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300 flex items-center justify-center text-xs font-bold shrink-0">{st.name.slice(0, 1).toUpperCase()}</div>
-                      <span className="truncate text-slate-700 dark:text-slate-200">{st.name}</span>
+          )}
+
+          {isTeacherView && (detail.masteryDistribution?.length ?? 0) > 0 && (
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/60 dark:border-slate-800/60 p-5 shadow-sm" data-testid="mastery-distribution">
+              <h3 className="text-sm font-display font-bold text-slate-900 dark:text-white mb-3 tracking-tight flex items-center gap-2">
+                <BarChart3 className="w-4 h-4 text-indigo-500" />
+                {t('Mastery distribution', 'Κατανομή κατάκτησης')}
+              </h3>
+              <div className="flex items-end gap-2 h-28">
+                {detail.masteryDistribution!.map((b) => {
+                  const max = Math.max(1, ...detail.masteryDistribution!.map((x) => x.count));
+                  const h = (b.count / max) * 100;
+                  return (
+                    <div key={b.label} className="flex-1 flex flex-col items-center gap-1">
+                      <span className="text-[10px] font-semibold text-slate-500">{b.count}</span>
+                      <div className="w-full rounded-md bg-indigo-100 dark:bg-indigo-950/40 overflow-hidden flex items-end" style={{ height: '72px' }}>
+                        <div className="w-full bg-indigo-500/80 rounded-md" style={{ height: `${h}%` }} />
+                      </div>
+                      <span className="text-[10px] text-slate-400">{b.label}</span>
                     </div>
-                    <span className="text-xs text-slate-400">{t('streak', 'σερί')} {st.streak} · {Math.round(st.masteryPct)}%</span>
-                  </motion.div>
-                ))}
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {isTeacherView && (
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/60 dark:border-slate-800/60 p-5 shadow-sm overflow-x-auto" data-testid="mastery-heatmap">
+              <h3 className="text-sm font-display font-bold text-slate-900 dark:text-white mb-3 tracking-tight">
+                {t('Mastery heatmap (estimated)', 'Θερμικός χάρτης κατάκτησης (εκτίμηση)')}
+              </h3>
+              {detail.students.length === 0 ? (
+                <p className="text-sm text-slate-400">
+                  {t('No students have joined or reported progress yet.', 'Κανένας μαθητής δεν έχει εγγραφεί/αναφέρει πρόοδο ακόμη.')}
+                </p>
+              ) : (
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr>
+                      <th className="text-left font-medium text-slate-500 dark:text-slate-400 pb-2 pr-4">
+                        {t('Student', 'Μαθητής')}
+                      </th>
+                      {detail.subjects.slice(0, 8).map((s) => (
+                        <th key={s} className="px-1 pb-2 text-xs font-medium text-slate-400 max-w-[90px] truncate" title={s}>
+                          {s}
+                        </th>
+                      ))}
+                      {detail.subjects.length === 0 && (
+                        <th className="text-xs font-medium text-slate-400 pb-2">{t('Overall', 'Συνολικά')}</th>
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {detail.students.map((st) => {
+                      const map = new Map(st.subjects.map((s) => [s.name, s.mastery]));
+                      return (
+                        <tr key={st.userId} className="border-t border-slate-100 dark:border-slate-800">
+                          <td className="py-2 pr-4 text-slate-700 dark:text-slate-200 whitespace-nowrap">{st.name}</td>
+                          {detail.subjects.length > 0 ? (
+                            detail.subjects.slice(0, 8).map((subj) => {
+                              const v = Math.round(map.get(subj) ?? 0);
+                              return (
+                                <td key={subj} className="px-1 py-1">
+                                  <div
+                                    className={`h-7 rounded-md ${masteryColor(v)} flex items-center justify-center text-[10px] font-bold text-white/90`}
+                                    title={`${subj}: ${v}%`}
+                                  >
+                                    {v || ''}
+                                  </div>
+                                </td>
+                              );
+                            })
+                          ) : (
+                            <td className="px-1 py-1">
+                              <div
+                                className={`h-7 rounded-md ${masteryColor(st.masteryPct)} flex items-center justify-center text-[10px] font-bold text-white/90`}
+                              >
+                                {Math.round(st.masteryPct)}%
+                              </div>
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
+
+          <div className="grid lg:grid-cols-2 gap-3">
+            {isTeacherView && (
+              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/60 dark:border-slate-800/60 p-5 shadow-sm">
+                <h3 className="text-sm font-display font-bold text-slate-900 dark:text-white mb-3 tracking-tight flex items-center gap-2">
+                  <ShieldAlert className="w-4 h-4 text-amber-500" />
+                  {t('At-risk (explainable)', 'At-risk (επεξηγήσιμο)')}
+                </h3>
+                <div className="space-y-2" data-testid="at-risk-list">
+                  {(detail.atRisk ?? []).slice(0, 8).map((r) => (
+                    <div key={r.userId} className="text-sm">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-medium text-slate-800 dark:text-slate-100">{r.name ?? r.userId}</span>
+                        <span className="text-xs font-semibold text-amber-600 dark:text-amber-400">score {r.score}</span>
+                      </div>
+                      <p className="text-xs text-slate-500 mt-0.5">{r.explain}</p>
+                    </div>
+                  ))}
+                  {(detail.atRisk ?? []).length === 0 && (
+                    <p className="text-sm text-slate-400">{t('No at-risk signals right now.', 'Κανένα at-risk σήμα τώρα.')}</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/60 dark:border-slate-800/60 p-5 shadow-sm">
+              <h3 className="text-sm font-display font-bold text-slate-900 dark:text-white mb-3 tracking-tight">
+                {isTeacherView ? t('Pending reviews', 'Εκκρεμείς επαναλήψεις') : t('Your progress', 'Η πρόοδός σου')}
+              </h3>
+              <div className="space-y-2" data-testid="pending-reviews">
+                {[...detail.students]
+                  .sort((a, b) => b.cardsDue - a.cardsDue)
+                  .slice(0, 8)
+                  .map((st) => (
+                    <div key={st.userId} className="flex items-center justify-between text-sm">
+                      <span className="text-slate-700 dark:text-slate-200">{st.name}</span>
+                      <span
+                        className={`font-semibold ${st.cardsDue > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-400'}`}
+                      >
+                        {st.cardsDue} {t('due', 'εκκρ.')}
+                      </span>
+                    </div>
+                  ))}
                 {detail.students.length === 0 && <p className="text-sm text-slate-400">—</p>}
               </div>
             </div>
+
+            {isTeacherView && (
+              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/60 dark:border-slate-800/60 p-5 shadow-sm">
+                <h3 className="text-sm font-display font-bold text-slate-900 dark:text-white mb-3 tracking-tight">
+                  {t('Roster (teacher only)', 'Κατάλογος (μόνο εκπ/κός)')}
+                </h3>
+                <div className="space-y-2 mb-3">
+                  {detail.students.map((st) => (
+                    <motion.div
+                      key={st.userId}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      className="flex items-center justify-between text-sm"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="w-7 h-7 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300 flex items-center justify-center text-xs font-bold shrink-0">
+                          {st.name.slice(0, 1).toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <span className="truncate text-slate-700 dark:text-slate-200 block">{st.name}</span>
+                          {st.email ? (
+                            <span className="truncate text-[11px] text-slate-400 block">{st.email}</span>
+                          ) : null}
+                        </div>
+                      </div>
+                      <span className="text-xs text-slate-400">
+                        {t('streak', 'σερί')} {st.streak} · {Math.round(st.masteryPct)}%
+                      </span>
+                    </motion.div>
+                  ))}
+                  {detail.students.length === 0 && <p className="text-sm text-slate-400">—</p>}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleRosterSync()}
+                  className="inline-flex items-center gap-1.5 min-h-11 px-3 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-semibold"
+                >
+                  <Link2 className="w-4 h-4" />
+                  {t('Sync Classroom roster (consent)', 'Sync καταλόγου Classroom (consent)')}
+                </button>
+              </div>
+            )}
+
+            {isTeacherView && (
+              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/60 dark:border-slate-800/60 p-5 shadow-sm">
+                <h3 className="text-sm font-display font-bold text-slate-900 dark:text-white mb-3 tracking-tight">
+                  {t('Assignment → Memora map', 'Εργασία → Memora')}
+                </h3>
+                <div className="space-y-2 mb-3">
+                  <input
+                    value={assignExtId}
+                    onChange={(e) => setAssignExtId(e.target.value)}
+                    placeholder={t('External assignment id', 'ID εξωτερικής εργασίας')}
+                    className="w-full text-sm px-3 py-2.5 min-h-11 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
+                  />
+                  <input
+                    value={assignTitle}
+                    onChange={(e) => setAssignTitle(e.target.value)}
+                    placeholder={t('Title', 'Τίτλος')}
+                    className="w-full text-sm px-3 py-2.5 min-h-11 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void handleMapAssignment()}
+                    className="min-h-11 px-4 rounded-xl bg-indigo-600 text-white text-sm font-semibold"
+                  >
+                    {t('Map to quiz', 'Αντιστοίχιση σε quiz')}
+                  </button>
+                </div>
+                <div className="space-y-1.5" data-testid="assignment-maps">
+                  {maps.map((m) => (
+                    <div key={m.externalAssignmentId} className="text-xs text-slate-600 dark:text-slate-300 border-t border-slate-100 dark:border-slate-800 pt-1.5">
+                      <span className="font-semibold">{m.title}</span>
+                      <span className="text-slate-400"> · {m.externalAssignmentId}</span>
+                      {m.memoraQuizId ? <span className="text-indigo-500"> → {m.memoraQuizId}</span> : null}
+                    </div>
+                  ))}
+                  {maps.length === 0 && <p className="text-sm text-slate-400">—</p>}
+                </div>
+              </div>
+            )}
           </div>
         </>
       )}
-      {loading && <p className="text-sm text-slate-400" data-testid="teacher-loading">{t('Loading class…', 'Φόρτωση τάξης…')}</p>}
+      {loading && (
+        <p className="text-sm text-slate-400" data-testid="teacher-loading">
+          {t('Loading class…', 'Φόρτωση τάξης…')}
+        </p>
+      )}
     </div>
   );
 }
