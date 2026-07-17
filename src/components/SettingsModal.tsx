@@ -17,6 +17,12 @@ interface SettingsModalProps {
 export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const { isDyslexiaFont, toggleDyslexiaFont } = useStore();
   const learningProfile = useLearningProfileStore((state) => state.profile);
+  const profilingEnabled = useLearningProfileStore(
+    (state) => state.profilingEnabled,
+  );
+  const setProfilingEnabled = useLearningProfileStore(
+    (state) => state.setProfilingEnabled,
+  );
   const resetLearningProfile = useLearningProfileStore(
     (state) => state.resetProfile,
   );
@@ -173,6 +179,42 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       className={cn(
                         "w-4 h-4 rounded-full bg-white absolute top-1 transition-transform",
                         isDyslexiaFont ? "left-7" : "left-1"
+                      )}
+                    />
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <h4 className="text-sm font-semibold text-slate-900 dark:text-white mb-4 uppercase tracking-wider">
+                  Privacy & Adaptation
+                </h4>
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <p className="text-sm font-medium text-slate-800 dark:text-slate-200">
+                      Implicit learning profile
+                    </p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                      When disabled, behavioral signals are not recorded and
+                      adaptation stays at neutral defaults.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={profilingEnabled}
+                    onClick={() => setProfilingEnabled(!profilingEnabled)}
+                    className={cn(
+                      "relative w-12 h-6 rounded-full transition-colors",
+                      profilingEnabled
+                        ? "bg-indigo-600"
+                        : "bg-slate-300 dark:bg-slate-700",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "absolute top-1 w-4 h-4 rounded-full bg-white transition-transform",
+                        profilingEnabled ? "left-7" : "left-1",
                       )}
                     />
                   </button>

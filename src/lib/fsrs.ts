@@ -1,3 +1,7 @@
+import { Card, FSRS, Rating } from 'fsrs.js';
+
+const fsrs = new FSRS();
+
 export type FSRSRating = 'again' | 'hard' | 'good' | 'easy';
 
 export interface FSRSData {
@@ -7,56 +11,56 @@ export interface FSRSData {
   last_review: Date | null;
   next_review: Date | null;
   reps: number;
+  card?: Record<string, unknown>;
+}
+
+const ratingMap: Record<FSRSRating, Rating> = {
+  again: Rating.Again,
+  hard: Rating.Hard,
+  good: Rating.Good,
+  easy: Rating.Easy,
+};
+
+function hydrateCard(data?: FSRSData): Card {
+  const card = new Card();
+  if (!data?.card) return card;
+  Object.assign(card, data.card);
+  if (typeof card.due === 'string') card.due = new Date(card.due);
+  if (typeof card.last_review === 'string') {
+    card.last_review = new Date(card.last_review);
+  }
+  return card;
+}
+
+function serializeCard(card: Card): Record<string, unknown> {
+  return {
+    ...card,
+    due: card.due instanceof Date ? card.due.toISOString() : card.due,
+    last_review:
+      card.last_review instanceof Date
+        ? card.last_review.toISOString()
+        : card.last_review,
+  };
+}
+
+export function cardToFSRSData(card: Card): FSRSData {
+  return {
+    stability: card.stability ?? 0,
+    difficulty: card.difficulty ?? 0,
+    retrievability: 1,
+    last_review: card.last_review ?? null,
+    next_review: card.due ?? new Date(),
+    reps: card.reps ?? 0,
+    card: serializeCard(card),
+  };
 }
 
 export function initializeFSRS(): FSRSData {
-  return {
-    stability: 2,
-    difficulty: 5,
-    retrievability: 1,
-    last_review: null,
-    next_review: new Date(),
-    reps: 0
-  };
+  return cardToFSRSData(new Card());
 }
 
 export function reviewFSRS(data: FSRSData, rating: FSRSRating): FSRSData {
   const now = new Date();
-  
-  // Basic FSRS-4 simplified heuristic for updating stability and difficulty
-  let newDifficulty = data.difficulty;
-  let newStability = data.stability;
-  
-  switch (rating) {
-    case 'again':
-      newDifficulty = Math.min(10, data.difficulty + 2);
-      newStability = Math.max(0.5, data.stability * 0.5);
-      break;
-    case 'hard':
-      newDifficulty = Math.min(10, data.difficulty + 1);
-      newStability = data.stability * 1.5;
-      break;
-    case 'good':
-      newDifficulty = data.difficulty;
-      newStability = data.stability * 2.5;
-      break;
-    case 'easy':
-      newDifficulty = Math.max(1, data.difficulty - 1);
-      newStability = data.stability * 4;
-      break;
-  }
-  
-  // Calculate next review interval in hours based on stability
-  // S = interval in days where retention = 90%
-  const intervalDays = newStability;
-  const nextReview = new Date(now.getTime() + intervalDays * 24 * 60 * 60 * 1000);
-  
-  return {
-    stability: newStability,
-    difficulty: newDifficulty,
-    retrievability: 1, // Reset retrievability on review
-    last_review: now,
-    next_review: nextReview,
-    reps: data.reps + 1
-  };
+  const scheduling = fsrs.repeat(hydrateCard(data), now);
+  return cardToFSRSData(scheduling[ratingMap[rating]].card);
 }

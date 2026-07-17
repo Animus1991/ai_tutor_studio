@@ -341,7 +341,7 @@ async function expandYoutubePlaylist(url: string, max = 500): Promise<string[]> 
 
 async function startServer() {
   const app = express();
-  const PORT = Number(process.env.PORT) || 3010;
+  const PORT = 3000;
   const isProduction = process.env.NODE_ENV === 'production';
 
   app.disable('x-powered-by');
@@ -1416,20 +1416,82 @@ ${text}`,
     }
   });
 
-  // Image Occlusion Route
+  // Image Occlusion Route — Gemini vision with manual-draw fallback on client
   app.post('/api/occlusion', upload.single('image'), async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ error: 'Image file is required' });
-      // Mock response for image occlusion (since API might fail with quota limits)
-      const mockLabels = [
-        { text: "Label 1", box: [100, 150, 140, 250] },
-        { text: "Label 2", box: [300, 200, 340, 320] },
-      ];
-      await new Promise(r => setTimeout(r, 1000));
-      res.json({ labels: mockLabels });
+      if (!req.file.mimetype.startsWith('image/')) {
+        return res.status(400).json({ error: 'Only image files are supported' });
+      }
+
+      const base64Image = req.file.buffer.toString('base64');
+      const response = await ai.models.generateContent({
+        model: geminiChatModel,
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                inlineData: {
+                  mimeType: req.file.mimetype,
+                  data: base64Image,
+                },
+              },
+              {
+                text: `Identify study-relevant labels on this diagram or image for occlusion flashcards.
+Return ONLY valid JSON: {"labels":[{"text":"string","box":[y1,x1,y2,x2],"confidence":0.0}]}
+Use pixel coordinates relative to the image. Include 1-12 labels. confidence is 0-1.`,
+              },
+            ],
+          },
+        ],
+      });
+
+      const raw = response.text?.trim() ?? '';
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        return res.status(422).json({
+          error: 'Could not parse occlusion labels from the model response',
+          labels: [],
+        });
+      }
+
+      const parsed = JSON.parse(jsonMatch[0]) as {
+        labels?: Array<{
+          text?: string;
+          box?: number[];
+          confidence?: number;
+        }>;
+      };
+
+      const labels = (parsed.labels ?? [])
+        .filter(
+          (label) =>
+            typeof label.text === 'string' &&
+            label.text.trim().length > 0 &&
+            Array.isArray(label.box) &&
+            label.box.length === 4 &&
+            label.box.every((value) => typeof value === 'number'),
+        )
+        .map((label) => ({
+          text: label.text!.trim().slice(0, 120),
+          box: label.box as [number, number, number, number],
+          confidence:
+            typeof label.confidence === 'number'
+              ? Math.min(1, Math.max(0, label.confidence))
+              : 0.7,
+        }))
+        .filter((label) => label.confidence >= 0.35);
+
+      res.json({ labels, source: 'gemini-vision' });
     } catch (error) {
       console.error('Image Occlusion Error:', error);
-      res.status(500).json({ error: 'Failed to process image occlusion' });
+      sendRouteError(
+        res,
+        error,
+        'Image Occlusion Error',
+        'Failed to process image occlusion',
+      );
     }
   });
 

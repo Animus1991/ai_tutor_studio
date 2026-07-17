@@ -61,6 +61,7 @@ import {
   readLocalTasks,
   writeLocalTasks,
 } from "../lib/localTasks";
+import { enqueueOfflineMutation } from "../lib/offlineSyncQueue";
 import { useLearningProfileStore } from "../store/useLearningProfileStore";
 import {
   deriveDomainKey,
@@ -93,11 +94,20 @@ export default function Tasks() {
     updates: Record<string, unknown>,
   ) => {
     const localTasks = await readLocalTasks();
-    await writeLocalTasks(
-      localTasks.map((task) =>
-        task.id === taskId ? { ...task, ...updates } : task,
-      ),
+    const nextTasks = localTasks.map((task) =>
+      task.id === taskId ? { ...task, ...updates } : task,
     );
+    await writeLocalTasks(nextTasks);
+    if (!navigator.onLine) {
+      const task = nextTasks.find((entry) => entry.id === taskId);
+      if (task) {
+        await enqueueOfflineMutation({
+          id: `task:${taskId}`,
+          op: "upsert_task",
+          payload: { task },
+        });
+      }
+    }
   };
 
   const toggleTaskSelection = (taskId: string) => {

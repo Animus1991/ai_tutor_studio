@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { X, Image as ImageIcon, Loader2, UploadCloud, Target } from "lucide-react";
 import { toast } from "sonner";
 import { auth, db } from "../lib/firebase";
+import { apiFetch } from "../lib/apiClient";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { useFocusTrap } from "../hooks/useFocusTrap";
 
@@ -40,7 +41,7 @@ export default function ImageOcclusionModal({ isOpen, onClose }: ImageOcclusionM
       const formData = new FormData();
       formData.append('image', selectedFile);
 
-      const res = await fetch("/api/occlusion", {
+      const res = await apiFetch("/api/occlusion", {
         method: "POST",
         body: formData,
       });

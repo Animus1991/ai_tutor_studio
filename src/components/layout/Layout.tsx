@@ -8,6 +8,7 @@ import { auditLogger } from '../../lib/auditLogger';
 import { useState, useEffect } from 'react';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { useStudyReminders } from '../../hooks/useStudyReminders';
+import { usePageEngagement } from '../../hooks/usePageEngagement';
 import CommandPalette from '../CommandPalette';
 import SyncIndicator from '../SyncIndicator';
 import ActivityDrawer from '../ActivityDrawer';
@@ -24,6 +25,7 @@ import AuthUserMenu from '../AuthUserMenu';
 export default function Layout() {
   useKeyboardShortcuts();
   useStudyReminders();
+  usePageEngagement();
   const { t } = useLanguage();
   const location = useLocation();
   const { isDarkMode, toggleDarkMode, isFocusMode, toggleFocusMode, isDyslexiaFont, toggleDyslexiaFont, xp, streakFreezes } = useStore();

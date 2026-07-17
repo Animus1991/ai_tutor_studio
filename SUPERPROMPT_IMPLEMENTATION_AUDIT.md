@@ -24,7 +24,7 @@ with material gaps; **Mock** = UI/demo output without production mechanism;
 | --- | --- | --- | --- |
 | Response/outcome signals | Implemented | `learningProfile.ts`, Tasks/Agent/Feynman instrumentation | More quiz item taxonomy |
 | Modality engagement | Implemented | text/voice/visual/retrieval channels | Separate accessibility from efficacy |
-| Drop-off / impasse | Partial | focus duration, failed reviews | Page-level abandonment events |
+| Drop-off / impasse | Partial | focus duration, failed reviews, page visibility abandonment |
 | Cold start | Implemented | priors + confidence shrinkage | Validate priors by population |
 | Quiz frequency / chunk size | Implemented | adaptive FSRS multiplier, RAG/chunk parameters | A/B evaluation |
 | Theory/practice ratio | Implemented | profile parameters + blueprint modes | Outcome-conditioned policy |
@@ -53,17 +53,17 @@ with material gaps; **Mock** = UI/demo output without production mechanism;
 
 | Tool | Status | Evidence / limitation |
 | --- | --- | --- |
-| FSRS flashcards | Implemented / dual legacy | Real `fsrs.js`; one simplified path remains |
+| FSRS flashcards | Implemented | Unified `fsrs.js` wrapper in `src/lib/fsrs.ts` |
 | Concept maps | Partial | Real extraction plus historical seed fallback |
 | Feynman | Implemented | Structured gaps/praise; no offline rubric |
 | Socratic tutor | Partial | Prompt policy, not a deterministic dialogue manager |
 | Code sandbox | Partial | Pyodide Python; no multi-language isolated runner |
-| Adjustable pacing | Implemented implicitly | bounded profile parameters; explicit override pending |
+| Adjustable pacing | Implemented | bounded profile parameters + Settings overrides |
 | Multimodal alternatives | Partial | TTS/dictation/PDF/graph/image |
-| Mastery dashboard | Partial | profile evidence plus some mock widgets |
+| Mastery dashboard | Implemented | `MasteryDashboard.tsx` fed by `summarizeProfileDomains()` |
 | Error analytics | Implemented | `LearningProfileInsights.tsx` |
 | Whiteboard/collaboration | Partial | membership-scoped Firestore; public Yjs relay remains |
-| Image occlusion | Mock | endpoint returns mock labels |
+| Image occlusion | Partial | Gemini vision `/api/occlusion` + manual draw fallback |
 | Debate/compare/formula solver | Missing | roadmap |
 
 ## 5. Competitive differentiation
@@ -89,7 +89,7 @@ require product/legal infrastructure.
 | Firebase Auth/Rules | Implemented with emulator contracts |
 | IndexedDB/local demo | Implemented |
 | Hybrid retrieval | Partial (separate lexical/vector paths) |
-| Offline mutation queue | Missing |
+| Offline mutation queue | Partial | `offlineSyncQueue.ts` for local task replay on reconnect |
 | Authenticated realtime relay | Missing external deployment |
 | Observability/SLOs | Partial |
 | Component/E2E/model evals | Partial |
@@ -101,7 +101,7 @@ require product/legal infrastructure.
 | Data minimization/local profile | Implemented | Institutional server policies |
 | Profile explanation/reset/export | Partial | Full account/vector/log/backup erasure |
 | GDPR lawful basis/DPIA/DPA/transfers | Missing operational/legal | DPO/legal implementation |
-| Art. 21 fixed-policy opt-out | Partial | Dedicated profiling-off control |
+| Art. 21 fixed-policy opt-out | Implemented | Settings profiling toggle stops `trackEvent` |
 | Art. 22 human contest/review | Missing | Required before high-stakes use |
 | Overreliance controls | Partial | Deterministic hint ladder/no-AI outcome trials |
 | Human escalation | Missing | Service workflow |

@@ -9,29 +9,22 @@ import {
   Tooltip,
   Legend,
 } from 'recharts';
-
-import { useOntologyStore } from '../store/useOntologyStore';
 import { useMemo } from 'react';
+import { summarizeProfileDomains } from '../lib/learningProfile';
+import { useLearningProfileStore } from '../store/useLearningProfileStore';
 
 export default function MasteryDashboard() {
-  const { nodes } = useOntologyStore();
+  const profile = useLearningProfileStore((state) => state.profile);
 
-  const data = useMemo(() => {
-    if (!nodes || nodes.length === 0) {
-      return [
-        { topic: 'Calculus', mastery: 75, cognitiveLoad: 85 },
-        { topic: 'Physics', mastery: 60, cognitiveLoad: 90 },
-      ];
-    }
-    
-    // Map ontology nodes to chart data, deterministically generating mastery and cognitive load
-    // based on the node's properties (to simulate data). In a real app, this would come from a backend or mastery store.
-    return nodes.slice(0, 7).map(node => ({
-      topic: node.label.length > 12 ? node.label.substring(0, 10) + '...' : node.label,
-      mastery: Math.min(100, Math.max(20, node.radius * 3 + (node.group * 10))),
-      cognitiveLoad: Math.min(100, Math.max(30, 100 - (node.radius * 2))),
-    }));
-  }, [nodes]);
+  const data = useMemo(
+    () =>
+      summarizeProfileDomains(profile).map((entry) => ({
+        topic: entry.label,
+        mastery: entry.mastery,
+        cognitiveLoad: entry.cognitiveLoad,
+      })),
+    [profile],
+  );
 
   return (
     <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 sm:p-6 shadow-sm border border-slate-200/60 dark:border-slate-800/60 h-full flex flex-col min-h-[350px]">
@@ -40,7 +33,8 @@ export default function MasteryDashboard() {
           Mastery vs. Cognitive Load
         </h3>
         <p className="text-slate-500 dark:text-slate-400 text-xs mt-0.5">
-          Analyze topic mastery against perceived difficulty to optimize your study plan.
+          Derived from your local adaptive profile — retrieval success and fatigue
+          by knowledge domain.
         </p>
       </div>
       <div className="flex-1 w-full relative">
@@ -78,20 +72,19 @@ export default function MasteryDashboard() {
             <Bar 
               yAxisId="left" 
               dataKey="mastery" 
-              name="Mastery (%)" 
+              name="Mastery %" 
               fill="#6366f1" 
-              radius={[4, 4, 0, 0]} 
-              barSize={30} 
+              radius={[6, 6, 0, 0]} 
+              barSize={24} 
             />
             <Line 
               yAxisId="right" 
               type="monotone" 
               dataKey="cognitiveLoad" 
-              name="Cognitive Load" 
+              name="Cognitive Load %" 
               stroke="#f43f5e" 
-              strokeWidth={3} 
-              dot={{ r: 4, fill: '#f43f5e', strokeWidth: 2, stroke: '#fff' }} 
-              activeDot={{ r: 6 }} 
+              strokeWidth={2} 
+              dot={{ r: 4 }} 
             />
           </ComposedChart>
         </ResponsiveContainer>
