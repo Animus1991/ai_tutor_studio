@@ -45,3 +45,10 @@ Memora does **not** claim Bloom 2σ. Before marketing efficacy:
 - [ ] Referrer-restricted Firebase web API key
 - [ ] `BREAK_GLASS_REQUIRED=true` for role elevation
 - [ ] `npm run release-gate` (lint + unit + audit) and staging `npm run chaos:spine`
+- [ ] Incident runbook reviewed: `docs/INCIDENT_RUNBOOK.md`
+
+## 5. Code spine (already on branch — do not re-open as product gaps)
+
+These are **implemented in code** on `cursor/platform-spine-3eed`. Closing them again requires ops config or counsel, not new features:
+
+- Durable Yjs CRDT persist · device trust + `X-Device-Id` · resumable+AV · Match PubSub emit/consume · pedagogy writeback · Agent budgets · chaos Voice/Offline · adoption cards 0–17 (`incomplete: []`)

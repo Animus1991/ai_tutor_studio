@@ -82,13 +82,23 @@ Machine-readable cards: `GET /api/spine/adoption` (`server/spineAdoption.ts`).
 
 See `docs/INSTITUTIONAL_GATES.md` — DPA sign-off, independent WCAG pass, and efficacy gate before production marketing claims.
 
-## §Ε — Code vs ops remaining
+## §Ε — Maturity checklist (supersedes older “gaps” lists)
 
-**Code spine (this branch):** adoption cards 0–17 wired · Yjs CRDT file persistence · Match affinity/DLQ/PubSub consumer · resumable client + durable session meta · device trust Settings + `X-Device-Id` · pedagogy writeback · focus wellbeing · transfer battery · Admin SLO · legal-hold purge · EN/EL catalogs · focus traps (incl. Study Room + Command Palette) · live regions · `npm run release-gate`.
+| Gap (historical wording) | Status | Evidence |
+|--------------------------|--------|----------|
+| `APP_CHECK_ENFORCE` + referrer keys in production | **Ops** | Code soft/enforce path ready · enable in prod project (`docs/APP_CHECK_AND_API_KEYS.md`) |
+| Durable Yjs snapshot store | **Code done** | `server/yjsPersistence.ts` + `yjsSnapshotStore.ts` (CRDT persist/restore, not metadata-only) |
+| Device trust durable + `TRUST_DEVICES` | **Code done** | Firestore/memory registry · Settings UX · `X-Device-Id` |
+| Resumable uploads + AV | **Code done** | `resumableUpload.ts` + Library client preflight · MIME/AV quarantine |
+| Match regional sticky / PubSub | **Code done** / **Ops config** | Affinity + emit on enqueue/match/leave + consumer · set GCP topic/subscription |
+| Full locales/ + remaining focus traps | **Code done** (dialogs) | EN/EL catalogs · all `role="dialog"` traps · further `tc()` migration = polish |
+| Debate/Feynman scoring → mastery | **Code done** | `pedagogyWriteback.ts` |
+| Institutional DPA + independent WCAG/efficacy | **Institutional** | `docs/INSTITUTIONAL_GATES.md` |
 
-**Ops / institutional (not auto-closed by UI polish):**
+Machine check: `GET /api/spine/adoption` → `incomplete: []` (surfaces 0–17).
 
-1. Turn on `APP_CHECK_ENFORCE=true` + referrer keys in production (`docs/APP_CHECK_AND_API_KEYS.md`) — Docker/prod logs WARN when unset
-2. Set `MATCH_PUBSUB_TOPIC` + `MATCH_PUBSUB_SUBSCRIPTION` with GCP credentials (publisher wired on enqueue/match/leave; `@google-cloud/pubsub` in dependencies)
-3. Expand remaining free-form UI strings into `locales/` + independent WCAG pass
-4. Complete `docs/INSTITUTIONAL_GATES.md` (DPA · efficacy / no Bloom-2σ)
+**Still not closable by more UI features:**
+
+1. Production: `APP_CHECK_ENFORCE=true` + referrer-restricted API key
+2. Production: `MATCH_PUBSUB_TOPIC` + `MATCH_PUBSUB_SUBSCRIPTION` + GCP ADC
+3. Counsel/QA: DPA ticket · manual WCAG pass · efficacy gate (no Bloom-2σ claims)
