@@ -60,6 +60,31 @@ function sessionPath(id: string): string {
   return path.join(quarantineRoot, `${id}.part`);
 }
 
+function sessionMetaPath(id: string): string {
+  return path.join(quarantineRoot, `${id}.json`);
+}
+
+function persistSessionMeta(session: UploadSession): void {
+  ensureRoot();
+  try {
+    fs.writeFileSync(sessionMetaPath(session.id), JSON.stringify(session), 'utf8');
+  } catch {
+    /* best-effort durable meta */
+  }
+}
+
+function loadSessionMeta(id: string): UploadSession | null {
+  try {
+    const p = sessionMetaPath(id);
+    if (!fs.existsSync(p)) return null;
+    const raw = JSON.parse(fs.readFileSync(p, 'utf8')) as UploadSession;
+    if (!raw?.id || !raw.uid) return null;
+    return raw;
+  } catch {
+    return null;
+  }
+}
+
 /** Optional external AV: set AV_SCAN_COMMAND='clamdscan --fdpass' or similar. */
 async function runAvScan(filePath: string): Promise<UploadSession['avStatus']> {
   const cmd = process.env.AV_SCAN_COMMAND?.trim();
@@ -80,10 +105,18 @@ async function runAvScan(filePath: string): Promise<UploadSession['avStatus']> {
 }
 
 function getSessionOrThrow(id: string, uid: string): UploadSession {
-  const s = sessions.get(id);
+  let s = sessions.get(id);
+  if (!s) {
+    const disk = loadSessionMeta(id);
+    if (disk) {
+      sessions.set(id, disk);
+      s = disk;
+    }
+  }
   if (!s || s.uid !== uid) throw new HttpError(404, 'Upload session not found');
   if (Date.parse(s.expireAt) < Date.now()) {
     s.status = 'expired';
+    persistSessionMeta(s);
     throw new HttpError(410, 'Upload session expired');
   }
   return s;
@@ -119,6 +152,7 @@ export async function initResumableUploadHandler(req: Request, res: Response): P
   ensureRoot();
   fs.writeFileSync(sessionPath(id), Buffer.alloc(0));
   sessions.set(id, session);
+  persistSessionMeta(session);
 
   const db = await getAdminFirestore();
   if (db) {
@@ -168,9 +202,11 @@ export async function appendResumableChunkHandler(req: Request, res: Response): 
 
   fs.appendFileSync(sessionPath(id), chunk);
   session.receivedBytes += chunk.byteLength;
+  persistSessionMeta(session);
 
   if (session.receivedBytes >= session.totalBytes) {
     await finalizeUpload(session);
+    persistSessionMeta(session);
   }
 
   res.json({

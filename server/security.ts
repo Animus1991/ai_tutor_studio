@@ -36,7 +36,8 @@ export function createFirebaseAuthMiddleware(
       const { assertSessionNotRevoked, assertDeviceTrusted } = await import("./sessionTrust.js");
       try {
         await assertSessionNotRevoked(user.uid, user.claims);
-        await assertDeviceTrusted(user.uid, user.claims);
+        const headerDeviceId = String(req.header("x-device-id") ?? "").trim().slice(0, 128);
+        await assertDeviceTrusted(user.uid, user.claims, headerDeviceId || null);
       } catch (trustErr) {
         if (trustErr instanceof HttpError) {
           res.status(trustErr.status).json({ error: trustErr.message });

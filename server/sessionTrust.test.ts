@@ -55,4 +55,19 @@ describe('sessionTrust', () => {
       assertDeviceTrusted('u1', { device_id: 'dev-abc' }),
     ).resolves.toBeUndefined();
   });
+
+  it('accepts X-Device-Id header when claim is absent', async () => {
+    process.env.TRUST_DEVICES = 'true';
+    const res = {
+      locals: { user: { uid: 'u1', claims: {} } },
+      json: () => res,
+      status: () => res,
+    } as never;
+    await registerTrustedDeviceHandler(
+      { body: { deviceId: 'header-dev', label: 'phone' } } as never,
+      res,
+    );
+    await expect(assertDeviceTrusted('u1', {}, 'header-dev')).resolves.toBeUndefined();
+    await expect(assertDeviceTrusted('u1', {}, 'other')).rejects.toBeInstanceOf(HttpError);
+  });
 });

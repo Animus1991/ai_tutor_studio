@@ -1,4 +1,5 @@
-import { X, Type, Database, Download, Languages } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { X, Type, Database, Download, Languages, Shield } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../store/useStore';
 import { cn } from '../lib/utils';
@@ -11,6 +12,13 @@ import { useLearningProfileStore } from "../store/useLearningProfileStore";
 import { exportMyData, requestAccountDeletion } from "../lib/privacyApi";
 import { useLanguage } from '../lib/i18n';
 import { useFocusTrap } from '../hooks/useFocusTrap';
+import {
+  getOrCreateDeviceId,
+  listTrustedDevices,
+  registerThisDevice,
+  revokeTrustedDevice,
+  type TrustedDeviceRow,
+} from '../lib/deviceTrust';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -19,8 +27,11 @@ interface SettingsModalProps {
 
 export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const { isDyslexiaFont, toggleDyslexiaFont } = useStore();
-  const { language, setLanguage, t, dir } = useLanguage();
+  const { language, setLanguage, t, tc, dir } = useLanguage();
   const dialogRef = useFocusTrap<HTMLDivElement>(isOpen, onClose);
+  const [trustedDevices, setTrustedDevices] = useState<TrustedDeviceRow[]>([]);
+  const [deviceBusy, setDeviceBusy] = useState(false);
+  const thisDeviceId = getOrCreateDeviceId();
   const learningProfile = useLearningProfileStore((state) => state.profile);
   const profilingEnabled = useLearningProfileStore(
     (state) => state.profilingEnabled,
@@ -72,6 +83,37 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       tasks: tasksData,
       learningProfile,
     };
+  };
+
+  useEffect(() => {
+    if (!isOpen || !auth.currentUser) return;
+    void listTrustedDevices().then(setTrustedDevices).catch(() => setTrustedDevices([]));
+  }, [isOpen]);
+
+  const handleRegisterDevice = async () => {
+    setDeviceBusy(true);
+    try {
+      await registerThisDevice();
+      setTrustedDevices(await listTrustedDevices());
+      toast.success(t('This device is now trusted.', 'Αυτή η συσκευή είναι πλέον έμπιστη.'));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Device trust failed');
+    } finally {
+      setDeviceBusy(false);
+    }
+  };
+
+  const handleRevokeDevice = async (deviceId: string) => {
+    setDeviceBusy(true);
+    try {
+      await revokeTrustedDevice(deviceId);
+      setTrustedDevices(await listTrustedDevices());
+      toast.success(t('Device revoked.', 'Η συσκευή ανακλήθηκε.'));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Revoke failed');
+    } finally {
+      setDeviceBusy(false);
+    }
   };
 
   const handleResetLearningProfile = async () => {
@@ -390,6 +432,53 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     Return to automatic adaptation
                   </button>
                 </div>
+              </div>
+
+              <div>
+                <h4 className="text-sm font-semibold text-slate-900 dark:text-white mb-4 uppercase tracking-wider">
+                  {tc('settings.deviceTrust')}
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
+                  {t(
+                    'Register this browser so TRUST_DEVICES production mode can bind your session.',
+                    'Καταχώρισε αυτό το πρόγραμμα περιήγησης ώστε το TRUST_DEVICES να δεσμεύει τη συνεδρία σου.',
+                  )}
+                </p>
+                <p className="text-[11px] font-mono text-slate-400 mb-3 break-all">
+                  {thisDeviceId}
+                </p>
+                <button
+                  type="button"
+                  disabled={deviceBusy || !auth.currentUser}
+                  onClick={() => void handleRegisterDevice()}
+                  className="mb-3 flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-700 disabled:opacity-50 dark:border-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300"
+                >
+                  <Shield className="w-4 h-4" aria-hidden="true" />
+                  {t('Trust this device', 'Εμπιστοσύνη σε αυτή τη συσκευή')}
+                </button>
+                {trustedDevices.length > 0 && (
+                  <ul className="space-y-2">
+                    {trustedDevices.map((d) => (
+                      <li
+                        key={d.deviceId}
+                        className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700"
+                      >
+                        <span className="truncate">
+                          {d.label}
+                          {d.deviceId === thisDeviceId ? ' · this device' : ''}
+                        </span>
+                        <button
+                          type="button"
+                          disabled={deviceBusy}
+                          onClick={() => void handleRevokeDevice(d.deviceId)}
+                          className="text-xs font-semibold text-rose-600 hover:underline"
+                        >
+                          {t('Revoke', 'Ανάκληση')}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
 
               <div>

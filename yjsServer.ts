@@ -13,6 +13,7 @@ import {
   touchYjsSnapshot,
   yjsSnapshotStats,
 } from './server/yjsSnapshotStore.js';
+import { installYjsFilePersistence } from './server/yjsPersistence.js';
 
 /** Room document names must be unguessable enough for collab. */
 const ROOM_DOC_PATTERN = /^\/?[a-zA-Z0-9_-]{8,128}$/;
@@ -48,6 +49,9 @@ export function attachYjsWebSocketServer(
   httpServer: Server,
   options?: YjsAttachOptions,
 ): WebSocketServer {
+  // Durable CRDT snapshots — restore on bind, write on idle / last disconnect.
+  installYjsFilePersistence();
+
   const wss = new WebSocketServer({ noServer: true });
   const projectId = options?.projectId ?? '';
   const requireAuth = Boolean(options?.requireAuth);

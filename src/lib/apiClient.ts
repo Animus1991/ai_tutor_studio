@@ -70,6 +70,21 @@ async function withAuthentication(
     );
   }
 
+  // Device trust binding (TRUST_DEVICES) — stable id from localStorage.
+  try {
+    let deviceId = window.localStorage.getItem("memora-device-id");
+    if (!deviceId) {
+      deviceId =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `dev-${Date.now().toString(36)}`;
+      window.localStorage.setItem("memora-device-id", deviceId);
+    }
+    headers.set("X-Device-Id", deviceId.slice(0, 128));
+  } catch {
+    /* ignore */
+  }
+
   if (appCheck) {
     try {
       const { token } = await getToken(appCheck, forceRefresh);

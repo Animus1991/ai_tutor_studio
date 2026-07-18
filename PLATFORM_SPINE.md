@@ -11,11 +11,11 @@ Machine-readable cards: `GET /api/spine/adoption` (`server/spineAdoption.ts`).
 
 | # | Layer / surface | Status | Implementation |
 |---|-----------------|--------|----------------|
-| 0 | Identity & trust | **Ops wired** | Bearer · App Check · session revoke + device cascade · durable `trustedDevices` list/revoke · claims/break-glass |
+| 0 | Identity & trust | **Ops wired** | Bearer · App Check · session revoke · durable `trustedDevices` + Settings UX · `X-Device-Id` · claims/break-glass |
 | 0 | Authorization | **Hardened** | Room ACL · Yjs membership · `new_room` denied when `REQUIRE_API_AUTH` (invite allow-list first) |
 | 0 | Data contracts | **Hardened** | `validateObject` · Match `notesVersion` · library `libraryVersion` · Yjs snapshot `version` · resumable uploads |
 | 0 | Safety | **Live spine** | Heuristics→Gemini · moderate image/board · MIME sniff · SSRF-safe `fetchPublicText` · AV quarantine hook |
-| 0 | Reliability | **Hardened** | Gemini circuit breaker + **budget alerts** · Match **DLQ/PubSub bus + consumer** · durable Yjs · sticky affinity |
+| 0 | Reliability | **Hardened** | Gemini circuit breaker + **budget alerts** · Match **DLQ/PubSub bus + consumer** · durable Yjs **CRDT persist/restore** · sticky affinity |
 | 0 | Observability | **Hardened** | Health probes `/api/health/{match,yjs,gemini}` · Admin SLO strip · circuit alerts · `chaos:spine` · `release-gate` |
 | 0 | Pedagogy telemetry | **Evidence wired** | xAPI + 90d TTL · `/api/learning/*` · Feynman/Debate writeback · transfer battery · Dashboard calibration |
 | 0 | Privacy | **Hardened** | Export / delete-request · **automated purge drain** · **legal hold** skip · Yjs/xAPI TTL compaction · no peer PII |
@@ -23,7 +23,7 @@ Machine-readable cards: `GET /api/spine/adoption` (`server/spineAdoption.ts`).
 | 1 | Auth / Google | **Ops wired** | App Check hooks · scoped OAuth · claims + break-glass · Contacts opt-in |
 | 4 / 7 | Agent / Voice | **Learning wired** | Mode contracts · grounded RAG · barge-in · offline Voice pack · latency headers |
 | 2–3 / 15 | Dashboard / Tasks / Mastery | **Evidence wired** | Joint scheduler · why-now · calibration · pedagogy writeback |
-| 5 | Library / ingest | **Guarded** | MIME sniff · budgets · `libraryVersion` · **resumable + AV quarantine** |
+| 5 | Library / ingest | **Guarded** | MIME sniff · budgets · `libraryVersion` · **resumable client + durable session meta + AV** |
 | 8–10 | Collab / Circles / Match | **Social spine** | Unified policy · image mod · trust prior · **durable Yjs** · **Match affinity** |
 | 11 | Teacher / Classroom | **Institution spine** | Class ACL · DP aggregates · at-risk · Classroom sync |
 | 4 / 15 | Eval / research | **Evidence spine** | Golden-question harness · `/api/evidence/*` · principles catalog |
@@ -84,11 +84,11 @@ See `docs/INSTITUTIONAL_GATES.md` — DPA sign-off, independent WCAG pass, and e
 
 ## §Ε — Code vs ops remaining
 
-**Code spine (this branch):** adoption cards 0–17 wired · durable Yjs · Match affinity/DLQ/PubSub consumer stub · resumable+AV · device trust · pedagogy writeback · focus wellbeing · transfer battery · Admin SLO · legal-hold purge · EN/EL catalogs · focus traps · live regions · `npm run release-gate`.
+**Code spine (this branch):** adoption cards 0–17 wired · Yjs CRDT file persistence · Match affinity/DLQ/PubSub consumer · resumable client + durable session meta · device trust Settings + `X-Device-Id` · pedagogy writeback · focus wellbeing · transfer battery · Admin SLO · legal-hold purge · EN/EL catalogs · focus traps (incl. Study Room + Command Palette) · live regions · `npm run release-gate`.
 
 **Ops / institutional (not auto-closed by UI polish):**
 
 1. Turn on `APP_CHECK_ENFORCE=true` + referrer keys in production (`docs/APP_CHECK_AND_API_KEYS.md`)
 2. Install/live `@google-cloud/pubsub` + set `MATCH_PUBSUB_SUBSCRIPTION` for multi-instance Match
-3. Expand remaining free-form UI strings into `locales/`
-4. Complete `docs/INSTITUTIONAL_GATES.md` (DPA · independent WCAG · efficacy / no Bloom-2σ)
+3. Expand remaining free-form UI strings into `locales/` + independent WCAG pass
+4. Complete `docs/INSTITUTIONAL_GATES.md` (DPA · efficacy / no Bloom-2σ)

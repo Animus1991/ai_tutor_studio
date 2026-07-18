@@ -35,5 +35,8 @@
   "focus.wellbeingDaily": "Έφτασες το ημερήσιο budget εστίασης — η ξεκούραση βοηθά τη συγκράτηση.",
   "focus.wellbeingPomodoro": "Μεγάλο διάλειμμα μετά από τέσσερα pomodoros στηρίζει την ευεξία.",
   "admin.sloHealth": "Υγεία SLO πλατφόρμας",
-  "admin.transfer": "Μεταφορά"
+  "admin.transfer": "Μεταφορά",
+  "settings.deviceTrust": "Έμπιστες συσκευές",
+  "settings.trustDevice": "Εμπιστοσύνη σε αυτή τη συσκευή",
+  "command.palette": "Παλέτα εντολών"
 }

@@ -48,7 +48,7 @@ export const SPINE_ADOPTION: readonly AdoptionCard[] = [
       'server/circuitBreaker.ts',
       'server/matchQueueBus.ts',
     ],
-    notes: 'App Check soft-by-default; durable Yjs; privacy purge drain; circuit budget alerts; Match DLQ',
+    notes: 'App Check soft-by-default; durable Yjs CRDT persist; device trust X-Device-Id; privacy purge; Match DLQ/PubSub',
   },
   {
     id: 1,

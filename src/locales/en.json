@@ -35,5 +35,8 @@
   "focus.wellbeingDaily": "Daily focus budget reached — rest supports retention.",
   "focus.wellbeingPomodoro": "Long break after four pomodoros supports wellbeing.",
   "admin.sloHealth": "Platform SLO health",
-  "admin.transfer": "Transfer"
+  "admin.transfer": "Transfer",
+  "settings.deviceTrust": "Trusted devices",
+  "settings.trustDevice": "Trust this device",
+  "command.palette": "Command palette"
 }

@@ -52,15 +52,19 @@ export async function assertSessionNotRevoked(
 }
 
 /**
- * Optional device trust: when TRUST_DEVICES=true and token carries device_id,
- * require it to be registered for this uid.
+ * Optional device trust: when TRUST_DEVICES=true, require a registered device.
+ * Accepts Firebase custom claim `device_id` OR explicit `X-Device-Id` header
+ * (clients register via POST /api/auth/trusted-devices).
  */
 export async function assertDeviceTrusted(
   uid: string,
   claims: SessionTrustClaims,
+  headerDeviceId?: string | null,
 ): Promise<void> {
   if (process.env.TRUST_DEVICES !== 'true') return;
-  const deviceId = String(claims.device_id ?? '').trim().slice(0, 128);
+  const deviceId = String(claims.device_id ?? headerDeviceId ?? '')
+    .trim()
+    .slice(0, 128);
   if (!deviceId) {
     throw new HttpError(403, 'Trusted device required');
   }
@@ -68,7 +72,8 @@ export async function assertDeviceTrusted(
   if (mem?.uid === uid) return;
   const db = await getAdminFirestore();
   if (!db) {
-    throw new HttpError(403, 'Trusted device required');
+    // Memory-only mode: registration in this process is enough.
+    throw new HttpError(403, 'Device not trusted');
   }
   const snap = await db.collection('trustedDevices').doc(deviceId).get();
   if (!snap.exists || snap.data()?.uid !== uid) {
