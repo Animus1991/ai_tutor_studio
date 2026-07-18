@@ -11,9 +11,11 @@ import { VIEW_SHELL } from '../components/layout/pageLayout';
 import { cn } from '../lib/utils';
 import {
   clearVoiceTurns,
+  isBrowserOffline,
   latencyWithinBudget,
   loadVoiceTurns,
   nextPhaseOnMic,
+  offlineVoiceReply,
   pruneExpiredTurns,
   saveVoiceTurns,
   type VoicePhase,
@@ -40,17 +42,28 @@ function SoundWaves() {
 }
 
 export default function VoiceTutor() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const isDemoMode = useAuthStore((s) => s.isDemoMode);
   const { isRecording, startRecording, stopRecording, audioBlob, error } = useMicrophone();
   const [phase, setPhase] = useState<Phase>('idle');
   const [transcript, setTranscript] = useState('');
   const [turns, setTurns] = useState<Turn[]>(() => loadVoiceTurns());
   const [voice, setVoice] = useState('nova');
+  const [offline, setOffline] = useState(() => isBrowserOffline());
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const turnsRef = useRef<Turn[]>([]);
   turnsRef.current = turns;
+
+  useEffect(() => {
+    const sync = () => setOffline(isBrowserOffline());
+    window.addEventListener('online', sync);
+    window.addEventListener('offline', sync);
+    return () => {
+      window.removeEventListener('online', sync);
+      window.removeEventListener('offline', sync);
+    };
+  }, []);
 
   useEffect(() => {
     if (error) toast.error(error);
@@ -100,6 +113,25 @@ export default function VoiceTutor() {
     const roundStart = performance.now();
     try {
       if (isDemoMode) await ensureDemoSandboxReady();
+
+      // Offline: skip STT/network — prompt for typed/local fallback only
+      if (isBrowserOffline()) {
+        const offlineUser =
+          t('(offline voice — describe your question)', '(offline φωνή — περιέγραψε την ερώτηση)') ||
+          'offline study check';
+        const reply = offlineVoiceReply(offlineUser, language === 'el' ? 'el' : 'en');
+        setTurns((prev) =>
+          pruneExpiredTurns([
+            ...prev,
+            { id: `${Date.now()}`, role: 'user', content: offlineUser, at: Date.now() },
+            { id: `${Date.now() + 1}`, role: 'model', content: reply, at: Date.now() },
+          ]),
+        );
+        setPhase('idle');
+        toast.message(t('Offline Voice — local prompts only', 'Offline Voice — μόνο τοπικά prompts'));
+        return;
+      }
+
       const sttStart = performance.now();
       const { text } = await transcribeAudio(blob);
       if (!latencyWithinBudget('stt', performance.now() - sttStart)) {
@@ -120,17 +152,25 @@ export default function VoiceTutor() {
       setTurns((prev) => pruneExpiredTurns([...prev, userTurn]));
 
       setPhase('thinking');
-      const history = [...turnsRef.current, userTurn].map((tn) => ({
-        role: tn.role === 'user' ? 'user' : 'model',
-        parts: [{ text: tn.content }],
-      }));
-      const system =
-        'You are Memora, a friendly spoken AI tutor. Reply conversationally and concisely (2-5 sentences), ' +
-        'as if speaking aloud. Avoid markdown, lists, or code blocks — plain spoken language only.';
-      const chatStart = performance.now();
-      const { text: reply } = await chatWithAgent(history, system);
-      if (!latencyWithinBudget('chat', performance.now() - chatStart)) {
-        console.warn('[VoiceTutor] Chat latency budget exceeded');
+      let reply: string;
+      try {
+        const history = [...turnsRef.current, userTurn].map((tn) => ({
+          role: tn.role === 'user' ? 'user' : 'model',
+          parts: [{ text: tn.content }],
+        }));
+        const system =
+          'You are Memora, a friendly spoken AI tutor. Reply conversationally and concisely (2-5 sentences), ' +
+          'as if speaking aloud. Avoid markdown, lists, or code blocks — plain spoken language only.';
+        const chatStart = performance.now();
+        const result = await chatWithAgent(history, system);
+        reply = result.text;
+        if (!latencyWithinBudget('chat', performance.now() - chatStart)) {
+          console.warn('[VoiceTutor] Chat latency budget exceeded');
+        }
+      } catch {
+        // Network failure mid-session → offline pack (never invent online answers)
+        reply = offlineVoiceReply(text, language === 'el' ? 'el' : 'en');
+        toast.message(t('Using offline Voice prompts', 'Χρήση offline Voice prompts'));
       }
       setTranscript('');
       setTurns((prev) =>
@@ -142,12 +182,16 @@ export default function VoiceTutor() {
       if (!latencyWithinBudget('roundTrip', performance.now() - roundStart)) {
         console.warn('[VoiceTutor] Round-trip latency budget exceeded');
       }
-      await speak(reply);
+      if (!isBrowserOffline()) {
+        await speak(reply);
+      } else {
+        setPhase('idle');
+      }
     } catch (e) {
       toast.error(t('Voice tutor failed. Please try again.', 'Αποτυχία φωνητικού βοηθού. Δοκίμασε ξανά.'));
       setPhase('idle');
     }
-  }, [isDemoMode, speak, t]);
+  }, [isDemoMode, language, speak, t]);
 
   useEffect(() => {
     if (audioBlob && phase === 'listening') {
@@ -215,7 +259,9 @@ export default function VoiceTutor() {
               {t('Voice Tutor', 'Φωνητικός Δάσκαλος')}
             </h2>
             <p className="text-[11px] sm:text-xs font-medium text-slate-500 dark:text-slate-400 mt-1 truncate">
-              {t('Speak with Memora — Gemini STT + TTS', 'Μίλα με τον Memora — Gemini STT + TTS')}
+              {offline
+                ? t('Offline — local prompts only (no fake online answers)', 'Offline — μόνο τοπικά prompts')
+                : t('Speak with Memora — Gemini STT + TTS', 'Μίλα με τον Memora — Gemini STT + TTS')}
             </p>
           </div>
         </div>

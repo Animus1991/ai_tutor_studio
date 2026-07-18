@@ -27,10 +27,12 @@ import {
   isValidStudyVibe,
   normalizeTopicKey,
   REPORT_COOLDOWN_MS,
+  resolveMatchScoreWeights,
   resumeFocusPhase,
   scoreMatchCandidate,
   shouldEmitMidpointCheckIn,
   startBreakPhase,
+  trustPriorFromVotes,
   type EncourageReaction,
   type MatchDuration,
   type MatchFlexibility,
@@ -126,7 +128,24 @@ const memorySessions = new Map<string, MatchSession>();
 const memoryBlocks = new Set<string>();
 /** uid → ISO timestamp until which rematch is blocked after a report */
 const memoryCooldowns = new Map<string, string>();
+/** Private trust prior tallies — never exposed as a public profile. */
+const memoryTrustVotes = new Map<string, { respectful: number; total: number }>();
 const matchMetrics: MatchMetricsSnapshot = emptyMatchMetrics();
+const matchScoreWeights = resolveMatchScoreWeights();
+
+function privateTrustPrior(uid: string): number {
+  const t = memoryTrustVotes.get(uid);
+  if (!t) return 0;
+  return trustPriorFromVotes(t.respectful, t.total);
+}
+
+function recordPrivateTrust(uid: string, respectful: boolean): void {
+  const prev = memoryTrustVotes.get(uid) ?? { respectful: 0, total: 0 };
+  memoryTrustVotes.set(uid, {
+    respectful: prev.respectful + (respectful ? 1 : 0),
+    total: prev.total + 1,
+  });
+}
 
 function getAuthUser(res: Response): AuthUser {
   const user = res.locals.user as AuthUser | undefined;
@@ -435,6 +454,8 @@ async function tryMatch(db: Firestore | null, entrant: QueueEntry): Promise<Matc
       entrantVibe: entrant.vibe ?? 'balanced',
       otherVibe: y.vibe ?? 'balanced',
       createdAt: y.createdAt,
+      otherTrustPrior: privateTrustPrior(y.uid),
+      weights: matchScoreWeights,
     });
     const sx = scoreMatchCandidate({
       entrantTopicKey: entrant.topicKey,
@@ -444,6 +465,8 @@ async function tryMatch(db: Firestore | null, entrant: QueueEntry): Promise<Matc
       entrantVibe: entrant.vibe ?? 'balanced',
       otherVibe: x.vibe ?? 'balanced',
       createdAt: x.createdAt,
+      otherTrustPrior: privateTrustPrior(x.uid),
+      weights: matchScoreWeights,
     });
     return sy - sx;
   });
@@ -1087,6 +1110,9 @@ export async function respectVoteHandler(req: Request, res: Response): Promise<v
   session.respectVotes = { ...(session.respectVotes ?? {}), [user.uid]: respectful };
   session.updatedAt = new Date().toISOString();
   await setSession(db, session);
+  // Update private trust prior for the *peer* (never returned in public APIs)
+  const peerId = session.memberIds.find((id) => id !== user.uid);
+  if (peerId) recordPrivateTrust(peerId, respectful);
   res.json({ ok: true });
 }
 
@@ -1096,6 +1122,7 @@ export const __test__ = {
   memorySessions,
   memoryBlocks,
   memoryCooldowns,
+  memoryTrustVotes,
   matchMetrics,
   domainsCompatible,
   pairUsers,
@@ -1104,4 +1131,6 @@ export const __test__ = {
   blockKey,
   setCooldown,
   scoreMatchCandidate,
+  privateTrustPrior,
+  recordPrivateTrust,
 };

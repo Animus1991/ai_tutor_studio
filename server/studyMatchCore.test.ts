@@ -9,6 +9,8 @@ import {
   shouldEmitMidpointCheckIn,
   isInCooldown,
   scoreMatchCandidate,
+  resolveMatchScoreWeights,
+  trustPriorFromVotes,
   PRESENCE_ONLINE_MS,
   REPORT_COOLDOWN_MS,
 } from './studyMatchCore';
@@ -54,6 +56,34 @@ describe('studyMatchCore', () => {
     const other = scoreMatchCandidate({ ...base, otherTopicKey: 'calculus' });
     expect(same).toBeGreaterThan(other);
     expect(other).toBeGreaterThan(0);
+  });
+
+  it('boosts private trust prior and supports A/B weights', () => {
+    expect(trustPriorFromVotes(8, 10)).toBeGreaterThan(0);
+    const low = scoreMatchCandidate({
+      entrantTopicKey: 'calculus',
+      otherTopicKey: 'biology',
+      entrantFlexibility: 'any_study',
+      otherFlexibility: 'any_study',
+      entrantVibe: 'balanced',
+      otherVibe: 'balanced',
+      createdAt: new Date().toISOString(),
+      otherTrustPrior: -1,
+      weights: resolveMatchScoreWeights('A'),
+    });
+    const high = scoreMatchCandidate({
+      entrantTopicKey: 'calculus',
+      otherTopicKey: 'biology',
+      entrantFlexibility: 'any_study',
+      otherFlexibility: 'any_study',
+      entrantVibe: 'balanced',
+      otherVibe: 'balanced',
+      createdAt: new Date().toISOString(),
+      otherTrustPrior: 1,
+      weights: resolveMatchScoreWeights('A'),
+    });
+    expect(high).toBeGreaterThan(low);
+    expect(resolveMatchScoreWeights('B').trust).toBeGreaterThan(resolveMatchScoreWeights('A').trust);
   });
 
   it('rate-limits sliding windows', () => {

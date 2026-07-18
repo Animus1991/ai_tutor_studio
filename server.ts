@@ -22,6 +22,7 @@ import {
 import {
   assertPublicHttpUrl,
   createFirebaseAuthMiddleware,
+  fetchPublicText,
   HttpError,
   requiredString,
 } from './server/security.js';
@@ -321,13 +322,12 @@ function pushServerAudit(event: Record<string, unknown>) {
 }
 
 async function extractArticleText(url: string): Promise<string> {
-  const parsed = await assertPublicHttpUrl(url);
-  const res = await fetch(parsed.href, {
-    headers: { 'User-Agent': 'MemoraStudyBot/1.0 (+https://memora.app)' },
-    redirect: 'follow',
+  // SSRF-safe fetch with manual redirect re-validation (no redirect: 'follow')
+  const { text: html } = await fetchPublicText(url, {
+    maxBytes: 1_500_000,
+    timeoutMs: 10_000,
+    maxRedirects: 3,
   });
-  if (!res.ok) throw new Error(`Failed to fetch URL (${res.status})`);
-  const html = await res.text();
   const $ = cheerio.load(html);
   $('script, style, nav, footer, aside, noscript, iframe').remove();
   const article =
@@ -1548,25 +1548,27 @@ ${text}`,
   });
 
 
-  // Web Clipper Endpoint
+  // Web Clipper Endpoint — SSRF-safe public fetch only
   app.post('/api/clipper', async (req, res) => {
     try {
       const { url } = req.body;
       if (!url) return res.status(400).json({ error: 'URL is required' });
 
-      const parsed = await assertPublicHttpUrl(url);
-      const response = await fetch(parsed.href);
-      const html = await response.text();
+      const { text: html } = await fetchPublicText(url, {
+        maxBytes: 1_000_000,
+        timeoutMs: 8_000,
+        maxRedirects: 3,
+      });
       const $ = cheerio.load(html);
-      
+
       $('script, style, nav, footer, header, aside').remove();
       const title = $('title').text() || 'Clipped Article';
-      let content = $('body').text().replace(/\s+/g, ' ').trim();
-      
+      const content = $('body').text().replace(/\s+/g, ' ').trim();
+
       res.json({ title, content: content.substring(0, 5000) });
     } catch (error) {
       console.error('Clipper Error:', error);
-      res.status(500).json({ error: 'Failed to clip URL' });
+      sendRouteError(res, error, 'Clipper Error', 'Failed to clip URL');
     }
   });
 

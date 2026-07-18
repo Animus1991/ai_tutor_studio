@@ -113,6 +113,57 @@ export function isValidStudyEnergy(v: unknown): v is StudyEnergy {
   return typeof v === 'string' && (STUDY_ENERGIES as readonly string[]).includes(v);
 }
 
+/** Default scoring weights — A/B via MATCH_SCORE_VARIANT or explicit weights. */
+export type MatchScoreWeights = {
+  sameTopic: number;
+  topicMissPrefer: number;
+  anyStudy: number;
+  vibeMatch: number;
+  vibeClash: number;
+  vibeNeutral: number;
+  fifoMax: number;
+  /** Multiplier applied to private trust prior in [-1, 1] */
+  trust: number;
+};
+
+export const MATCH_SCORE_WEIGHTS_A: MatchScoreWeights = {
+  sameTopic: 100,
+  topicMissPrefer: 10,
+  anyStudy: 40,
+  vibeMatch: 25,
+  vibeClash: -15,
+  vibeNeutral: 10,
+  fifoMax: 30,
+  trust: 20,
+};
+
+/** Ethics-review stub: slightly less topic-heavy, more trust-aware. */
+export const MATCH_SCORE_WEIGHTS_B: MatchScoreWeights = {
+  sameTopic: 85,
+  topicMissPrefer: 15,
+  anyStudy: 45,
+  vibeMatch: 20,
+  vibeClash: -10,
+  vibeNeutral: 12,
+  fifoMax: 25,
+  trust: 35,
+};
+
+export function resolveMatchScoreWeights(variant?: string | null): MatchScoreWeights {
+  const v = (variant || process.env.MATCH_SCORE_VARIANT || 'A').toUpperCase();
+  return v === 'B' ? MATCH_SCORE_WEIGHTS_B : MATCH_SCORE_WEIGHTS_A;
+}
+
+/**
+ * Private trust prior from past respect votes (never a public profile).
+ * Input ratio respectful/(respectful+disrespectful) → [-1, 1].
+ */
+export function trustPriorFromVotes(respectful: number, total: number): number {
+  if (total <= 0) return 0;
+  const ratio = Math.min(1, Math.max(0, respectful / total));
+  return ratio * 2 - 1;
+}
+
 /** Higher score = better candidate. Topic match preferred but not required. */
 export function scoreMatchCandidate(input: {
   entrantTopicKey: string;
@@ -122,7 +173,11 @@ export function scoreMatchCandidate(input: {
   entrantVibe: StudyVibe;
   otherVibe: StudyVibe;
   createdAt: string;
+  /** Private trust prior for the *other* candidate, [-1, 1] */
+  otherTrustPrior?: number;
+  weights?: MatchScoreWeights;
 }): number {
+  const w = input.weights ?? resolveMatchScoreWeights();
   let score = 0;
   const sameTopic =
     input.entrantTopicKey &&
@@ -130,35 +185,37 @@ export function scoreMatchCandidate(input: {
     input.entrantTopicKey === input.otherTopicKey &&
     input.entrantTopicKey !== 'general-study';
 
-  if (sameTopic) score += 100;
+  if (sameTopic) score += w.sameTopic;
   else if (
     input.entrantFlexibility === 'prefer_topic' &&
     input.otherFlexibility === 'prefer_topic' &&
     input.entrantTopicKey !== 'general-study' &&
     input.otherTopicKey !== 'general-study'
   ) {
-    // Both wanted a topic match but topics differ — still allowed, lower priority
-    score += 10;
+    score += w.topicMissPrefer;
   } else {
-    score += 40; // open / any-study pairing
+    score += w.anyStudy;
   }
 
-  if (input.entrantVibe === input.otherVibe) score += 25;
+  if (input.entrantVibe === input.otherVibe) score += w.vibeMatch;
   else if (
     (input.entrantVibe === 'quiet' && input.otherVibe === 'chatty') ||
     (input.entrantVibe === 'chatty' && input.otherVibe === 'quiet')
   ) {
-    score -= 15;
+    score += w.vibeClash;
   } else {
-    score += 10;
+    score += w.vibeNeutral;
   }
 
   // Slight FIFO preference among similar scores
   const ageMin = Math.min(
-    30,
+    w.fifoMax,
     Math.max(0, (Date.now() - new Date(input.createdAt).getTime()) / 60_000),
   );
   score += ageMin;
+
+  const trust = typeof input.otherTrustPrior === 'number' ? input.otherTrustPrior : 0;
+  score += trust * w.trust;
   return score;
 }
 

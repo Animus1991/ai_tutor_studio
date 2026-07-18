@@ -48,8 +48,9 @@ export async function pullLibrary(): Promise<void> {
     const merged: LibraryState = {
       courses: mergeById(local.courses || [], remote.courses || []),
       uploadedFiles: mergeById(local.uploadedFiles || [], remote.uploadedFiles || []),
+      libraryVersion: local.libraryVersion,
     };
-    await saveLibrary(merged);
+    await saveLibrary(merged, local.libraryVersion);
     await useLibraryStore.getState().hydrate();
   } catch {
     /* ignore */

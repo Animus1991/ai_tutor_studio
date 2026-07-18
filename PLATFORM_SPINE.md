@@ -11,18 +11,18 @@ Checklist for every route/API:
 |---|-----------------|--------|----------------|
 | 0 | Identity & trust | **Ops wired** | Bearer · App Check · session revoke (`/api/auth/revoke-sessions`) · device trust stub · claims/break-glass |
 | 0 | Authorization | **Hardened** | Room ACL · Yjs membership · `new_room` denied when `REQUIRE_API_AUTH` (invite allow-list first) |
-| 0 | Data contracts | **Partial** | `validateObject` on agent/tts + admin paths · Match `notesVersion` · extract budgets |
-| 0 | Safety | **Live spine** | Heuristics→Gemini · `POST /api/moderate` (+ `board`/`image`) · MIME sniff · Match image attach |
-| 0 | Reliability | **Partial** | Gemini circuit breaker · Idempotency-Key middleware · Firestore Match queue when Admin SDK present |
+| 0 | Data contracts | **Hardened** | `validateObject` · Match `notesVersion` · library `libraryVersion` optimistic concurrency · extract budgets |
+| 0 | Safety | **Live spine** | Heuristics→Gemini · moderate image/board · MIME sniff · SSRF-safe `fetchPublicText` on clipper/ingest |
+| 0 | Reliability | **Partial** | Gemini circuit breaker · Idempotency-Key · Firestore Match queue · Yjs upgrade/message rate limits |
 | 0 | Observability | **Partial** | `X-Request-Id` trace middleware · audit / room-reports / social-reports / match metrics |
 | 0 | Pedagogy telemetry | **Evidence wired** | xAPI persist + 90d TTL · local cap · `/api/learning/*` · research export |
 | 0 | Privacy | **Partial** | `GET /api/privacy/export` · research export · delete-request · no peer PII |
 | 0 | Deploy | **Done** | Dockerfile ships `server/` + `dist/server.cjs` · authenticated Yjs |
 | 1 | Auth / Google | **Ops wired** | App Check hooks · scoped OAuth (Classroom/Meet/Forms/Tasks/Calendar/Contacts) · `POST /api/admin/claims` + break-glass |
-| 4 / 7 | Agent / Voice | **Learning wired** | Mode contracts · grounded RAG · Voice barge-in SM · latency headers · transcript 24h TTL · audio ephemeral |
+| 4 / 7 | Agent / Voice | **Learning wired** | Mode contracts · grounded RAG · barge-in · offline Voice prompt pack · latency headers · transcript TTL |
 | 2–3 / 15 | Dashboard / Tasks / Mastery | **Evidence wired** | Learning OS strip · due FSRS · offline sync debt · joint scheduler · why-now · calibration |
-| 5 | Library / ingest | **Guarded** | Magic-byte MIME sniff · max pages/chars budgets · OCR/media gated |
-| 8–10 | Collab / Circles / Match | **Social spine** | Unified policy · dual Meet · multimodal image mod · invite allow-list on Yjs when auth required |
+| 5 | Library / ingest | **Guarded** | MIME sniff · budgets · `libraryVersion` · course tombstones on delete |
+| 8–10 | Collab / Circles / Match | **Social spine** | Unified policy · image mod · private trust prior · A/B score weights · Yjs rate limits + snapshot stub |
 | 11 | Teacher / Classroom | **Institution spine** | Class ACL · DP aggregates · at-risk · Classroom sync · assignment maps · domain tenancy |
 | 4 / 15 | Eval / research | **Evidence spine** | Golden-question harness · `/api/evidence/*` · anonymized research export · blueprint principles catalog |
 | 6 | Study Workspace | **Workspace spine** | `workspaceToolRegistry` (schema, persistence, pedagogy, a11y) · typed concept-bus event log |
@@ -96,4 +96,4 @@ Checklist for every route/API:
 1. Turn on `APP_CHECK_ENFORCE=true` + referrer keys in production (runbook done)
 2. Full bilingual `locales/` catalogs + remaining modal focus traps
 3. Resumable uploads · virus AV service · Match regional sticky / PubSub
-4. Content re-index tombstones protocol · Voice offline fallback packs
+4. Durable Yjs snapshot store · Debate/Feynman argument scoring writeback

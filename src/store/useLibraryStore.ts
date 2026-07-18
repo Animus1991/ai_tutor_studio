@@ -23,12 +23,17 @@ async function indexFileForRag(file: UploadedFile) {
 export const useLibraryStore = create<LibraryStore>((set, get) => ({
   courses: [],
   uploadedFiles: [],
+  libraryVersion: 0,
   isProcessing: false,
   lastUploadQuality: null,
 
   hydrate: async () => {
     const lib = await loadLibrary();
-    set({ courses: lib.courses, uploadedFiles: lib.uploadedFiles });
+    set({
+      courses: lib.courses,
+      uploadedFiles: lib.uploadedFiles,
+      libraryVersion: lib.libraryVersion,
+    });
   },
 
   getCourse: (id) => get().courses.find((c) => c.id === id),
@@ -60,10 +65,11 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
       }
 
       uploadedFile.courseId = course.id;
-      const lib = await persistLibraryCourse(course, uploadedFile);
+      const lib = await persistLibraryCourse(course, uploadedFile, get().libraryVersion);
       set({
         courses: lib.courses,
         uploadedFiles: lib.uploadedFiles,
+        libraryVersion: lib.libraryVersion,
         lastUploadQuality: { score: quality.score, band: quality.band, warnings: quality.warnings },
       });
 
@@ -108,10 +114,11 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
       }
 
       uploadedFile.courseId = course.id;
-      const lib = await persistLibraryCourse(course, uploadedFile);
+      const lib = await persistLibraryCourse(course, uploadedFile, get().libraryVersion);
       set({
         courses: lib.courses,
         uploadedFiles: lib.uploadedFiles,
+        libraryVersion: lib.libraryVersion,
         lastUploadQuality: { score: quality.score, band: quality.band, warnings: quality.warnings },
       });
 
