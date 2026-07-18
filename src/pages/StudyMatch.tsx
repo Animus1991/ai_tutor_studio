@@ -18,6 +18,7 @@ import { useLibraryStore } from '../store/useLibraryStore';
 import { useLanguage } from '../lib/i18n';
 import { isDemoModeActive } from '../lib/demoStorage';
 import CommunityGuidelinesModal from '../components/CommunityGuidelinesModal';
+import { PAGE_CONTENT } from '../components/layout/pageLayout';
 import {
   hasAcceptedCommunityGuidelines,
 } from '../lib/safeSocial';
@@ -302,7 +303,7 @@ export default function StudyMatch() {
   const waitLabel = topic.trim() || t('Any study', 'Οποιοδήποτε διάβασμα');
 
   return (
-    <div className="max-w-3xl mx-auto space-y-5" data-testid="study-match-page">
+    <div className={`${PAGE_CONTENT} space-y-5`} data-testid="study-match-page">
       <header className="ux-page-header">
         <div>
           <h1 className="text-xl sm:text-2xl font-display font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">

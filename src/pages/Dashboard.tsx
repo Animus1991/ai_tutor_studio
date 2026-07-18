@@ -36,6 +36,7 @@ import {
   OFFLINE_CONFLICTS_UPDATED_EVENT,
   OFFLINE_QUEUE_UPDATED_EVENT,
 } from "../lib/offlineSyncQueue";
+import { PAGE_CONTENT } from "../components/layout/pageLayout";
 
 const COLLAB_ROOM_KEY = "memora-collab-room-id";
 
@@ -527,7 +528,7 @@ export default function Dashboard() {
         })}
       </div>
       
-      <div id="dashboard-content" className="max-w-7xl mx-auto">
+      <div id="dashboard-content" className={PAGE_CONTENT}>
         <DragDropContext onDragEnd={handleDragEnd}>
           <Droppable droppableId="dashboard-sections">
             {(provided) => (

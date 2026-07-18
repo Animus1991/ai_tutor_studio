@@ -17,6 +17,7 @@ import {
 import { circleToMatchPath } from '../lib/socialPolicy';
 import { isDemoModeActive } from '../lib/demoStorage';
 import CommunityGuidelinesModal from '../components/CommunityGuidelinesModal';
+import { PAGE_CONTENT } from '../components/layout/pageLayout';
 
 const DEMO_CIRCLES: StudyCircle[] = [
   {
@@ -157,7 +158,7 @@ export default function StudyCircles() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-5" data-testid="study-circles-page">
+    <div className={`${PAGE_CONTENT} space-y-5`} data-testid="study-circles-page">
       <header className="ux-page-header">
         <div>
           <h1 className="text-xl sm:text-2xl font-display font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">

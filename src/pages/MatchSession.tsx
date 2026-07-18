@@ -25,6 +25,7 @@ import { toast } from 'sonner';
 import { useAuthStore } from '../store/useAuthStore';
 import { useLanguage } from '../lib/i18n';
 import { isDemoModeActive } from '../lib/demoStorage';
+import { PAGE_CONTENT } from '../components/layout/pageLayout';
 import { useGoogleOAuth } from '../hooks/useGoogleOAuth';
 import { heuristicModerateText } from '../../server/matchModeratorHeuristics';
 import { apiRequest } from '../lib/apiClient';
@@ -571,7 +572,7 @@ export default function MatchSession() {
   };
 
   return (
-    <div className="max-w-5xl mx-auto space-y-4 pb-4" data-testid="match-session-page">
+    <div className={`${PAGE_CONTENT} space-y-4 pb-4`} data-testid="match-session-page">
       <header className="rounded-2xl border border-slate-200/60 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>

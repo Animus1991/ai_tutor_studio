@@ -30,6 +30,7 @@ import {
 } from '../lib/teacher';
 import { useAuthStore } from '../store/useAuthStore';
 import { useLanguage } from '../lib/i18n';
+import { PAGE_CONTENT } from '../components/layout/pageLayout';
 
 function masteryColor(v: number): string {
   if (v >= 85) return 'bg-emerald-500';
@@ -336,7 +337,7 @@ export default function Teacher() {
   }
 
   return (
-    <div className="space-y-4 sm:space-y-6 max-w-6xl mx-auto" data-testid="teacher-page">
+    <div className={`space-y-4 sm:space-y-6 ${PAGE_CONTENT}`} data-testid="teacher-page">
       <div className="ux-page-header">
         <div className="min-w-0">
           <h1 className="text-xl sm:text-2xl font-display font-bold text-slate-900 dark:text-white tracking-tight">
