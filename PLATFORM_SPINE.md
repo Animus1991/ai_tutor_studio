@@ -9,7 +9,7 @@ Checklist for every route/API:
 
 | # | Layer / surface | Status | Implementation |
 |---|-----------------|--------|----------------|
-| 0 | Identity & trust | **Partial** | Firebase Bearer middleware · optional App Check (`VITE_APPCHECK_SITE_KEY`, `APP_CHECK_ENFORCE`) · verified email gates on Match |
+| 0 | Identity & trust | **Ops wired** | Bearer · App Check soft/enforce · health exposes mode · referrer-key runbook (`docs/APP_CHECK_AND_API_KEYS.md`) · verified email on Match |
 | 0 | Authorization | **Partial** | `server/authz.ts` room ACL · Firestore rules · Yjs membership when `REQUIRE_API_AUTH` |
 | 0 | Data contracts | **Partial** | `validateObject` contracts (`server/requestSpine.ts`) · Match `notesVersion` concurrency |
 | 0 | Safety | **Live spine** | Heuristics→Gemini · `POST /api/moderate` (+ `board`) · Match + Collab + Agent + Voice + whiteboard stickies |
@@ -26,9 +26,10 @@ Checklist for every route/API:
 | 4 / 15 | Eval / research | **Evidence spine** | Golden-question harness · `/api/evidence/*` · anonymized research export · blueprint principles catalog |
 | 6 | Study Workspace | **Workspace spine** | `workspaceToolRegistry` (schema, persistence, pedagogy, a11y) · typed concept-bus event log |
 | 14 | Offline / PWA | **Offline spine** | Signed study packs (SHA-256/HMAC) · sync conflict UI · SW route-shell caching · BG Sync register · offline Agent local RAG only |
-| 12 | Google Workspace | **Ops wired** | Demo mocks labeled · Contacts opt-in · Meet/Forms audit + room/class ids · ACL demo-email block |
+| 12 | Google Workspace | **Ops wired** | Real Calendar when scoped token · Tasks LWW sync · demo mocks labeled · Contacts opt-in · Meet/Forms audit |
 | 13 | Admin | **Ops wired** | Social triage · claims assign · break-glass approve · tenant metrics · audit export |
-| 16–17 | A11y / Chaos | **Next** | Full WCAG 2.2 AA · RTL i18n completion · Match/Yjs load tests |
+| 16 | i18n / A11y | **Hardened** | Settings EN/EL toggle · `dir` + RTL-ready · skip-link bilingual · focus traps on Settings/OAuth |
+| 17 | Chaos / Ops | **Harness** | `npm run chaos:match` · Match concurrent pair stress tests · App Check CSP hosts |
 
 ## Modules
 
@@ -85,8 +86,7 @@ Checklist for every route/API:
 
 ## Next implementation order
 
-1. App Check enforce in prod + referrer-restricted API keys
-2. Real Google Calendar/Tasks (scoped) beyond labeled demo mocks
-3. Chaos/load — Match queue + Yjs
-4. WCAG 2.2 AA hardening + RTL-ready i18n completion
-5. Content pipeline virus/MIME budgets · Voice barge-in latency budgets
+1. Turn on `APP_CHECK_ENFORCE=true` in production after site key + referrer keys (runbook done)
+2. Full bilingual catalog coverage + remaining modal focus traps
+3. Content pipeline virus/MIME budgets · Voice barge-in latency budgets
+4. Match multimodal moderator · regional sticky queue

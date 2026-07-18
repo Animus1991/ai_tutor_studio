@@ -1,4 +1,4 @@
-import { X, Type, Database, Download } from 'lucide-react';
+import { X, Type, Database, Download, Languages } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../store/useStore';
 import { cn } from '../lib/utils';
@@ -9,6 +9,8 @@ import { toast } from "sonner";
 import { BEHAVIOR_EVENTS_KEY } from "../lib/learningProfile";
 import { useLearningProfileStore } from "../store/useLearningProfileStore";
 import { exportMyData, requestAccountDeletion } from "../lib/privacyApi";
+import { useLanguage } from '../lib/i18n';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -17,6 +19,8 @@ interface SettingsModalProps {
 
 export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const { isDyslexiaFont, toggleDyslexiaFont } = useStore();
+  const { language, setLanguage, t, dir } = useLanguage();
+  const dialogRef = useFocusTrap<HTMLDivElement>(isOpen, onClose);
   const learningProfile = useLearningProfileStore((state) => state.profile);
   const profilingEnabled = useLearningProfileStore(
     (state) => state.profilingEnabled,
@@ -175,6 +179,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50"
           />
           <motion.div
+            ref={dialogRef}
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -184,10 +189,12 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden z-50 max-h-[90vh] overflow-y-auto"
           >
             <div className="flex items-center justify-between p-4 border-b border-slate-100 dark:border-slate-800 sticky top-0 bg-white dark:bg-slate-900 z-10">
-              <h3 id="settings-title" className="font-bold text-slate-900 dark:text-white">Settings</h3>
+              <h3 id="settings-title" className="font-bold text-slate-900 dark:text-white">
+                {t('Settings', 'Ρυθμίσεις')}
+              </h3>
               <button
                 onClick={onClose}
-                aria-label="Close settings"
+                aria-label={t('Close settings', 'Κλείσιμο ρυθμίσεων')}
                 className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
               >
                 <X className="w-5 h-5" />
@@ -196,7 +203,56 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
             <div className="p-6 flex flex-col gap-8">
               <div>
-                <h4 className="text-sm font-semibold text-slate-900 dark:text-white mb-4 uppercase tracking-wider">Appearance & Accessibility</h4>
+                <h4 className="text-sm font-semibold text-slate-900 dark:text-white mb-4 uppercase tracking-wider">
+                  {t('Appearance & Accessibility', 'Εμφάνιση & Προσβασιμότητα')}
+                </h4>
+
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-sky-50 dark:bg-sky-900/30 flex items-center justify-center text-sky-600 dark:text-sky-400">
+                      <Languages className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-slate-900 dark:text-white">
+                        {t('Language', 'Γλώσσα')}
+                      </p>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">
+                        {t(
+                          `EL/EN · layout dir=${dir} (RTL-ready)`,
+                          `EL/EN · κατεύθυνση=${dir} (έτοιμο για RTL)`,
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden" role="group" aria-label={t('Language', 'Γλώσσα')}>
+                    <button
+                      type="button"
+                      onClick={() => setLanguage('en')}
+                      aria-pressed={language === 'en'}
+                      className={cn(
+                        'px-3 py-1.5 text-xs font-semibold min-h-10',
+                        language === 'en'
+                          ? 'bg-indigo-600 text-white'
+                          : 'bg-transparent text-slate-600 dark:text-slate-300',
+                      )}
+                    >
+                      EN
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLanguage('el')}
+                      aria-pressed={language === 'el'}
+                      className={cn(
+                        'px-3 py-1.5 text-xs font-semibold min-h-10',
+                        language === 'el'
+                          ? 'bg-indigo-600 text-white'
+                          : 'bg-transparent text-slate-600 dark:text-slate-300',
+                      )}
+                    >
+                      EL
+                    </button>
+                  </div>
+                </div>
                 
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">

@@ -9,10 +9,21 @@ import {
 
 export type Language = 'en' | 'el';
 
+/** Document text direction. EL/EN are LTR; catalogs stay RTL-ready for future locales. */
+export type TextDirection = 'ltr' | 'rtl';
+
 const STORAGE_KEY = 'memora-lang';
+
+/** Locales that should flip layout (none of the current EL/EN pair). */
+const RTL_LANGUAGES = new Set<string>(['ar', 'he', 'fa', 'ur']);
+
+export function textDirectionForLanguage(lang: string): TextDirection {
+  return RTL_LANGUAGES.has(lang.toLowerCase().slice(0, 2)) ? 'rtl' : 'ltr';
+}
 
 export interface LanguageContextValue {
   language: Language;
+  dir: TextDirection;
   setLanguage: (lang: Language) => void;
   toggleLanguage: () => void;
   /**
@@ -59,14 +70,17 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     [language],
   );
 
+  const dir = textDirectionForLanguage(language);
+
   useEffect(() => {
-    if (typeof document !== 'undefined') {
-      document.documentElement.lang = language;
-    }
-  }, [language]);
+    if (typeof document === 'undefined') return;
+    document.documentElement.lang = language;
+    document.documentElement.dir = dir;
+    document.documentElement.dataset.textDirection = dir;
+  }, [language, dir]);
 
   return (
-    <LanguageContext.Provider value={{ language, setLanguage, toggleLanguage, t }}>
+    <LanguageContext.Provider value={{ language, dir, setLanguage, toggleLanguage, t }}>
       {children}
     </LanguageContext.Provider>
   );
@@ -82,6 +96,7 @@ export function useLanguage(): LanguageContextValue {
   if (ctx) return ctx;
   return {
     language: 'en',
+    dir: 'ltr',
     setLanguage: () => {},
     toggleLanguage: () => {},
     t: (en: string) => en,

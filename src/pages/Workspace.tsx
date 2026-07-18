@@ -3,7 +3,7 @@ import { useAuthStore } from "../store/useAuthStore";
 import { Calendar, Users, GraduationCap, Clock, ExternalLink, Target } from "lucide-react";
 import { Link } from "react-router-dom";
 import { contactsService } from "../lib/services/DemoContactsService";
-import { calendarService } from "../lib/services/DemoCalendarService";
+import { fetchUpcomingCalendarEvents } from "../lib/services/GoogleCalendarService";
 import VoiceNotesWidget from "../components/VoiceNotesWidget";
 import FocusModeOverlay from "../components/FocusModeOverlay";
 import { useStore } from "../store/useStore";
@@ -14,16 +14,21 @@ import {
   revokeContactsOptIn,
 } from "../lib/contactsConsent";
 import { toast } from "sonner";
+import { useGoogleOAuth } from "../hooks/useGoogleOAuth";
+import GoogleOAuthConsentModal from "../components/GoogleOAuthConsentModal";
 
 export default function Workspace() {
   const { accessToken, isDemoMode } = useAuthStore();
   const { courses: libraryCourses } = useLibraryStore();
   const { toggleFocusMode } = useStore();
+  const googleOAuth = useGoogleOAuth();
   const [events, setEvents] = useState<any[]>([]);
+  const [calendarSource, setCalendarSource] = useState<'google' | 'demo'>('demo');
   const [courses, setCourses] = useState<any[]>([]);
   const [contacts, setContacts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [contactsOptIn, setContactsOptIn] = useState(() => hasContactsOptIn());
+  const [showCalendarConsent, setShowCalendarConsent] = useState(false);
 
   useEffect(() => {
     if (!accessToken && !isDemoMode) {
@@ -34,9 +39,16 @@ export default function Workspace() {
     const fetchWorkspaceData = async () => {
       setLoading(true);
       try {
-        // Calendar: demo service is always labeled as mock below — never used for ACL.
-        const fetchedEvents = await calendarService.getUpcomingEvents();
-        setEvents(fetchedEvents);
+        // Prefer scoped OAuth / sign-in token for real Calendar; demo is labeled.
+        const calToken = googleOAuth.token || accessToken;
+        const cal = await fetchUpcomingCalendarEvents(calToken, {
+          preferDemo: isDemoMode && !googleOAuth.token,
+        });
+        setEvents(cal.events);
+        setCalendarSource(cal.source);
+        if (cal.error && cal.source === 'demo') {
+          console.warn('[Workspace] Calendar fell back to demo:', cal.error);
+        }
 
         if (isDemoMode && libraryCourses.length > 0) {
           setCourses(
@@ -74,7 +86,7 @@ export default function Workspace() {
     };
 
     fetchWorkspaceData();
-  }, [accessToken, isDemoMode, libraryCourses, contactsOptIn]);
+  }, [accessToken, isDemoMode, libraryCourses, contactsOptIn, googleOAuth.token]);
 
   return (
     <div className="flex-1 overflow-y-auto">
@@ -109,14 +121,33 @@ export default function Workspace() {
 
             {/* Calendar Widget */}
             <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 rounded-xl p-5 shadow-sm col-span-1 lg:col-span-2">
-              <div className="flex items-center gap-3 mb-6">
+              <div className="flex items-center gap-3 mb-6 flex-wrap">
                 <div className="w-10 h-10 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
                   <Calendar className="w-5 h-5" />
                 </div>
-                <div>
+                <div className="flex-1 min-w-0">
                   <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Upcoming Schedule</h2>
-                  <p className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">Demo mock calendar · not live Google Calendar</p>
+                  <p
+                    className={
+                      calendarSource === 'google'
+                        ? 'text-[11px] text-emerald-600 dark:text-emerald-400 font-medium'
+                        : 'text-[11px] text-amber-600 dark:text-amber-400 font-medium'
+                    }
+                  >
+                    {calendarSource === 'google'
+                      ? 'Live Google Calendar (readonly scope)'
+                      : 'Demo mock calendar · not live Google Calendar'}
+                  </p>
                 </div>
+                {calendarSource !== 'google' && (
+                  <button
+                    type="button"
+                    className="text-xs font-semibold px-3 py-2 rounded-lg border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 min-h-10"
+                    onClick={() => setShowCalendarConsent(true)}
+                  >
+                    Connect Calendar
+                  </button>
+                )}
               </div>
               
               {events.length > 0 ? (
@@ -273,6 +304,19 @@ export default function Workspace() {
           </div>
         )}
       </div>
+
+      <GoogleOAuthConsentModal
+        open={showCalendarConsent}
+        scopes={['calendar']}
+        isPending={googleOAuth.isPending}
+        isConnected={googleOAuth.isConnected}
+        onConnect={() => googleOAuth.request(['calendar'])}
+        onRevoke={() => {
+          googleOAuth.revoke();
+          toast.message('Calendar token cleared — demo schedule will show');
+        }}
+        onClose={() => setShowCalendarConsent(false)}
+      />
     </div>
   );
 }

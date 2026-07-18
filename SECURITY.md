@@ -27,7 +27,10 @@ records, credentials or API keys.
       `APP_CHECK_ENFORCE=true` once tokens validate in staging.
 - [x] App Check client + server middleware hooks shipped (soft by default).
 - [x] Privacy export / deletion-request API (no peer PII in exports).
-- [ ] Restrict the Firebase web API key by expected HTTP referrers and APIs.
+- [ ] Restrict the Firebase web API key by expected HTTP referrers and APIs
+      (step-by-step: `docs/APP_CHECK_AND_API_KEYS.md`).
+- [x] App Check CSP hosts (`www.google.com`, `www.gstatic.com`) + `/api/health`
+      reports enforce mode.
 - [ ] Terminate TLS before the Node process and redirect HTTP to HTTPS.
 - [ ] Keep the default CSP; add origins narrowly when integrating new services.
 - [x] Authenticate Yjs upgrades with Firebase ID token + room membership when
@@ -48,6 +51,7 @@ records, credentials or API keys.
 - [ ] Run `npm ci`, `npm run check` and `npm audit` for every release.
 - [x] Playwright spine smoke for `/match`, `/circles`, `/voice`, `/teacher`
       (`e2e/spine-smoke.spec.ts`).
+- [x] Chaos/load harness: `npm run chaos:match` (Match enqueue + Yjs upgrade).
 
 ## Implemented controls
 

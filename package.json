@@ -20,6 +20,7 @@
     "test:e2e": "playwright test",
     "test:e2e:prod": "npm run build && cross-env NODE_ENV=production PLAYWRIGHT_PROD=1 PORT=3011 playwright test",
     "smoke:prod": "npm run build && cross-env NODE_ENV=production node dist/server.cjs",
+    "chaos:match": "node scripts/chaos-match-yjs.mjs",
     "audit": "npm audit --omit=dev --audit-level=moderate",
     "check": "npm run lint && npm test && npm run test:rules && npm run build"
   },

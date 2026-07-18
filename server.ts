@@ -262,6 +262,9 @@ function buildContentSecurityPolicy(isProduction: boolean) {
         ...(isProduction ? [] : ["'unsafe-eval'"]),
         'https://cdn.jsdelivr.net',
         'https://apis.google.com',
+        // Firebase App Check (reCAPTCHA v3)
+        'https://www.google.com',
+        'https://www.gstatic.com',
       ],
       styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
@@ -435,7 +438,16 @@ async function startServer() {
   app.use(express.json({ limit: '50mb' }));
 
   app.get('/api/health', (_req, res) => {
-    res.json({ status: 'ok' });
+    const appCheckEnforce = process.env.APP_CHECK_ENFORCE === 'true';
+    const adminReady = Boolean(process.env.FIREBASE_SERVICE_ACCOUNT_JSON?.trim());
+    res.json({
+      status: 'ok',
+      appCheck: {
+        enforce: appCheckEnforce,
+        adminReady,
+        mode: appCheckEnforce ? (adminReady ? 'enforce' : 'enforce_unavailable') : 'soft',
+      },
+    });
   });
 
   app.get('/api/health/gemini', async (_req, res) => {

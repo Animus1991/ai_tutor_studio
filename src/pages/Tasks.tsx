@@ -204,12 +204,54 @@ export default function Tasks() {
   const handleSyncGoogleTasks = async () => {
     try {
       setIsSyncingTasks(true);
-      // Mock the sync delay
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      toast.success("Demo Tasks synced successfully!");
+      if (isDemoMode) {
+        await new Promise((resolve) => setTimeout(resolve, 600));
+        toast.success("Demo Tasks sync simulated — connect Google (not demo) for real LWW sync");
+        return;
+      }
+
+      let token: string | null = null;
+      try {
+        token = localStorage.getItem("memora-google-oauth-token");
+      } catch {
+        token = null;
+      }
+      const { getAccessToken } = await import("../lib/auth");
+      token = token || (await getAccessToken());
+      if (!token) {
+        toast.error("Connect Google with Tasks scope first (Workspace or OAuth consent)");
+        return;
+      }
+
+      const incomplete = tasks.filter((t: { completed?: boolean }) => !t.completed);
+      const { googleTasksService } = await import("../lib/services/GoogleTasksService");
+      const result = await googleTasksService.syncFromLocal(
+        incomplete.map(
+          (t: {
+            id: string | number;
+            title?: string;
+            description?: string;
+            dueDate?: string;
+            googleTaskId?: string;
+          }) => ({
+            id: String(t.id),
+            title: String(t.title || "Untitled"),
+            notes: t.description,
+            completed: false,
+            due: t.dueDate ?? null,
+            googleTaskId: t.googleTaskId ?? null,
+          }),
+        ),
+        token,
+      );
+      toast.success(
+        `Google Tasks sync: ${result.created} created · ${result.patched} patched · ${result.remoteCount} remote (LWW)`,
+      );
     } catch (err) {
       console.error(err);
-      toast.error("Failed to sync tasks to Google Tasks.");
+      toast.error(
+        err instanceof Error ? err.message : "Failed to sync tasks to Google Tasks.",
+      );
     } finally {
       setIsSyncingTasks(false);
     }
