@@ -30,6 +30,14 @@ import {
 import { filterDueItems, rankReviewQueue } from "../lib/jointScheduler";
 import { explainWhyNow } from "../lib/evidencePrinciples";
 import { useLanguage } from "../lib/i18n";
+import {
+  getConflictCount,
+  getOfflineQueueSize,
+  OFFLINE_CONFLICTS_UPDATED_EVENT,
+  OFFLINE_QUEUE_UPDATED_EVENT,
+} from "../lib/offlineSyncQueue";
+
+const COLLAB_ROOM_KEY = "memora-collab-room-id";
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -43,8 +51,34 @@ export default function Dashboard() {
   const [completionRate, setCompletionRate] = useState(0);
   const [loading, setLoading] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
+  const [syncDebt, setSyncDebt] = useState({ queued: 0, conflicts: 0 });
+  const [lastCollabRoom, setLastCollabRoom] = useState<string | null>(null);
   
   const [layoutOrder, setLayoutOrder] = useState(['stats', 'charts', 'actionable', 'tools']);
+
+  useEffect(() => {
+    const refreshSyncDebt = () => {
+      void (async () => {
+        const [queued, conflicts] = await Promise.all([getOfflineQueueSize(), getConflictCount()]);
+        setSyncDebt({ queued, conflicts });
+        try {
+          const room = window.localStorage.getItem(COLLAB_ROOM_KEY);
+          setLastCollabRoom(room && room.length >= 8 ? room : null);
+        } catch {
+          setLastCollabRoom(null);
+        }
+      })();
+    };
+    refreshSyncDebt();
+    window.addEventListener(OFFLINE_QUEUE_UPDATED_EVENT, refreshSyncDebt);
+    window.addEventListener(OFFLINE_CONFLICTS_UPDATED_EVENT, refreshSyncDebt);
+    window.addEventListener("online", refreshSyncDebt);
+    return () => {
+      window.removeEventListener(OFFLINE_QUEUE_UPDATED_EVENT, refreshSyncDebt);
+      window.removeEventListener(OFFLINE_CONFLICTS_UPDATED_EVENT, refreshSyncDebt);
+      window.removeEventListener("online", refreshSyncDebt);
+    };
+  }, []);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -384,7 +418,7 @@ export default function Dashboard() {
             Dashboard
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-            Welcome back! Here's your study overview.
+            Learning OS — due FSRS, open social rooms, offline sync debt.
           </p>
         </div>
         <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto">
@@ -405,6 +439,68 @@ export default function Dashboard() {
           </button>
         </div>
       </header>
+
+      <div
+        className="mb-4 grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3"
+        data-testid="learning-os-strip"
+      >
+        <button
+          type="button"
+          onClick={() => navigate('/tasks')}
+          className="text-left p-3 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm"
+        >
+          <p className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold">Due FSRS</p>
+          <p className="text-lg font-bold text-slate-900 dark:text-white mt-0.5">
+            {loading ? '—' : dueReviews.length}
+          </p>
+          <p className="text-[11px] text-slate-500 truncate">Joint scheduler queue</p>
+        </button>
+        <button
+          type="button"
+          onClick={() => navigate('/match')}
+          className="text-left p-3 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm"
+        >
+          <p className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold">Open Match</p>
+          <p className="text-lg font-bold text-slate-900 dark:text-white mt-0.5 flex items-center gap-1.5">
+            <Users className="w-4 h-4 text-indigo-500" /> Lobby
+          </p>
+          <p className="text-[11px] text-slate-500 truncate">Focus buddy · invite-scoped</p>
+        </button>
+        <button
+          type="button"
+          onClick={() => navigate(lastCollabRoom ? `/collab/${lastCollabRoom}` : '/circles')}
+          className="text-left p-3 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm"
+        >
+          <p className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold">
+            {lastCollabRoom ? 'Open Collab' : 'Open Circles'}
+          </p>
+          <p className="text-lg font-bold text-slate-900 dark:text-white mt-0.5 truncate font-mono text-sm sm:text-base">
+            {lastCollabRoom ? lastCollabRoom.slice(0, 12) : 'Circles'}
+          </p>
+          <p className="text-[11px] text-slate-500 truncate">Safe social · dual Meet</p>
+        </button>
+        <button
+          type="button"
+          onClick={() => navigate('/tasks')}
+          className="text-left p-3 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm"
+          data-testid="offline-sync-debt"
+        >
+          <p className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold">Offline sync debt</p>
+          <p className="text-lg font-bold text-slate-900 dark:text-white mt-0.5">
+            {syncDebt.queued}
+            {syncDebt.conflicts > 0 ? (
+              <span className="text-amber-600 text-sm font-semibold ml-1">
+                · {syncDebt.conflicts} conflict{syncDebt.conflicts === 1 ? '' : 's'}
+              </span>
+            ) : null}
+          </p>
+          <p className="text-[11px] text-slate-500 truncate">
+            {syncDebt.queued + syncDebt.conflicts === 0
+              ? 'Queue clear'
+              : 'Resolve conflicts before silent drop'}
+          </p>
+        </button>
+      </div>
 
       {/* Mobile/tablet quick jumps */}
       <div className="ux-chip-scroll mb-4 md:hidden -mx-1 px-1">

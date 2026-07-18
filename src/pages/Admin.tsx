@@ -1,4 +1,4 @@
-import { Shield, Users, Database, Download, Activity, Search, Flag } from 'lucide-react';
+import { Shield, Users, Database, Download, Activity, Search, Flag, KeyRound } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { auditLogger, type AuditAction, type AuditEvent } from '../lib/auditLogger';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
@@ -18,6 +18,16 @@ type SocialReportRow = {
   roomId?: string | null;
   createdAt?: string;
   triageAction?: string | null;
+};
+
+type BreakGlassRow = {
+  id: string;
+  targetUid: string;
+  role: string;
+  reason?: string;
+  requestedBy: string;
+  requestedAt: string;
+  status: string;
 };
 
 const ALL_ACTIONS: AuditAction[] = [
@@ -44,6 +54,12 @@ export default function Admin() {
   const [socialReports, setSocialReports] = useState<SocialReportRow[]>([]);
   const [socialBackend, setSocialBackend] = useState<string>('');
   const [triageBusyId, setTriageBusyId] = useState<string | null>(null);
+  const [claimUid, setClaimUid] = useState('');
+  const [claimRole, setClaimRole] = useState<'student' | 'instructor' | 'admin'>('instructor');
+  const [claimReason, setClaimReason] = useState('');
+  const [claimBusy, setClaimBusy] = useState(false);
+  const [breakGlass, setBreakGlass] = useState<BreakGlassRow[]>([]);
+  const [breakGlassBusyId, setBreakGlassBusyId] = useState<string | null>(null);
 
   const loadSocialReports = async () => {
     try {
@@ -57,6 +73,20 @@ export default function Admin() {
       setSocialBackend(data.backend ?? '');
     } catch {
       setSocialReports([]);
+    }
+  };
+
+  const loadBreakGlass = async () => {
+    try {
+      const res = await apiRequest('/api/admin/break-glass');
+      if (!res.ok) {
+        setBreakGlass([]);
+        return;
+      }
+      const data = (await res.json()) as { requests?: BreakGlassRow[] };
+      setBreakGlass(data.requests ?? []);
+    } catch {
+      setBreakGlass([]);
     }
   };
 
@@ -74,7 +104,7 @@ export default function Admin() {
       setServerMetrics(serverM);
       setTenantMetrics(tenantM);
       setLogs(auditLogger.mergeLogs(auditLogger.getRecentLogs(200), serverLogs));
-      await loadSocialReports();
+      await Promise.all([loadSocialReports(), loadBreakGlass()]);
     })();
     return () => {
       cancelled = true;
@@ -100,6 +130,63 @@ export default function Admin() {
       toast.error('Triage request failed');
     } finally {
       setTriageBusyId(null);
+    }
+  };
+
+  const handleAssignClaim = async () => {
+    const uid = claimUid.trim();
+    if (!uid) {
+      toast.error('Target Firebase UID required');
+      return;
+    }
+    setClaimBusy(true);
+    try {
+      const res = await apiRequest('/api/admin/claims', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uid, role: claimRole, reason: claimReason.trim() || undefined }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        mode?: string;
+        note?: string;
+      };
+      if (!res.ok) {
+        toast.error(data.error || 'Claim assignment failed — admin role + Admin SDK required');
+        return;
+      }
+      toast.success(
+        data.mode === 'break_glass'
+          ? 'Break-glass request queued — second admin must approve'
+          : data.note || `Role ${claimRole} assigned`,
+      );
+      setClaimUid('');
+      setClaimReason('');
+      await loadBreakGlass();
+    } catch {
+      toast.error('Claim request failed');
+    } finally {
+      setClaimBusy(false);
+    }
+  };
+
+  const handleApproveBreakGlass = async (id: string) => {
+    setBreakGlassBusyId(id);
+    try {
+      const res = await apiRequest(`/api/admin/break-glass/${encodeURIComponent(id)}/approve`, {
+        method: 'POST',
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        toast.error(data.error || 'Approval failed (two-person rule)');
+        return;
+      }
+      toast.success('Break-glass claim applied');
+      await loadBreakGlass();
+    } catch {
+      toast.error('Break-glass approve failed');
+    } finally {
+      setBreakGlassBusyId(null);
     }
   };
 
@@ -380,6 +467,101 @@ export default function Admin() {
               No open social reports (or Admin SDK / role unavailable).
             </div>
           )}
+        </div>
+      </div>
+
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden mb-8">
+        <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <KeyRound className="w-4 h-4 text-amber-500" />
+              Claims & break-glass
+            </h3>
+            <p className="text-xs text-slate-500 mt-1">
+              Custom claims via Admin SDK · two-person rule when BREAK_GLASS_REQUIRED=true
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void loadBreakGlass()}
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700"
+          >
+            Refresh
+          </button>
+        </div>
+        <div className="px-6 py-4 grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="space-y-3">
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide">
+              Assign role claim
+            </label>
+            <input
+              type="text"
+              value={claimUid}
+              onChange={(e) => setClaimUid(e.target.value)}
+              placeholder="Target Firebase UID"
+              className="w-full text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 font-mono"
+            />
+            <div className="flex flex-wrap gap-2">
+              <select
+                value={claimRole}
+                onChange={(e) => setClaimRole(e.target.value as 'student' | 'instructor' | 'admin')}
+                className="text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-2"
+              >
+                <option value="student">student</option>
+                <option value="instructor">instructor</option>
+                <option value="admin">admin</option>
+              </select>
+              <input
+                type="text"
+                value={claimReason}
+                onChange={(e) => setClaimReason(e.target.value)}
+                placeholder="Reason (audited)"
+                className="flex-1 min-w-[10rem] text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2"
+              />
+            </div>
+            <button
+              type="button"
+              disabled={claimBusy}
+              onClick={() => void handleAssignClaim()}
+              className="min-h-11 px-4 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold disabled:opacity-50"
+            >
+              {claimBusy ? 'Submitting…' : 'Assign / request claim'}
+            </button>
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
+              Pending break-glass ({breakGlass.length})
+            </p>
+            <div className="space-y-2 max-h-48 overflow-y-auto">
+              {breakGlass.map((bg) => (
+                <div
+                  key={bg.id}
+                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-lg border border-slate-100 dark:border-slate-800"
+                >
+                  <div className="min-w-0 text-xs">
+                    <p className="font-semibold text-slate-900 dark:text-white font-mono truncate">
+                      {bg.targetUid} → {bg.role}
+                    </p>
+                    <p className="text-slate-500 mt-0.5 truncate">
+                      by {bg.requestedBy}
+                      {bg.reason ? ` · ${bg.reason}` : ''}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={breakGlassBusyId === bg.id}
+                    onClick={() => void handleApproveBreakGlass(bg.id)}
+                    className="text-[11px] font-semibold px-2 py-1 rounded-md border border-amber-300 text-amber-800 dark:text-amber-200 dark:border-amber-700 disabled:opacity-50"
+                  >
+                    Approve (2nd admin)
+                  </button>
+                </div>
+              ))}
+              {breakGlass.length === 0 && (
+                <p className="text-sm text-slate-500 py-4 text-center">No pending break-glass requests.</p>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 

@@ -5,12 +5,15 @@ const STORAGE_KEY = 'memora-google-oauth-token';
 const POPUP_WIDTH = 500;
 const POPUP_HEIGHT = 620;
 
-export type GoogleOAuthScopes = 'forms' | 'meet' | 'classroom';
+export type GoogleOAuthScopes = 'forms' | 'meet' | 'classroom' | 'contacts' | 'tasks' | 'calendar';
 
 const SCOPE_MAP: Record<GoogleOAuthScopes, string> = {
   forms: 'https://www.googleapis.com/auth/forms.body',
   meet: 'https://www.googleapis.com/auth/meetings.space.created',
   classroom: 'https://www.googleapis.com/auth/classroom.courses.readonly',
+  contacts: 'https://www.googleapis.com/auth/contacts.readonly',
+  tasks: 'https://www.googleapis.com/auth/tasks',
+  calendar: 'https://www.googleapis.com/auth/calendar.readonly',
 };
 
 function resolveGoogleClientId(): string {

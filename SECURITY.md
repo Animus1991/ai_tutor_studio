@@ -36,11 +36,18 @@ records, credentials or API keys.
       and Collab preflight.
 - [x] Use cryptographically random invite-scoped room IDs and enforce Firestore
       participant membership.
-- [ ] Define retention/deletion policy for Firestore, IndexedDB, local logs and
-      AI conversation history.
-- [ ] Review Google/Gemini data-processing terms for applicable GDPR, FERPA or
-      institutional requirements.
+- [x] Retention/deletion playbook: xAPI 90d TTL, privacy export/delete-request,
+      offline pack local scope — see `docs/GDPR_FERPA_PLAYBOOK.md`.
+- [x] GDPR/FERPA operational playbook + DPA review checklist
+      (`docs/GDPR_FERPA_PLAYBOOK.md`). Counsel must still sign institutional DPAs.
+- [x] Claims assignment API (`POST /api/admin/claims`) + break-glass two-person
+      rule when `BREAK_GLASS_REQUIRED=true` (Admin UI + `platform_audit`).
+- [x] Google Meet/Forms creation audited with optional `roomId`/`classId` links.
+- [x] Contacts opt-in; demo `@example.com` / `@demo.local` emails blocked from
+      room ACL writes.
 - [ ] Run `npm ci`, `npm run check` and `npm audit` for every release.
+- [x] Playwright spine smoke for `/match`, `/circles`, `/voice`, `/teacher`
+      (`e2e/spine-smoke.spec.ts`).
 
 ## Implemented controls
 
@@ -61,10 +68,12 @@ records, credentials or API keys.
 ## Known limitations
 
 - Authenticated UI roles are read from Firebase custom claims and default to
-  `student`; assigning those claims still requires a trusted administrative
-  process outside this browser repository.
+  `student`. Production assignment uses `POST /api/admin/claims` (Admin SDK +
+  admin role); enable `BREAK_GLASS_REQUIRED=true` for two-person approval.
+  Users must refresh their ID token after claims change.
 - Collaboration metadata and Firestore data are membership-scoped, but live
-  Yjs transport still uses public relay infrastructure.
+  Yjs transport still uses public relay infrastructure (WS handshake is
+  membership-authenticated when `REQUIRE_API_AUTH=true`).
 - The PII detector is defense-in-depth, not a complete data-loss-prevention or
   named-entity-recognition system.
 - Web clipper DNS validation reduces SSRF risk but should still run in an

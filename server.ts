@@ -89,6 +89,15 @@ import {
   xapiStatementsHandler,
 } from './server/evidence.js';
 import {
+  approveBreakGlassHandler,
+  assignClaimHandler,
+  listBreakGlassHandler,
+} from './server/claims.js';
+import {
+  auditFormFromRequest,
+  auditMeetFromRequest,
+} from './server/googleWorkspaceAudit.js';
+import {
   appendModeSafety,
   looksLikeExamAnswerDump,
   modeAllowsGoogleSearch,
@@ -935,22 +944,22 @@ async function startServer() {
     }
   });
 
-  // Real Google Forms creation with graceful fallback.
-  // Pass an OAuth access token (scope: forms.body) via body.accessToken or the
-  // GOOGLE_ACCESS_TOKEN env var to create a real Form; otherwise a "create new
-  // form" fallback URL is returned so the flow never dead-ends.
+  // Real Google Forms creation with graceful fallback + room/class audit link.
   app.post('/api/google/forms', async (req, res) => {
     const { title, accessToken } = req.body ?? {};
     const token = accessToken || process.env.GOOGLE_ACCESS_TOKEN;
     const formTitle = title || `Study Quiz - ${new Date().toLocaleDateString()}`;
 
     if (!token) {
-      return res.json({
+      const result = {
         fallback: true,
         editUrl: 'https://docs.google.com/forms/create',
-        responderUrl: null,
+        responderUrl: null as string | null,
+        formId: null as string | null,
         title: formTitle,
-      });
+      };
+      await auditFormFromRequest(req, res, result);
+      return res.json(result);
     }
 
     try {
@@ -967,35 +976,39 @@ async function startServer() {
         formId?: string;
         responderUri?: string;
       };
-      const formId = form.formId;
-      res.json({
+      const formId = form.formId ?? null;
+      const result = {
         fallback: false,
         formId,
         editUrl: formId ? `https://docs.google.com/forms/d/${formId}/edit` : null,
         responderUrl: form.responderUri ?? null,
         title: formTitle,
-      });
+      };
+      await auditFormFromRequest(req, res, result);
+      res.json(result);
     } catch (error) {
       console.error('Google Forms Error:', error);
-      res.json({
+      const result = {
         fallback: true,
         editUrl: 'https://docs.google.com/forms/create',
-        responderUrl: null,
+        responderUrl: null as string | null,
+        formId: null as string | null,
         title: formTitle,
         error: error instanceof Error ? error.message : 'Forms API failed',
-      });
+      };
+      await auditFormFromRequest(req, res, result);
+      res.json(result);
     }
   });
 
-  // Real Google Meet space creation with graceful fallback.
-  // Pass an OAuth access token (scope: meetings.space.created) via
-  // body.accessToken or GOOGLE_ACCESS_TOKEN to create a real Meet space;
-  // otherwise the universal "start a new meeting" URL is returned.
+  // Real Google Meet space creation with graceful fallback + room/class audit link.
   app.post('/api/google/meet', async (req, res) => {
     const token = (req.body && req.body.accessToken) || process.env.GOOGLE_ACCESS_TOKEN;
 
     if (!token) {
-      return res.json({ fallback: true, meetUrl: 'https://meet.google.com/new' });
+      const result = { fallback: true, meetUrl: 'https://meet.google.com/new' };
+      await auditMeetFromRequest(req, res, result);
+      return res.json(result);
     }
 
     try {
@@ -1009,14 +1022,21 @@ async function startServer() {
       });
       if (!spaceRes.ok) throw new Error(`Meet API ${spaceRes.status}`);
       const space = (await spaceRes.json()) as { meetingUri?: string };
-      res.json({ fallback: false, meetUrl: space.meetingUri ?? 'https://meet.google.com/new' });
+      const result = {
+        fallback: false,
+        meetUrl: space.meetingUri ?? 'https://meet.google.com/new',
+      };
+      await auditMeetFromRequest(req, res, result);
+      res.json(result);
     } catch (error) {
       console.error('Google Meet Error:', error);
-      res.json({
+      const result = {
         fallback: true,
         meetUrl: 'https://meet.google.com/new',
         error: error instanceof Error ? error.message : 'Meet API failed',
-      });
+      };
+      await auditMeetFromRequest(req, res, result);
+      res.json(result);
     }
   });
 
@@ -1913,6 +1933,29 @@ Use pixel coordinates relative to the image. Include 1-12 labels. confidence is 
       await purgeExpiredXapiHandler(req, res);
     } catch (error) {
       sendRouteError(res, error, 'xAPI Purge Error', 'Failed to purge expired statements');
+    }
+  });
+
+  // Claims + break-glass (two-person rule when BREAK_GLASS_REQUIRED=true)
+  app.post('/api/admin/claims', async (req, res) => {
+    try {
+      await assignClaimHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Claims Error', 'Failed to assign claim');
+    }
+  });
+  app.get('/api/admin/break-glass', async (req, res) => {
+    try {
+      await listBreakGlassHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Break-glass List Error', 'Failed to list break-glass requests');
+    }
+  });
+  app.post('/api/admin/break-glass/:id/approve', async (req, res) => {
+    try {
+      await approveBreakGlassHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Break-glass Approve Error', 'Failed to approve break-glass request');
     }
   });
 

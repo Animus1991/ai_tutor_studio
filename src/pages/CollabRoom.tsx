@@ -93,6 +93,11 @@ import {
   countMeetConsents,
   meetDualConsentSatisfied,
 } from '../lib/socialPolicy';
+import {
+  grantContactsOptIn,
+  hasContactsOptIn,
+  isDemoContactEmail,
+} from '../lib/contactsConsent';
 
 const ROOM_STORAGE_KEY = "memora-collab-room-id";
 const ROOM_ID_PATTERN = /^[a-zA-Z0-9_-]{8,128}$/;
@@ -362,8 +367,9 @@ export default function CollabRoom() {
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [googleContacts, setGoogleContacts] = useState<
-    { name: string; email: string }[]
+    { name: string; email: string; _demo?: boolean }[]
   >([]);
+  const [contactsOptIn, setContactsOptIn] = useState(() => hasContactsOptIn());
   const [showContactSuggestions, setShowContactSuggestions] = useState(false);
 
   const [isAiTyping, setIsAiTyping] = useState(false);
@@ -387,9 +393,16 @@ export default function CollabRoom() {
 
   const fetchGoogleContacts = async () => {
     try {
+      if (!hasContactsOptIn()) {
+        setGoogleContacts([]);
+        return;
+      }
       const { contactsService } = await import("../lib/services/DemoContactsService");
       const fetchedContacts = await contactsService.getContacts();
-      setGoogleContacts(fetchedContacts.map(c => ({ name: c.name, email: c.email })));
+      // Demo mocks may be shown as suggestions but must never hit Firestore ACL.
+      setGoogleContacts(
+        fetchedContacts.map((c) => ({ name: `${c.name} (demo)`, email: c.email, _demo: true })),
+      );
     } catch (e) {
       console.error("Failed to fetch contacts", e);
     }
@@ -444,7 +457,11 @@ export default function CollabRoom() {
           const res = await apiRequest('/api/google/forms', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title, accessToken: token ?? undefined }),
+            body: JSON.stringify({
+              title,
+              accessToken: token ?? undefined,
+              roomId,
+            }),
           });
           if (res.ok) {
             const data = (await res.json()) as { editUrl?: string; formId?: string };
@@ -586,7 +603,10 @@ export default function CollabRoom() {
           const legacy = await apiRequest('/api/google/meet', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ accessToken: token ?? undefined }),
+            body: JSON.stringify({
+              accessToken: token ?? undefined,
+              roomId,
+            }),
           });
           if (legacy.ok) {
             const data = (await legacy.json()) as { meetUrl?: string };
@@ -689,6 +709,15 @@ export default function CollabRoom() {
       toast.error(t('Enter a valid email address', 'Βάλε έγκυρο email'));
       return;
     }
+    if (isDemoContactEmail(email)) {
+      toast.error(
+        t(
+          'Demo contact emails cannot be added to room ACL',
+          'Τα demo emails δεν μπαίνουν στο ACL του δωματίου',
+        ),
+      );
+      return;
+    }
     if (invitedContacts.find((c) => normalizeEmail(String(c.email ?? '')) === email)) {
       toast.info(t('Already invited', 'Ήδη προσκεκλημένος/η'));
       return;
@@ -784,9 +813,14 @@ export default function CollabRoom() {
         contact.id,
       );
       const roomRef = doc(db, "rooms", roomId);
+      const email = normalizeEmail(contact.email);
+      if (isDemoContactEmail(email)) {
+        toast.error('Demo contact emails cannot modify room ACL');
+        return;
+      }
       if (status === "accepted") {
         await updateDoc(participantRef, { status: "accepted" });
-        await updateDoc(roomRef, { memberEmails: arrayUnion(contact.email) });
+        await updateDoc(roomRef, { memberEmails: arrayUnion(email) });
         setInvitedContacts((prev) =>
           prev.map((c) =>
             c.id === contact.id ? { ...c, status: "accepted" } : c,
@@ -794,7 +828,7 @@ export default function CollabRoom() {
         );
       } else {
         await deleteDoc(participantRef);
-        await updateDoc(roomRef, { memberEmails: arrayRemove(contact.email) });
+        await updateDoc(roomRef, { memberEmails: arrayRemove(email) });
         setInvitedContacts((prev) => prev.filter((c) => c.id !== contact.id));
       }
     } catch (error) {
@@ -1080,6 +1114,25 @@ export default function CollabRoom() {
                 <p className="text-sm text-slate-500 mb-4">
                   {t('Invite people by email to join this secure study room.', 'Προσκάλεσε άτομα με email να συμμετέχουν σε αυτό το ασφαλές δωμάτιο μελέτης.')}
                 </p>
+                {!contactsOptIn && (
+                  <button
+                    type="button"
+                    className="mb-3 w-full text-sm font-semibold px-3 py-2 rounded-lg border border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-300"
+                    onClick={() => {
+                      grantContactsOptIn();
+                      setContactsOptIn(true);
+                      void fetchGoogleContacts();
+                      toast.success(
+                        t(
+                          'Contacts opt-in saved — demo suggestions labeled, blocked from ACL',
+                          'Ενεργοποιήθηκαν επαφές — demo προτάσεις μπλοκάρονται από το ACL',
+                        ),
+                      );
+                    }}
+                  >
+                    {t('Allow contact suggestions', 'Επίτρεψε προτάσεις επαφών')}
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={copyRoomLink}
@@ -1123,6 +1176,15 @@ export default function CollabRoom() {
                               key={i}
                               type="button"
                               onClick={() => {
+                                if (contact._demo || isDemoContactEmail(contact.email)) {
+                                  toast.error(
+                                    t(
+                                      'Demo contact emails cannot be invited to room ACL',
+                                      'Τα demo emails δεν προσκαλούνται στο ACL',
+                                    ),
+                                  );
+                                  return;
+                                }
                                 setInviteEmail(contact.email);
                                 setShowContactSuggestions(false);
                               }}

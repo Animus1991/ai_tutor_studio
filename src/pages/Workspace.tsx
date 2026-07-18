@@ -8,6 +8,12 @@ import VoiceNotesWidget from "../components/VoiceNotesWidget";
 import FocusModeOverlay from "../components/FocusModeOverlay";
 import { useStore } from "../store/useStore";
 import { useLibraryStore } from "../store/useLibraryStore";
+import {
+  grantContactsOptIn,
+  hasContactsOptIn,
+  revokeContactsOptIn,
+} from "../lib/contactsConsent";
+import { toast } from "sonner";
 
 export default function Workspace() {
   const { accessToken, isDemoMode } = useAuthStore();
@@ -17,6 +23,7 @@ export default function Workspace() {
   const [courses, setCourses] = useState<any[]>([]);
   const [contacts, setContacts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [contactsOptIn, setContactsOptIn] = useState(() => hasContactsOptIn());
 
   useEffect(() => {
     if (!accessToken && !isDemoMode) {
@@ -27,11 +34,8 @@ export default function Workspace() {
     const fetchWorkspaceData = async () => {
       setLoading(true);
       try {
-        const [fetchedEvents, fetchedContacts] = await Promise.all([
-          calendarService.getUpcomingEvents(),
-          contactsService.getContacts()
-        ]);
-        
+        // Calendar: demo service is always labeled as mock below — never used for ACL.
+        const fetchedEvents = await calendarService.getUpcomingEvents();
         setEvents(fetchedEvents);
 
         if (isDemoMode && libraryCourses.length > 0) {
@@ -44,12 +48,24 @@ export default function Workspace() {
           );
         } else {
           setCourses([
-            { name: "Advanced Mathematics", section: "Spring 2024", alternateLink: "#" },
-            { name: "Computer Science 101", section: "Fall 2024", alternateLink: "#" },
+            { name: "Advanced Mathematics", section: "Spring 2024 · demo stub", alternateLink: "#" },
+            { name: "Computer Science 101", section: "Fall 2024 · demo stub", alternateLink: "#" },
           ]);
         }
 
-        setContacts(fetchedContacts.map(c => ({ names: [{ displayName: c.name }] })));
+        // Contacts require explicit opt-in; demo mocks never mix into room ACL emails.
+        if (contactsOptIn) {
+          const fetchedContacts = await contactsService.getContacts();
+          setContacts(
+            fetchedContacts.map((c) => ({
+              names: [{ displayName: c.name }],
+              emails: [{ value: c.email }],
+              _demo: true,
+            })),
+          );
+        } else {
+          setContacts([]);
+        }
       } catch (err) {
         console.error("Failed to fetch workspace data:", err);
       } finally {
@@ -58,7 +74,7 @@ export default function Workspace() {
     };
 
     fetchWorkspaceData();
-  }, [accessToken, isDemoMode, libraryCourses]);
+  }, [accessToken, isDemoMode, libraryCourses, contactsOptIn]);
 
   return (
     <div className="flex-1 overflow-y-auto">
@@ -69,7 +85,7 @@ export default function Workspace() {
             Workspace Sync
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-            Your connected Google services and autonomous scheduling.
+            Google Workspace sync — demo mocks are labeled and never written to room ACL emails.
           </p>
         </div>
         <button 
@@ -97,7 +113,10 @@ export default function Workspace() {
                 <div className="w-10 h-10 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
                   <Calendar className="w-5 h-5" />
                 </div>
-                <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Upcoming Schedule</h2>
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Upcoming Schedule</h2>
+                  <p className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">Demo mock calendar · not live Google Calendar</p>
+                </div>
               </div>
               
               {events.length > 0 ? (
@@ -183,38 +202,70 @@ export default function Workspace() {
                 )}
               </div>
 
-              {/* Contacts Widget */}
+              {/* Contacts Widget — explicit opt-in */}
               <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 rounded-xl p-5 shadow-sm">
-                <div className="flex items-center gap-3 mb-6">
+                <div className="flex items-center gap-3 mb-4">
                   <div className="w-10 h-10 rounded-lg bg-sky-50 dark:bg-sky-900/30 flex items-center justify-center text-sky-600 dark:text-sky-400">
                     <Users className="w-5 h-5" />
                   </div>
-                  <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Study Group</h2>
+                  <div>
+                    <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Contacts</h2>
+                    <p className="text-[11px] text-slate-500">Opt-in required · demo mocks never enter room ACL</p>
+                  </div>
                 </div>
-                
-                {contacts.length > 0 ? (
-                  <div className="flex flex-wrap gap-3">
-                    {contacts.slice(0, 8).map((contact, i) => {
-                      const name = contact.names?.[0]?.displayName || "Unknown";
-                      const photoUrl = contact.photos?.[0]?.url;
-                      return (
-                        <div key={i} className="flex flex-col items-center gap-2" title={name}>
-                          {photoUrl ? (
-                            <img src={photoUrl} alt={name} className="w-10 h-10 rounded-full object-cover border border-slate-200 dark:border-slate-700" />
-                          ) : (
-                            <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-sm font-medium text-slate-600 dark:text-slate-300">
-                              {name.charAt(0)}
-                            </div>
-                          )}
-                          <span className="text-xs text-slate-600 dark:text-slate-400 max-w-[4.5rem] truncate">{name.split(' ')[0]}</span>
-                        </div>
-                      );
-                    })}
+
+                {!contactsOptIn ? (
+                  <div className="space-y-3">
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
+                      Contacts stay off until you consent. Demo emails are labeled and blocked from Collab invites.
+                    </p>
+                    <button
+                      type="button"
+                      className="min-h-11 px-4 rounded-xl bg-sky-600 text-white text-sm font-semibold"
+                      onClick={() => {
+                        grantContactsOptIn();
+                        setContactsOptIn(true);
+                        toast.success('Contacts opt-in saved (demo mocks labeled)');
+                      }}
+                    >
+                      Allow contact suggestions
+                    </button>
+                  </div>
+                ) : contacts.length > 0 ? (
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap gap-3">
+                      {contacts.slice(0, 8).map((contact, i) => {
+                        const name = contact.names?.[0]?.displayName || "Unknown";
+                        const photoUrl = contact.photos?.[0]?.url;
+                        return (
+                          <div key={i} className="flex flex-col items-center gap-2" title={`${name} (demo)`}>
+                            {photoUrl ? (
+                              <img src={photoUrl} alt={name} className="w-10 h-10 rounded-full object-cover border border-slate-200 dark:border-slate-700" />
+                            ) : (
+                              <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-sm font-medium text-slate-600 dark:text-slate-300">
+                                {name.charAt(0)}
+                              </div>
+                            )}
+                            <span className="text-xs text-slate-600 dark:text-slate-400 max-w-[4.5rem] truncate">{name.split(' ')[0]}</span>
+                            <span className="text-[9px] uppercase tracking-wide text-amber-600">demo</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <button
+                      type="button"
+                      className="text-xs text-slate-500 underline"
+                      onClick={() => {
+                        revokeContactsOptIn();
+                        setContactsOptIn(false);
+                        setContacts([]);
+                      }}
+                    >
+                      Revoke contacts opt-in
+                    </button>
                   </div>
                 ) : (
-                  <div className="text-center py-4">
-                    <p className="text-sm text-slate-500 dark:text-slate-400">No contacts synced.</p>
-                  </div>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">No contacts synced.</p>
                 )}
               </div>
             </div>

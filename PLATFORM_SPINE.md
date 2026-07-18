@@ -18,15 +18,17 @@ Checklist for every route/API:
 | 0 | Pedagogy telemetry | **Evidence wired** | xAPI persist + 90d TTL · local cap · `/api/learning/*` · research export |
 | 0 | Privacy | **Partial** | `GET /api/privacy/export` · research export · delete-request · no peer PII |
 | 0 | Deploy | **Done** | Dockerfile ships `server/` + `dist/server.cjs` · authenticated Yjs |
-| 1 | Auth / Google | **Partial** | App Check hooks · OAuth scopes exist · claims assignment still external |
+| 1 | Auth / Google | **Ops wired** | App Check hooks · scoped OAuth (Classroom/Meet/Forms/Tasks/Calendar/Contacts) · `POST /api/admin/claims` + break-glass |
 | 4 / 7 | Agent / Voice | **Learning wired** | Mode contracts · exam-coach refusal · hybrid server RAG · groundedness · STT/TTS mod |
-| 2–3 / 15 | Dashboard / Tasks / Mastery | **Evidence wired** | Joint scheduler · Due reviews with *why now* + principle tags · calibration bins · IRT bands |
+| 2–3 / 15 | Dashboard / Tasks / Mastery | **Evidence wired** | Learning OS strip · due FSRS · offline sync debt · joint scheduler · why-now · calibration |
 | 8–10 | Collab / Circles / Match | **Social spine** | Unified `socialPolicy` · dual Meet · Circle↔Match bridge · board mod · admin triage |
 | 11 | Teacher / Classroom | **Institution spine** | Class ACL · DP aggregates · at-risk · Classroom sync · assignment maps · domain tenancy |
 | 4 / 15 | Eval / research | **Evidence spine** | Golden-question harness · `/api/evidence/*` · anonymized research export · blueprint principles catalog |
 | 6 | Study Workspace | **Workspace spine** | `workspaceToolRegistry` (schema, persistence, pedagogy, a11y) · typed concept-bus event log |
 | 14 | Offline / PWA | **Offline spine** | Signed study packs (SHA-256/HMAC) · sync conflict UI · SW route-shell caching · BG Sync register · offline Agent local RAG only |
-| 12–13,16–17 | Remaining | **Next** | Google Workspace polish · break-glass admin · a11y/CI/chaos |
+| 12 | Google Workspace | **Ops wired** | Demo mocks labeled · Contacts opt-in · Meet/Forms audit + room/class ids · ACL demo-email block |
+| 13 | Admin | **Ops wired** | Social triage · claims assign · break-glass approve · tenant metrics · audit export |
+| 16–17 | A11y / Chaos | **Next** | Full WCAG 2.2 AA · RTL i18n completion · Match/Yjs load tests |
 
 ## Modules
 
@@ -51,6 +53,10 @@ Checklist for every route/API:
 | `server/circuitBreaker.ts` | Gemini breaker |
 | `server/appCheck.ts` | Optional App Check enforce |
 | `server/privacy.ts` | Export / deletion queue |
+| `server/claims.ts` | Custom claims + break-glass two-person rule |
+| `server/googleWorkspaceAudit.ts` | Meet/Forms → `platform_audit` with room/class |
+| `src/lib/contactsConsent.ts` | Contacts opt-in · demo email ACL guard |
+| `docs/GDPR_FERPA_PLAYBOOK.md` | Retention, subject rights, DPA checklist |
 | `yjsServer.ts` | Authenticated WS upgrades |
 
 ## Env knobs
@@ -61,7 +67,8 @@ Checklist for every route/API:
 | `APP_CHECK_ENFORCE=true` | Reject API without valid App Check |
 | `VITE_APPCHECK_SITE_KEY` | Client App Check (reCAPTCHA v3) |
 | `VITE_APPCHECK_DEBUG_TOKEN` | Dev debug token |
-| `FIREBASE_SERVICE_ACCOUNT_JSON` | Durable queue, privacy/research export, xAPI persist, Teacher |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | Durable queue, privacy/research export, xAPI persist, Teacher, claims |
+| `BREAK_GLASS_REQUIRED=true` | Claims require second-admin approval |
 | `XAPI_LRS_ENDPOINT` / `XAPI_LRS_KEY` | Optional external LRS forward |
 
 ## API additions
@@ -71,13 +78,15 @@ Checklist for every route/API:
 - `GET /api/evidence/principles`
 - `POST /api/evidence/eval`
 - `POST /api/admin/xapi/purge-expired`
+- `POST /api/admin/claims` · `GET /api/admin/break-glass` · `POST /api/admin/break-glass/:id/approve`
+- Meet/Forms bodies accept `roomId` / `classId` for audit linkage
 - Social / institution / privacy endpoints from prior spines
 - Headers: `X-Request-Id`, `Idempotency-Key`, `X-Firebase-AppCheck`
 
 ## Next implementation order
 
-1. Trust — claims service, App Check enforce in prod, referrer keys
-2. Google Workspace — audited Meet/Forms + Contacts opt-in
+1. App Check enforce in prod + referrer-restricted API keys
+2. Real Google Calendar/Tasks (scoped) beyond labeled demo mocks
 3. Chaos/load — Match queue + Yjs
-4. CI e2e for `/match`, `/circles`, `/voice`, `/teacher`
-5. WCAG 2.2 AA hardening + RTL-ready i18n completion
+4. WCAG 2.2 AA hardening + RTL-ready i18n completion
+5. Content pipeline virus/MIME budgets · Voice barge-in latency budgets

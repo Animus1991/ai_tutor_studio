@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Shield, FileText, Video, CheckCircle2, Loader2 } from 'lucide-react';
+import { X, Shield, FileText, Video, CheckCircle2, Loader2, Users, ListTodo, Calendar } from 'lucide-react';
 import { useLanguage } from '../lib/i18n';
 import type { GoogleOAuthScopes } from '../hooks/useGoogleOAuth';
 
@@ -34,6 +34,27 @@ const SCOPE_META: Record<GoogleOAuthScopes, { icon: React.ReactNode; label: stri
     labelEl: 'Ανάγνωση Classroom',
     desc: 'Import your courses from Google Classroom',
     descEl: 'Εισαγωγή μαθημάτων από Classroom',
+  },
+  contacts: {
+    icon: <Users className="w-4 h-4 text-sky-600" />,
+    label: 'Read Contacts (opt-in)',
+    labelEl: 'Ανάγνωση Επαφών (opt-in)',
+    desc: 'Suggest invitees — never writes demo emails to room ACL',
+    descEl: 'Προτάσεις προσκλήσεων — όχι demo emails στο ACL',
+  },
+  tasks: {
+    icon: <ListTodo className="w-4 h-4 text-violet-600" />,
+    label: 'Google Tasks sync',
+    labelEl: 'Συγχρονισμός Google Tasks',
+    desc: 'Two-way task sync with explicit consent',
+    descEl: 'Αμφίδρομος συγχρονισμός tasks με συναίνεση',
+  },
+  calendar: {
+    icon: <Calendar className="w-4 h-4 text-rose-600" />,
+    label: 'Read Google Calendar',
+    labelEl: 'Ανάγνωση Ημερολογίου',
+    desc: 'Show real upcoming events when connected',
+    descEl: 'Εμφάνιση πραγματικών γεγονότων όταν συνδεθείς',
   },
 };
 
