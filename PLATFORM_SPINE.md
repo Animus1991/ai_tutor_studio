@@ -7,6 +7,9 @@ Checklist for every route/API:
 
 Machine-readable cards: `GET /api/spine/adoption` (`server/spineAdoption.ts`).
 
+**Exhaustive per-surface dossier (0–17 × every stage, APIs, env, invariants):**  
+→ [`docs/PLATFORM_SPINE_INVENTORY.md`](docs/PLATFORM_SPINE_INVENTORY.md)
+
 ## Phase status
 
 | # | Layer / surface | Status | Implementation |
