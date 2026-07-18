@@ -27,6 +27,7 @@
     "check": "npm run lint && npm test && npm run test:rules && npm run build"
   },
   "dependencies": {
+    "@google-cloud/pubsub": "^5.3.1",
     "@google/genai": "^2.10.0",
     "@hello-pangea/dnd": "^18.0.1",
     "@tailwindcss/vite": "^4.1.14",
@@ -47,10 +48,10 @@
     "dotenv": "^17.2.3",
     "express": "^4.22.2",
     "express-rate-limit": "^8.5.2",
-    "helmet": "^8.3.0",
     "firebase": "^12.15.0",
     "framer-motion": "^12.42.0",
     "fsrs.js": "^1.2.2",
+    "helmet": "^8.3.0",
     "html2canvas": "^1.4.1",
     "idb": "^8.0.3",
     "jose": "^6.0.11",

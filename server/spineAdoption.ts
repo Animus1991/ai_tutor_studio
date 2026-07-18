@@ -250,7 +250,7 @@ export const SPINE_ADOPTION: readonly AdoptionCard[] = [
       'server/matchModerator.ts',
       'src/pages/MatchSession.tsx',
     ],
-    notes: 'Leave → focus writeback · sticky/DLQ/PubSub consumer · live status · chaos:match + chaos:spine',
+    notes: 'enqueue/match/leave → PubSub bus · sticky/DLQ/consumer · live status · chaos:match + chaos:spine',
   },
   {
     id: 11,

@@ -88,7 +88,7 @@ See `docs/INSTITUTIONAL_GATES.md` — DPA sign-off, independent WCAG pass, and e
 
 **Ops / institutional (not auto-closed by UI polish):**
 
-1. Turn on `APP_CHECK_ENFORCE=true` + referrer keys in production (`docs/APP_CHECK_AND_API_KEYS.md`)
-2. Install/live `@google-cloud/pubsub` + set `MATCH_PUBSUB_SUBSCRIPTION` for multi-instance Match
+1. Turn on `APP_CHECK_ENFORCE=true` + referrer keys in production (`docs/APP_CHECK_AND_API_KEYS.md`) — Docker/prod logs WARN when unset
+2. Set `MATCH_PUBSUB_TOPIC` + `MATCH_PUBSUB_SUBSCRIPTION` with GCP credentials (publisher wired on enqueue/match/leave; `@google-cloud/pubsub` in dependencies)
 3. Expand remaining free-form UI strings into `locales/` + independent WCAG pass
 4. Complete `docs/INSTITUTIONAL_GATES.md` (DPA · efficacy / no Bloom-2σ)

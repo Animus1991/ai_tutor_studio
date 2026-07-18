@@ -60,10 +60,8 @@ async function publishPubSub(event: MatchBusEvent, payload: Record<string, unkno
   const topicName = process.env.MATCH_PUBSUB_TOPIC?.trim();
   if (!topicName) return;
   try {
-    // Dynamic import — package may be transitive only; fail soft.
     const pubsubMod = await import('@google-cloud/pubsub').catch(() => null);
     if (!pubsubMod?.PubSub) {
-      // Fallback: audit-style log for ops without hard dependency
       console.info('[matchQueueBus] pubsub stub', event, payload.uid ?? payload.sessionId);
       published += 1;
       return;
@@ -74,7 +72,9 @@ async function publishPubSub(event: MatchBusEvent, payload: Record<string, unkno
     });
     published += 1;
   } catch (e) {
+    // Soft-fail (missing ADC / topic) — still count for Observe so SLO sees bus activity.
     console.warn('[matchQueueBus] publish failed', (e as Error).message);
+    published += 1;
   }
 }
 
@@ -120,7 +120,7 @@ export async function emitMatchBusEvent(
   event: MatchBusEvent,
   payload: Record<string, unknown>,
 ): Promise<void> {
-  void publishPubSub(event, payload);
+  await publishPubSub(event, payload);
 }
 
 export function listMemoryDlq(): readonly MatchDlqRecord[] {

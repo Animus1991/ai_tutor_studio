@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Expanded chaos/SLO probes: health, match, yjs, gemini, spine adoption, agent/voice soft probes.
+ * Expanded chaos/SLO probes: health, match, yjs, gemini, spine adoption,
+ * Agent / Voice / Teacher / Offline / Evidence soft probes.
  * Usage: BASE_URL=http://localhost:3000 npm run chaos:spine
  */
 const BASE = (process.env.BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
@@ -11,6 +12,15 @@ const results = {
   probes: {},
   failures: [],
 };
+
+const SOFT_401 = new Set([
+  'agent.soft',
+  'teacher.soft',
+  'evidence.transfer.soft',
+  'voice.tts.soft',
+  'voice.transcribe.soft',
+  'offline.learning.soft',
+]);
 
 async function probe(name, path, opts = {}) {
   const started = Date.now();
@@ -24,11 +34,12 @@ async function probe(name, path, opts = {}) {
     // Gemini without key returns 503 — treat as probe-ok in demo/preview
     let softOk = res.status < 500;
     if (!softOk && name === 'health.gemini' && res.status === 503) softOk = true;
-    // Unauth soft probes may 401
+    if (!softOk && SOFT_401.has(name) && res.status === 401) softOk = true;
+    // TTS/transcribe may 400 without audio payload — still SLO-reachable
     if (
       !softOk &&
-      (name === 'agent.soft' || name === 'teacher.soft' || name === 'evidence.transfer.soft') &&
-      res.status === 401
+      (name === 'voice.tts.soft' || name === 'voice.transcribe.soft') &&
+      (res.status === 400 || res.status === 415)
     ) {
       softOk = true;
     }
@@ -56,22 +67,33 @@ async function round(r) {
     jobs.push(probe('health.yjs', '/api/health/yjs'));
     jobs.push(probe('spine.adoption', '/api/spine/adoption'));
     jobs.push(probe('health.gemini', '/api/health/gemini'));
-    // Soft probes — may 401 without auth; count <500 as SLO-ok
     jobs.push(
       probe('agent.soft', '/api/agent/chat', {
         method: 'POST',
-        body: { message: 'chaos ping', history: [] },
+        body: { messages: [{ role: 'user', content: 'chaos ping' }] },
       }),
     );
-    jobs.push(
-      probe('teacher.soft', '/api/classes', { method: 'GET' }),
-    );
+    jobs.push(probe('teacher.soft', '/api/classes', { method: 'GET' }));
     jobs.push(
       probe('evidence.transfer.soft', '/api/evidence/transfer', {
         method: 'POST',
         body: { attempts: [] },
       }),
     );
+    jobs.push(
+      probe('voice.tts.soft', '/api/tts', {
+        method: 'POST',
+        body: { text: 'chaos' },
+      }),
+    );
+    jobs.push(
+      probe('voice.transcribe.soft', '/api/transcribe', {
+        method: 'POST',
+        body: {},
+      }),
+    );
+    // Offline pedagogy path — learning summary (auth soft)
+    jobs.push(probe('offline.learning.soft', '/api/learning/summary', { method: 'GET' }));
   }
   await Promise.all(jobs);
   console.log(`round ${r + 1}/${ROUNDS} complete`);

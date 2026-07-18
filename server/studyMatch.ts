@@ -455,6 +455,14 @@ async function pairUsers(
   await setQueueEntry(db, matchedA);
   await setQueueEntry(db, matchedB);
   matchMetrics.matchesTotal += 1;
+  void import('./matchQueueBus.js').then(({ emitMatchBusEvent }) =>
+    emitMatchBusEvent('matched', {
+      sessionId: session.id,
+      topicKey: session.topicKey,
+      durationMin: session.durationMin,
+      uids: session.memberIds,
+    }),
+  );
   return session;
 }
 
@@ -530,6 +538,14 @@ async function tryMatch(db: Firestore | null, entrant: QueueEntry): Promise<Matc
             }
           }
           matchMetrics.matchesTotal += 1;
+          void import('./matchQueueBus.js').then(({ emitMatchBusEvent }) =>
+            emitMatchBusEvent('matched', {
+              sessionId: session.id,
+              topicKey: session.topicKey,
+              durationMin: session.durationMin,
+              uids: session.memberIds,
+            }),
+          );
           return session;
         }
       } catch {
@@ -634,6 +650,14 @@ export async function enqueueMatchHandler(req: Request, res: Response): Promise<
     sessionId: null,
   };
   await setQueueEntry(db, entry);
+  void import('./matchQueueBus.js').then(({ emitMatchBusEvent }) =>
+    emitMatchBusEvent('enqueue', {
+      uid: user.uid,
+      topicKey,
+      durationMin,
+      affinityInstanceId: affinity.instanceId,
+    }),
+  );
 
   const session = await tryMatch(db, entry);
   if (session) {
@@ -660,6 +684,9 @@ export async function leaveQueueHandler(_req: Request, res: Response): Promise<v
   const entry = await getQueueEntry(db, user.uid);
   if (entry?.status === 'waiting') {
     await deleteQueueEntry(db, user.uid);
+    void import('./matchQueueBus.js').then(({ emitMatchBusEvent }) =>
+      emitMatchBusEvent('leave', { uid: user.uid, topicKey: entry.topicKey, surface: 'queue' }),
+    );
   } else if (entry?.status === 'matched') {
     // Keep queue marker until session ends — client should call leave session
   } else {
@@ -749,6 +776,14 @@ export async function leaveSessionHandler(req: Request, res: Response): Promise<
   for (const uid of session.memberIds) {
     await deleteQueueEntry(db, uid);
   }
+  void import('./matchQueueBus.js').then(({ emitMatchBusEvent }) =>
+    emitMatchBusEvent('leave', {
+      uid: user.uid,
+      sessionId,
+      topicKey: session.topicKey,
+      surface: 'session',
+    }),
+  );
   const studiedSec = Math.max(
     0,
     Math.floor((Date.now() - new Date(session.startedAt).getTime()) / 1000),

@@ -148,6 +148,11 @@ import {
   privacyPurgeTickHandler,
 } from './server/privacyPurge.js';
 import { geminiCircuit, recentCircuitAlerts } from './server/circuitBreaker.js';
+import {
+  agentBudgetSnapshot,
+  assertAgentRequestBudget,
+  noteAgentLatency,
+} from './server/agentBudgets.js';
 import { validateObject } from './server/requestSpine.js';
 const _require = createRequire(typeof import.meta !== 'undefined' && import.meta.url ? import.meta.url : 'file://' + process.cwd() + '/server.ts');
 const pdfParse = _require('pdf-parse');
@@ -495,6 +500,7 @@ async function startServer() {
       uploads: resumableUploadStats(),
       gemini: geminiCircuit.getSnapshot(),
       circuitAlerts: recentCircuitAlerts().slice(-5),
+      agent: agentBudgetSnapshot(),
     });
   });
 
@@ -869,6 +875,12 @@ async function startServer() {
         model: { type: 'string', maxLength: 128 },
       });
       const { messages, systemInstruction, model } = req.body;
+      try {
+        assertAgentRequestBudget(messages);
+      } catch (budgetErr) {
+        const status = Number((budgetErr as { status?: number }).status) || 413;
+        throw new HttpError(status, (budgetErr as Error).message);
+      }
       const mode = normalizeAgentMode(req.body?.mode);
       const userTexts = extractAgentUserTexts(messages);
       for (const t of userTexts.slice(-3)) {
@@ -902,8 +914,11 @@ async function startServer() {
         urls = chunks.map((c: any) => c.web?.uri).filter(Boolean);
       }
 
-      res.setHeader('X-Agent-Latency-Ms', String(Date.now() - started));
-      res.json({ text, urls, mode, traceId: res.locals.traceId });
+      const latencyMs = Date.now() - started;
+      const budget = noteAgentLatency(latencyMs, 'chat');
+      res.setHeader('X-Agent-Latency-Ms', String(latencyMs));
+      res.setHeader('X-Agent-Budget-Ok', budget.withinBudget ? '1' : '0');
+      res.json({ text, urls, mode, traceId: res.locals.traceId, latencyMs, budgetOk: budget.withinBudget });
     } catch (error) {
       res.setHeader('X-Agent-Latency-Ms', String(Date.now() - started));
       if (error instanceof HttpError) {
@@ -916,6 +931,7 @@ async function startServer() {
 
   // AI Agent streaming (SSE)
   app.post('/api/agent/chat/stream', async (req, res) => {
+    const started = Date.now();
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
@@ -923,6 +939,16 @@ async function startServer() {
 
     try {
       const { messages, systemInstruction, model } = req.body;
+      try {
+        assertAgentRequestBudget(Array.isArray(messages) ? messages : []);
+      } catch (budgetErr) {
+        res.write(
+          `data: ${JSON.stringify({ error: (budgetErr as Error).message, code: 'budget_exceeded' })}\n\n`,
+        );
+        res.write('data: [DONE]\n\n');
+        res.end();
+        return;
+      }
       const mode = normalizeAgentMode(req.body?.mode);
       const userTexts = extractAgentUserTexts(messages);
       for (const t of userTexts.slice(-3)) {
@@ -976,7 +1002,13 @@ async function startServer() {
         }
       }
 
-      res.write(`data: ${JSON.stringify({ done: true, urls: groundingUrls })}\n\n`);
+      const latencyMs = Date.now() - started;
+      const budget = noteAgentLatency(latencyMs, 'stream');
+      res.setHeader('X-Agent-Latency-Ms', String(latencyMs));
+      res.setHeader('X-Agent-Budget-Ok', budget.withinBudget ? '1' : '0');
+      res.write(
+        `data: ${JSON.stringify({ done: true, urls: groundingUrls, latencyMs, budgetOk: budget.withinBudget })}\n\n`,
+      );
       res.end();
     } catch (error) {
       const formatted = formatGeminiApiError(error);
@@ -2345,6 +2377,16 @@ Use pixel coordinates relative to the image. Include 1-12 labels. confidence is 
 
   httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    if (process.env.NODE_ENV === 'production') {
+      if (process.env.REQUIRE_API_AUTH !== 'true') {
+        console.warn('[Memora] WARN: REQUIRE_API_AUTH is not true in production');
+      }
+      if (process.env.APP_CHECK_ENFORCE !== 'true') {
+        console.warn(
+          '[Memora] WARN: APP_CHECK_ENFORCE is not true in production — see docs/APP_CHECK_AND_API_KEYS.md',
+        );
+      }
+    }
     void startMatchPubSubConsumer().then((r) => {
       if (r.ok) console.log(`[Memora] Match PubSub consumer: ${r.reason ?? 'live'}`);
     });

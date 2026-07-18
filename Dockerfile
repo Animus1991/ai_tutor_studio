@@ -26,6 +26,8 @@ RUN npm ci --omit=dev
 
 FROM node:22-alpine
 WORKDIR /app
+# Production image. Set REQUIRE_API_AUTH=true and APP_CHECK_ENFORCE=true at deploy
+# (see docs/APP_CHECK_AND_API_KEYS.md). Server logs a WARN when either is unset in NODE_ENV=production.
 ENV NODE_ENV=production \
     AUDIT_STORE_PATH=/app/data/audit-log.jsonl
 COPY --from=prod-deps /app/node_modules ./node_modules
