@@ -3,6 +3,8 @@ import { Play, Pause, RotateCcw, Coffee, Timer, Target, Bell } from 'lucide-reac
 import { useLanguage } from '../../lib/i18n';
 import { logActivity } from '../../lib/activity';
 import WorkspaceToolHeader from './WorkspaceToolHeader';
+import { evaluateFocusWellbeing } from '../../lib/focusWellbeing';
+import { toast } from 'sonner';
 
 type TimerMode = 'pomodoro' | 'short-break' | 'long-break' | 'exam-countdown' | 'stopwatch';
 
@@ -76,17 +78,53 @@ export default function StudyTimerPanel() {
       const newElapsed = Math.floor((now - startTimeRef.current) / 1000);
       setElapsed(newElapsed);
 
+      if (mode === 'pomodoro' || mode === 'exam-countdown' || mode === 'stopwatch') {
+        const nudge = evaluateFocusWellbeing({
+          continuousFocusSec: newElapsed,
+          completedPomodoros: sessions,
+          dailyFocusSec: newElapsed + sessions * 25 * 60,
+        });
+        if (nudge.level === 'break' && nudge.suggestBreak) {
+          setRunning(false);
+          toast.message(t(nudge.reason, nudge.reasonEl));
+          switchMode('short-break');
+          return;
+        }
+      }
+
       if (isCountdown && newElapsed >= config.duration) {
         setRunning(false);
-        setSessions((s) => s + 1);
+        setSessions((s) => {
+          const next = s + 1;
+          if (mode === 'pomodoro') {
+            const nudge = evaluateFocusWellbeing({
+              continuousFocusSec: 0,
+              completedPomodoros: next,
+              dailyFocusSec: next * 25 * 60,
+            });
+            if (nudge.suggestBreak) {
+              toast.message(t(nudge.reason, nudge.reasonEl));
+            }
+          }
+          return next;
+        });
         logActivity(`${config.label} completed`, 'study');
+        void import('../../lib/spineEvents').then(({ postLearningEvent }) => {
+          postLearningEvent({
+            kind: 'focus_session',
+            surface: 'workspace-timer',
+            success: true,
+            principles: ['self_determination', 'cognitive_load'],
+            meta: { mode, durationSec: config.duration },
+          });
+        });
         // Play notification sound if available
         try { new Audio('/notification.mp3').play().catch(() => {}); } catch { /* optional notification sound */ }
       }
     }, 250);
 
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [running, isCountdown, config.duration, config.label]);
+  }, [running, isCountdown, config.duration, config.label, mode, sessions, switchMode, t]);
 
   // Log session on unmount if running
   useEffect(() => {

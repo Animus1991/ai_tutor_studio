@@ -25,7 +25,11 @@ async function probe(name, path, opts = {}) {
     let softOk = res.status < 500;
     if (!softOk && name === 'health.gemini' && res.status === 503) softOk = true;
     // Unauth soft probes may 401
-    if (!softOk && (name === 'agent.soft' || name === 'teacher.soft') && res.status === 401) {
+    if (
+      !softOk &&
+      (name === 'agent.soft' || name === 'teacher.soft' || name === 'evidence.transfer.soft') &&
+      res.status === 401
+    ) {
       softOk = true;
     }
     if (!results.probes[name]) results.probes[name] = { ok: 0, fail: 0, latency: [] };
@@ -61,6 +65,12 @@ async function round(r) {
     );
     jobs.push(
       probe('teacher.soft', '/api/classes', { method: 'GET' }),
+    );
+    jobs.push(
+      probe('evidence.transfer.soft', '/api/evidence/transfer', {
+        method: 'POST',
+        body: { attempts: [] },
+      }),
     );
   }
   await Promise.all(jobs);

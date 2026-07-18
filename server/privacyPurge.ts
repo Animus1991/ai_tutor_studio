@@ -62,6 +62,17 @@ export async function runPrivacyPurgeJob(limit = 20): Promise<PurgeResult> {
 
     for (const doc of snap.docs) {
       const uid = String(doc.data()?.uid ?? doc.id);
+      // Legal hold — skip automated purge until hold lifted
+      if (doc.data()?.legalHold === true) {
+        await doc.ref.set(
+          {
+            status: 'legal_hold',
+            holdNotedAt: new Date().toISOString(),
+          },
+          { merge: true },
+        );
+        continue;
+      }
       try {
         await purgeUserCollections(db, uid);
         await doc.ref.set(

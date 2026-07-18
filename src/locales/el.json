@@ -28,5 +28,12 @@
   "voice.blocked": "Η φωνή αποκλείστηκε από το φίλτρο ασφαλείας",
   "guidelines.title": "Οδηγίες κοινότητας",
   "common.confirm": "Επιβεβαίωση",
-  "common.cancel": "Ακύρωση"
+  "common.cancel": "Ακύρωση",
+  "match.buddyOnline": "buddy online",
+  "match.buddyAway": "buddy εκτός",
+  "focus.wellbeingBreak": "Κάνε διάλειμμα — ξεπέρασες 50 λεπτά συνεχούς εστίασης.",
+  "focus.wellbeingDaily": "Έφτασες το ημερήσιο budget εστίασης — η ξεκούραση βοηθά τη συγκράτηση.",
+  "focus.wellbeingPomodoro": "Μεγάλο διάλειμμα μετά από τέσσερα pomodoros στηρίζει την ευεξία.",
+  "admin.sloHealth": "Υγεία SLO πλατφόρμας",
+  "admin.transfer": "Μεταφορά"
 }

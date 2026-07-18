@@ -85,6 +85,7 @@ import {
 import {
   evidenceEvalHandler,
   evidencePrinciplesHandler,
+  evidenceTransferHandler,
   purgeExpiredXapiHandler,
   researchExportHandler,
   xapiStatementsHandler,
@@ -133,6 +134,10 @@ import {
 } from './server/resumableUpload.js';
 import { matchAffinityHealth } from './server/matchAffinity.js';
 import { matchQueueBusStats } from './server/matchQueueBus.js';
+import {
+  matchPubSubConsumerStats,
+  startMatchPubSubConsumer,
+} from './server/matchPubSubConsumer.js';
 import { spineAdoptionSummary } from './server/spineAdoption.js';
 import {
   compactExpiredYjsSnapshots,
@@ -481,7 +486,11 @@ async function startServer() {
         trustDevices,
         revokeSupported: true,
       },
-      match: { ...matchAffinityHealth(), bus: matchQueueBusStats() },
+      match: {
+        ...matchAffinityHealth(),
+        bus: matchQueueBusStats(),
+        pubsub: matchPubSubConsumerStats(),
+      },
       yjs: yjsSnapshotStats(),
       uploads: resumableUploadStats(),
       gemini: geminiCircuit.getSnapshot(),
@@ -495,6 +504,7 @@ async function startServer() {
       ok: true,
       ...matchAffinityHealth(),
       bus: matchQueueBusStats(),
+      pubsub: matchPubSubConsumerStats(),
     });
   });
 
@@ -2050,6 +2060,13 @@ Use pixel coordinates relative to the image. Include 1-12 labels. confidence is 
       sendRouteError(res, error, 'Evidence Eval Error', 'Failed to run evaluation harness');
     }
   });
+  app.post('/api/evidence/transfer', async (req, res) => {
+    try {
+      await evidenceTransferHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Evidence Transfer Error', 'Failed to run transfer battery');
+    }
+  });
   app.post('/api/admin/xapi/purge-expired', async (req, res) => {
     try {
       await purgeExpiredXapiHandler(req, res);
@@ -2328,6 +2345,9 @@ Use pixel coordinates relative to the image. Include 1-12 labels. confidence is 
 
   httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    void startMatchPubSubConsumer().then((r) => {
+      if (r.ok) console.log(`[Memora] Match PubSub consumer: ${r.reason ?? 'live'}`);
+    });
   });
 }
 

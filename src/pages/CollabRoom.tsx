@@ -1,6 +1,7 @@
 import { toast } from 'sonner';
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useFocusTrap } from '../hooks/useFocusTrap';
 import {
   Video,
   Mic,
@@ -146,6 +147,9 @@ export default function CollabRoom() {
   const [showGuidelines, setShowGuidelines] = useState(() => !hasAcceptedCommunityGuidelines());
   const [reportTarget, setReportTarget] = useState<{ id: string; preview: string } | null>(null);
   const [reportReason, setReportReason] = useState<ReportReason>('off_topic');
+  const reportDialogRef = useFocusTrap<HTMLDivElement>(Boolean(reportTarget), () =>
+    setReportTarget(null),
+  );
   const [roomOwnerId, setRoomOwnerId] = useState<string | null>(null);
   const providerRef = useRef<WebsocketProvider | null>(null);
 
@@ -1802,6 +1806,7 @@ export default function CollabRoom() {
             aria-label={t('Report message', 'Αναφορά μηνύματος')}
           >
             <motion.div
+              ref={reportDialogRef}
               initial={{ y: 24, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: 24, opacity: 0 }}

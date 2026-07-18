@@ -209,6 +209,44 @@ export async function evidencePrinciplesHandler(_req: Request, res: Response): P
   res.json({ principles: EVIDENCE_PRINCIPLES, source: 'PRODUCT_BLUEPRINT.md §1' });
 }
 
+/**
+ * POST /api/evidence/transfer
+ * Body: { attempts: TransferAttempt[], controlFloor?, minN? }
+ * Empty attempts → demo battery that is intentionally not causal-ready.
+ */
+export async function evidenceTransferHandler(req: Request, res: Response): Promise<void> {
+  getAuthUser(res);
+  const body = validateObject(req.body ?? {}, {
+    attempts: { type: 'array', required: false },
+    controlFloor: { type: 'number', required: false },
+    minN: { type: 'number', required: false },
+  });
+
+  const {
+    evaluateTransferBattery,
+    defaultTransferItems,
+  } = await import('../src/lib/transferTest.js');
+
+  const attempts = Array.isArray(body.attempts) ? body.attempts : [];
+  const items = defaultTransferItems();
+  const demoAttempts =
+    attempts.length > 0
+      ? attempts
+      : items.map((item) => ({
+          itemId: item.id,
+          answer: '',
+          delayHours: 0,
+          assistedStudy: true,
+        }));
+
+  const report = evaluateTransferBattery(demoAttempts as never, {
+    controlFloor:
+      typeof body.controlFloor === 'number' ? body.controlFloor : undefined,
+    minN: typeof body.minN === 'number' ? body.minN : undefined,
+  });
+  res.json(report);
+}
+
 /** Shared xAPI TTL purge (admin handler + privacy cron). */
 export async function purgeExpiredXapiStatements(opts?: { uidFallback?: string }): Promise<number> {
   const db = await getAdminFirestore();

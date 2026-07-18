@@ -22,6 +22,7 @@
     "smoke:prod": "npm run build && cross-env NODE_ENV=production node dist/server.cjs",
     "chaos:match": "node scripts/chaos-match-yjs.mjs",
     "chaos:spine": "node scripts/chaos-spine.mjs",
+    "release-gate": "node scripts/release-gate.mjs",
     "audit": "npm audit --omit=dev --audit-level=moderate",
     "check": "npm run lint && npm test && npm run test:rules && npm run build"
   },

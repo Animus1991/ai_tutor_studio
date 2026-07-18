@@ -60,6 +60,13 @@ export default function Admin() {
   const [claimBusy, setClaimBusy] = useState(false);
   const [breakGlass, setBreakGlass] = useState<BreakGlassRow[]>([]);
   const [breakGlassBusyId, setBreakGlassBusyId] = useState<string | null>(null);
+  const [sloHealth, setSloHealth] = useState<{
+    geminiState?: string;
+    matchMode?: string;
+    pubsubStarted?: boolean;
+    yjsDocs?: number;
+    circuitAlerts?: number;
+  } | null>(null);
 
   const loadSocialReports = async () => {
     try {
@@ -93,17 +100,33 @@ export default function Admin() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [m, serverLogs, serverM, tenantM] = await Promise.all([
+      const [m, serverLogs, serverM, tenantM, healthRes] = await Promise.all([
         buildAdminMetrics(),
         auditLogger.fetchServerLogs(100),
         fetchServerAdminMetrics(),
         fetchTenantMetrics(),
+        apiRequest('/api/health').catch(() => null),
       ]);
       if (cancelled) return;
       setMetrics(m);
       setServerMetrics(serverM);
       setTenantMetrics(tenantM);
       setLogs(auditLogger.mergeLogs(auditLogger.getRecentLogs(200), serverLogs));
+      if (healthRes?.ok) {
+        const h = (await healthRes.json()) as {
+          gemini?: { state?: string };
+          match?: { mode?: string; pubsub?: { started?: boolean } };
+          yjs?: { docs?: number; docCount?: number };
+          circuitAlerts?: unknown[];
+        };
+        setSloHealth({
+          geminiState: h.gemini?.state,
+          matchMode: h.match?.mode,
+          pubsubStarted: h.match?.pubsub?.started,
+          yjsDocs: h.yjs?.docs ?? h.yjs?.docCount,
+          circuitAlerts: Array.isArray(h.circuitAlerts) ? h.circuitAlerts.length : 0,
+        });
+      }
       await Promise.all([loadSocialReports(), loadBreakGlass()]);
     })();
     return () => {
@@ -236,6 +259,32 @@ export default function Admin() {
     }
   };
 
+  const handleRunTransferBattery = async () => {
+    try {
+      const res = await apiRequest('/api/evidence/transfer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ attempts: [] }),
+      });
+      if (!res.ok) {
+        toast.error('Transfer battery requires auth');
+        return;
+      }
+      const report = (await res.json()) as {
+        passRate?: number;
+        n?: number;
+        causalReady?: boolean;
+        note?: string;
+      };
+      toast.success(
+        `Transfer: n=${report.n} pass=${Math.round((report.passRate ?? 0) * 100)}%` +
+          (report.causalReady ? ' · causal-ready' : ' · not causal-ready'),
+      );
+    } catch {
+      toast.error('Transfer battery failed');
+    }
+  };
+
   const handleExport = () => {
     const exportData = {
       auditLogs: filteredLogs,
@@ -324,6 +373,14 @@ export default function Admin() {
             Eval
           </button>
           <button
+            type="button"
+            onClick={() => void handleRunTransferBattery()}
+            className="flex items-center gap-2 bg-sky-50 dark:bg-sky-900/30 text-sky-700 dark:text-sky-400 px-3 py-1.5 rounded-lg hover:bg-sky-100 dark:hover:bg-sky-900/50 transition-colors font-semibold text-sm"
+            title="Delayed transfer battery (causal gate helper)"
+          >
+            Transfer
+          </button>
+          <button
             onClick={handleExport}
             className="flex items-center gap-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-3 py-1.5 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors font-semibold text-sm"
           >
@@ -332,6 +389,23 @@ export default function Admin() {
           </button>
         </div>
       </header>
+
+      {sloHealth && (
+        <div
+          className="mb-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3"
+          data-testid="admin-slo-strip"
+          aria-label="Platform SLO health"
+        >
+          <SloChip label="Gemini" value={sloHealth.geminiState ?? '—'} />
+          <SloChip label="Match" value={sloHealth.matchMode ?? '—'} />
+          <SloChip
+            label="PubSub"
+            value={sloHealth.pubsubStarted ? 'started' : 'idle'}
+          />
+          <SloChip label="Yjs docs" value={String(sloHealth.yjsDocs ?? '—')} />
+          <SloChip label="Circuit alerts" value={String(sloHealth.circuitAlerts ?? 0)} />
+        </div>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
         <MetricCard
@@ -632,6 +706,15 @@ function MetricCard({
       <div className={`w-10 h-10 rounded-xl ${iconBg} flex items-center justify-center mb-4`}>{icon}</div>
       <h3 className="font-bold text-sm text-slate-500 dark:text-slate-400 mb-1">{label}</h3>
       <p className="text-2xl md:text-3xl font-display font-bold text-slate-900 dark:text-white">{value}</p>
+    </div>
+  );
+}
+
+function SloChip({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-2">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{label}</p>
+      <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">{value}</p>
     </div>
   );
 }

@@ -597,12 +597,20 @@ export default function MatchSession() {
       <header className="rounded-2xl border border-slate-200/60 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 flex items-center gap-1.5">
+            <p
+              className="text-xs font-semibold uppercase tracking-wide text-slate-400 flex items-center gap-1.5"
+              aria-live="polite"
+              data-testid="match-live-status"
+            >
               <Shield className="w-3.5 h-3.5 text-emerald-500" />
               {phase === 'break'
                 ? t('Shared break', 'Κοινό διάλειμμα')
                 : t('Focus Pomodoro', 'Focus Pomodoro')}
               {session.pomodoro ? ` · #${session.pomodoro.cycle}` : ''}
+              {' · '}
+              {session.peerOnline !== false
+                ? t('buddy online', 'buddy online')
+                : t('buddy away', 'buddy εκτός')}
             </p>
             <h1 className="text-lg sm:text-xl font-display font-bold text-slate-900 dark:text-white mt-0.5">
               {session.topicLabel}

@@ -170,9 +170,10 @@ export const SPINE_ADOPTION: readonly AdoptionCard[] = [
       'src/lib/workspaceConceptBus.ts',
       'src/lib/pedagogyWriteback.ts',
       'src/lib/workspacePersistence.ts',
+      'src/lib/focusWellbeing.ts',
       'src/components/workspace/AnnotationOverlay.tsx',
     ],
-    notes: 'Annotation moderation · quiz writeback · 90d workspace GC',
+    notes: 'Annotation moderation · quiz writeback · focus wellbeing bounds · 90d workspace GC',
   },
   {
     id: 7,
@@ -245,10 +246,11 @@ export const SPINE_ADOPTION: readonly AdoptionCard[] = [
       'server/studyMatch.ts',
       'server/matchAffinity.ts',
       'server/matchQueueBus.ts',
+      'server/matchPubSubConsumer.ts',
       'server/matchModerator.ts',
       'src/pages/MatchSession.tsx',
     ],
-    notes: 'Leave → focus writeback · sticky/DLQ · chaos:match + chaos:spine',
+    notes: 'Leave → focus writeback · sticky/DLQ/PubSub consumer · live status · chaos:match + chaos:spine',
   },
   {
     id: 11,
@@ -300,8 +302,8 @@ export const SPINE_ADOPTION: readonly AdoptionCard[] = [
       pedagogy: 'n/a',
       privacy: 'wired',
     },
-    modules: ['src/pages/Admin.tsx', 'server/claims.ts', 'server/evidence.ts'],
-    notes: 'Triage · break-glass · xAPI purge · tenant metrics',
+    modules: ['src/pages/Admin.tsx', 'server/claims.ts', 'server/evidence.ts', 'server/privacyPurge.ts'],
+    notes: 'Triage · break-glass · SLO strip · transfer battery · legal-hold purge · tenant metrics',
   },
   {
     id: 14,
@@ -335,10 +337,11 @@ export const SPINE_ADOPTION: readonly AdoptionCard[] = [
     modules: [
       'server/evidence.ts',
       'src/lib/evidenceEval.ts',
+      'src/lib/transferTest.ts',
       'src/lib/pedagogyWriteback.ts',
       'src/lib/calibration.ts',
     ],
-    notes: 'Golden questions · research export · no Bloom-2σ claims',
+    notes: 'Golden questions · transfer battery · research export · no Bloom-2σ claims',
   },
   {
     id: 16,

@@ -15,10 +15,10 @@ Machine-readable cards: `GET /api/spine/adoption` (`server/spineAdoption.ts`).
 | 0 | Authorization | **Hardened** | Room ACL · Yjs membership · `new_room` denied when `REQUIRE_API_AUTH` (invite allow-list first) |
 | 0 | Data contracts | **Hardened** | `validateObject` · Match `notesVersion` · library `libraryVersion` · Yjs snapshot `version` · resumable uploads |
 | 0 | Safety | **Live spine** | Heuristics→Gemini · moderate image/board · MIME sniff · SSRF-safe `fetchPublicText` · AV quarantine hook |
-| 0 | Reliability | **Hardened** | Gemini circuit breaker + **budget alerts** · Match **DLQ/PubSub bus** · durable Yjs · sticky affinity |
-| 0 | Observability | **Hardened** | Health probes `/api/health/{match,yjs,gemini}` · circuit alerts · `chaos:spine` · audit / metrics |
-| 0 | Pedagogy telemetry | **Evidence wired** | xAPI + 90d TTL · `/api/learning/*` · Feynman/Debate writeback · Dashboard calibration |
-| 0 | Privacy | **Hardened** | Export / delete-request · **automated purge drain** · Yjs/xAPI TTL compaction · no peer PII |
+| 0 | Reliability | **Hardened** | Gemini circuit breaker + **budget alerts** · Match **DLQ/PubSub bus + consumer** · durable Yjs · sticky affinity |
+| 0 | Observability | **Hardened** | Health probes `/api/health/{match,yjs,gemini}` · Admin SLO strip · circuit alerts · `chaos:spine` · `release-gate` |
+| 0 | Pedagogy telemetry | **Evidence wired** | xAPI + 90d TTL · `/api/learning/*` · Feynman/Debate writeback · transfer battery · Dashboard calibration |
+| 0 | Privacy | **Hardened** | Export / delete-request · **automated purge drain** · **legal hold** skip · Yjs/xAPI TTL compaction · no peer PII |
 | 0 | Deploy | **Done** | Dockerfile ships `server/` + `dist/server.cjs` · authenticated Yjs |
 | 1 | Auth / Google | **Ops wired** | App Check hooks · scoped OAuth · claims + break-glass · Contacts opt-in |
 | 4 / 7 | Agent / Voice | **Learning wired** | Mode contracts · grounded RAG · barge-in · offline Voice pack · latency headers |
@@ -30,9 +30,9 @@ Machine-readable cards: `GET /api/spine/adoption` (`server/spineAdoption.ts`).
 | 6 | Study Workspace | **Workspace spine** | 13-tool registry · concept-bus · Feynman/Debate → mastery writeback |
 | 14 | Offline / PWA | **Offline spine** | Signed packs · sync conflict UI · SW shells · offline Agent local RAG |
 | 12 | Google Workspace | **Ops wired** | Calendar/Tasks · Meet/Forms audit · demo stubs labeled |
-| 13 | Admin | **Ops wired** | Social triage · claims · break-glass · tenant metrics · Yjs compact |
-| 16 | i18n / A11y | **Hardened** | `src/locales/{en,el}.json` catalogs · `tc()` · `dir` + RTL-ready · skip-link · focus traps |
-| 17 | Chaos / Ops | **Harness** | `npm run chaos:match` · spine smoke · App Check CSP hosts |
+| 13 | Admin | **Ops wired** | Social triage · claims · break-glass · SLO strip · transfer eval · tenant metrics · Yjs compact |
+| 16 | i18n / A11y | **Hardened** | `src/locales/{en,el}.json` catalogs · `tc()` · `dir` + RTL-ready · skip-link · focus traps · Match/Voice live regions |
+| 17 | Chaos / Ops | **Harness** | `npm run chaos:match` · `chaos:spine` · `release-gate` · App Check CSP hosts |
 
 ## Modules
 
@@ -61,7 +61,8 @@ Machine-readable cards: `GET /api/spine/adoption` (`server/spineAdoption.ts`).
 | `TRUST_DEVICES=true` | Require registered `device_id` claim |
 | `INSTANCE_ID` / `MATCH_STICKY=true` | Match sticky affinity mode |
 | `MATCH_AFFINITY_STRICT=true` | 409 when client affinity mismatches |
-| `MATCH_PUBSUB_TOPIC` | Advertise pubsub affinity mode |
+| `MATCH_PUBSUB_TOPIC` | Advertise pubsub affinity mode (publisher) |
+| `MATCH_PUBSUB_SUBSCRIPTION` | Pull subscription for Match multi-instance consumer |
 | `AV_SCAN_COMMAND` | Optional clamav (etc.) for quarantine |
 | `MAX_RESUMABLE_BYTES` | Resumable upload cap (default 25MB) |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | Durable queue, privacy, xAPI, Teacher, devices |
@@ -81,9 +82,13 @@ Machine-readable cards: `GET /api/spine/adoption` (`server/spineAdoption.ts`).
 
 See `docs/INSTITUTIONAL_GATES.md` — DPA sign-off, independent WCAG pass, and efficacy gate before production marketing claims.
 
-## Next implementation order
+## §Ε — Code vs ops remaining
 
-1. Turn on `APP_CHECK_ENFORCE=true` + referrer keys in production (runbook: `docs/APP_CHECK_AND_API_KEYS.md`)
-2. Expand `locales/` coverage across remaining UI strings
-3. Wire real `@google-cloud/pubsub` consumer so Match queue is shared across instances (`MATCH_PUBSUB_TOPIC` publisher ready)
-4. Complete institutional gates checklist (DPA · WCAG · efficacy)
+**Code spine (this branch):** adoption cards 0–17 wired · durable Yjs · Match affinity/DLQ/PubSub consumer stub · resumable+AV · device trust · pedagogy writeback · focus wellbeing · transfer battery · Admin SLO · legal-hold purge · EN/EL catalogs · focus traps · live regions · `npm run release-gate`.
+
+**Ops / institutional (not auto-closed by UI polish):**
+
+1. Turn on `APP_CHECK_ENFORCE=true` + referrer keys in production (`docs/APP_CHECK_AND_API_KEYS.md`)
+2. Install/live `@google-cloud/pubsub` + set `MATCH_PUBSUB_SUBSCRIPTION` for multi-instance Match
+3. Expand remaining free-form UI strings into `locales/`
+4. Complete `docs/INSTITUTIONAL_GATES.md` (DPA · independent WCAG · efficacy / no Bloom-2σ)

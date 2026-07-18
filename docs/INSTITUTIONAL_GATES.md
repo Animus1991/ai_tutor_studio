@@ -34,6 +34,7 @@ Independent gate (not auto-passable in CI alone):
 Memora does **not** claim Bloom 2σ. Before marketing efficacy:
 
 - [ ] Golden-question harness green (`POST /api/evidence/eval`)
+- [ ] Transfer battery reviewed (`POST /api/evidence/transfer`) — `causalReady` only after delayed unassisted N
 - [ ] Calibration MACE/Brier reported on Dashboard (not vanity completion %)
 - [ ] Active-control or at least pre-registered A/B plan for Match scoring weights
 - [ ] No VARK / learning-styles meshing in product copy
@@ -43,4 +44,4 @@ Memora does **not** claim Bloom 2σ. Before marketing efficacy:
 - [ ] `APP_CHECK_ENFORCE=true` after staging token validation (`docs/APP_CHECK_AND_API_KEYS.md`)
 - [ ] Referrer-restricted Firebase web API key
 - [ ] `BREAK_GLASS_REQUIRED=true` for role elevation
-- [ ] `npm run check` + `npm run chaos:spine` on release
+- [ ] `npm run release-gate` (lint + unit + audit) and staging `npm run chaos:spine`
