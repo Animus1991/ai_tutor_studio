@@ -21,6 +21,7 @@ import { isFullBleedRoute, CONTENT_GUTTER, MOBILE_TAB_CLEARANCE } from './pageLa
 import SkipLink from '../SkipLink';
 import { useLanguage } from '../../lib/i18n';
 import AuthUserMenu from '../AuthUserMenu';
+import { useFocusTrap } from '../../hooks/useFocusTrap';
 
 export default function Layout() {
   useKeyboardShortcuts();
@@ -31,6 +32,10 @@ export default function Layout() {
   const { isDarkMode, toggleDarkMode, isFocusMode, toggleFocusMode, isDyslexiaFont, toggleDyslexiaFont, xp, streakFreezes } = useStore();
   const { userRole, setUserRole } = useAuthStore();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const mobileMenuTrapRef = useFocusTrap<HTMLDivElement>(
+    isMobileMenuOpen,
+    () => setIsMobileMenuOpen(false),
+  );
   const [isActivityDrawerOpen, setIsActivityDrawerOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
@@ -436,6 +441,7 @@ export default function Layout() {
               animate={{ y: 0 }} 
               exit={{ y: "100%" }}
               transition={{ type: "spring", damping: 28, stiffness: 320 }}
+              ref={mobileMenuTrapRef}
               className="md:hidden fixed bottom-0 left-0 right-0 max-h-[min(85dvh,640px)] overflow-y-auto overscroll-contain bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 rounded-t-3xl z-50 px-3 pt-2 pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))] shadow-[0_-12px_40px_rgba(0,0,0,0.12)]"
               role="dialog"
               aria-modal="true"

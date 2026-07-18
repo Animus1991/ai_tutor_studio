@@ -85,12 +85,25 @@ export async function putLibraryHandler(req: Request, res: Response) {
   const payload = { courses, uploadedFiles };
 
   const firestore = await getAdminFirestore();
+  const expireAt = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString();
   if (firestore) {
     await firestore.collection('userLibrary').doc(uid).set({
       data: payload,
       updatedAt: new Date().toISOString(),
       ownerId: uid,
+      expireAt,
     });
+    try {
+      await firestore.collection('platform_audit').add({
+        category: 'library',
+        action: 'LIBRARY_PUT',
+        actorUid: uid,
+        courseCount: courses.length,
+        at: new Date().toISOString(),
+      });
+    } catch {
+      /* ignore */
+    }
     res.json({ ok: true, backend: 'firestore' });
     return;
   }
@@ -149,11 +162,24 @@ export async function ragIndexHandler(req: Request, res: Response) {
     // Replace prior chunks for this docId (best-effort: delete marker + rewrite)
     const existing = await col.where('docId', '==', docId).limit(500).get();
     for (const d of existing.docs) batch.delete(d.ref);
+    const expireAt = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString();
     for (const ch of chunks) {
       const ref = col.doc(`${docId}_${ch.index}`);
-      batch.set(ref, { ...ch, ownerId: uid, updatedAt: new Date().toISOString() });
+      batch.set(ref, { ...ch, ownerId: uid, updatedAt: new Date().toISOString(), expireAt });
     }
     await batch.commit();
+    try {
+      await firestore.collection('platform_audit').add({
+        category: 'library',
+        action: 'RAG_INDEX',
+        actorUid: uid,
+        docId,
+        indexed: chunks.length,
+        at: new Date().toISOString(),
+      });
+    } catch {
+      /* ignore */
+    }
     res.json({ ok: true, indexed: chunks.length, backend: 'firestore' });
     return;
   }

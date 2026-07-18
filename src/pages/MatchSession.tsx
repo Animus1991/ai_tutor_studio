@@ -410,6 +410,27 @@ export default function MatchSession() {
         const result = await leaveMatchSession(session.id);
         if (result.summary) {
           const mins = Math.round(result.summary.studiedSec / 60);
+          const score01 = Math.min(
+            1,
+            result.summary.studiedSec / Math.max(60, (session.durationMin || 25) * 60),
+          );
+          const { applyPedagogyWriteback } = await import('../lib/pedagogyWriteback');
+          applyPedagogyWriteback({
+            surface: 'focus',
+            concept: result.summary.topicLabel || session.topicLabel,
+            score01,
+          });
+          const { postLearningEvent, postAuditBeacon } = await import('../lib/spineEvents');
+          postLearningEvent({
+            kind: 'focus_session',
+            surface: 'match',
+            domainKey: result.summary.topicLabel,
+            success: score01 >= 0.4,
+            quality: Math.round(score01 * 5),
+            principles: ['self_determination', 'cognitive_load'],
+            meta: { studiedSec: result.summary.studiedSec },
+          });
+          postAuditBeacon('MATCH_SESSION_LEFT', { studiedSec: result.summary.studiedSec });
           toast.success(
             t(
               `Nice focus · ${mins}′ on ${result.summary.topicLabel}`,

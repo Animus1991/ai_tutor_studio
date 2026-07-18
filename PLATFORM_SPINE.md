@@ -77,9 +77,13 @@ Machine-readable cards: `GET /api/spine/adoption` (`server/spineAdoption.ts`).
 - Match enqueue returns `affinity` + `X-Match-Affinity` headers
 - Health: `appCheck`, `sessionTrust`, `match`, `yjs`, `uploads`
 
+## Institutional gates
+
+See `docs/INSTITUTIONAL_GATES.md` — DPA sign-off, independent WCAG pass, and efficacy gate before production marketing claims.
+
 ## Next implementation order
 
 1. Turn on `APP_CHECK_ENFORCE=true` + referrer keys in production (runbook: `docs/APP_CHECK_AND_API_KEYS.md`)
-2. Expand `locales/` coverage across remaining UI strings + remaining modal focus traps
-3. Wire real `@google-cloud/pubsub` consumer so Match queue is shared across instances (publisher stub ready via `MATCH_PUBSUB_TOPIC`)
-4. Institutional DPA sign-off + independent WCAG / efficacy gates
+2. Expand `locales/` coverage across remaining UI strings
+3. Wire real `@google-cloud/pubsub` consumer so Match queue is shared across instances (`MATCH_PUBSUB_TOPIC` publisher ready)
+4. Complete institutional gates checklist (DPA · WCAG · efficacy)

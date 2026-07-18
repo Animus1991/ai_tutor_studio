@@ -850,6 +850,7 @@ async function startServer() {
 
   // AI Agent Route
   app.post('/api/agent/chat', async (req, res) => {
+    const started = Date.now();
     try {
       validateObject(req.body ?? {}, {
         messages: { type: 'array', required: true },
@@ -890,9 +891,11 @@ async function startServer() {
       if (chunks) {
         urls = chunks.map((c: any) => c.web?.uri).filter(Boolean);
       }
-      
+
+      res.setHeader('X-Agent-Latency-Ms', String(Date.now() - started));
       res.json({ text, urls, mode, traceId: res.locals.traceId });
     } catch (error) {
+      res.setHeader('X-Agent-Latency-Ms', String(Date.now() - started));
       if (error instanceof HttpError) {
         sendRouteError(res, error, 'Agent Moderation', error.message);
         return;

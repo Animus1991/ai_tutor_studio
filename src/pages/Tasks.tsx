@@ -340,6 +340,25 @@ export default function Tasks() {
         quality: quality / 5,
         errorType: quality < 3 ? `${task.type || "task"}:retrieval-gap` : undefined,
       });
+      const { postLearningEvent, postAuditBeacon, privacyExpireAt } = await import('../lib/spineEvents');
+      postLearningEvent({
+        kind: 'task_review',
+        surface: 'tasks',
+        domainKey,
+        success: quality >= 3,
+        quality: quality / 5,
+        principles: ['retrieval', 'spacing'],
+      });
+      postAuditBeacon('TASK_REVIEWED', { taskId: String(task.id), quality });
+      if (user) {
+        try {
+          await updateDoc(doc(db, 'users', user.uid, 'tasks', task.id.toString()), {
+            expireAt: privacyExpireAt(90),
+          });
+        } catch {
+          /* non-blocking TTL stamp */
+        }
+      }
     } catch (e) {
       console.error(e);
       toast.error("Failed to update task review.");
@@ -398,16 +417,35 @@ export default function Tasks() {
       success: true,
     });
 
-    // Audit Log
+    const { postLearningEvent, postAuditBeacon, privacyExpireAt } = await import('../lib/spineEvents');
+    const domainKey = deriveDomainKey(task.course ?? task.type ?? 'tasks');
+    postLearningEvent({
+      kind: 'task_complete',
+      surface: 'tasks',
+      domainKey,
+      success: true,
+      principles: ['retrieval'],
+    });
+    postAuditBeacon('TASK_COMPLETED', { taskId: String(task.id), title: task.title });
+    if (user) {
+      try {
+        await updateDoc(doc(db, 'users', user.uid, 'tasks', task.id.toString()), {
+          expireAt: privacyExpireAt(90),
+        });
+      } catch {
+        /* ignore */
+      }
+    }
+
     auditLogger.log(
-      "ROLE_CHANGED",
+      "TASK_COMPLETED",
       user?.email || "current_user",
       task.id.toString(),
       {
         title: task.title,
         action: "completed",
       },
-    ); // Generic log
+    );
   };
 
   const exportSessionData = () => {

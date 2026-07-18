@@ -75,6 +75,17 @@ export async function persistLibraryCourse(
   if (courseIdx >= 0) lib.courses[courseIdx] = course;
   else lib.courses.push(course);
 
+  void import('./spineEvents').then(({ postLearningEvent, postAuditBeacon }) => {
+    postLearningEvent({
+      kind: 'rag_grounding',
+      surface: 'library',
+      domainKey: course.title?.slice(0, 120) || course.id,
+      success: true,
+      principles: ['dual_coding', 'cognitive_load'],
+    });
+    postAuditBeacon('LIBRARY_COURSE_PERSIST', { courseId: course.id });
+  });
+
   return saveLibrary(lib, lib.libraryVersion);
 }
 

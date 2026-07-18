@@ -23,7 +23,7 @@ export default function Workspace() {
   const { toggleFocusMode } = useStore();
   const googleOAuth = useGoogleOAuth();
   const [events, setEvents] = useState<any[]>([]);
-  const [calendarSource, setCalendarSource] = useState<'google' | 'demo'>('demo');
+  const [calendarSource, setCalendarSource] = useState<'google' | 'demo' | 'cache'>('demo');
   const [courses, setCourses] = useState<any[]>([]);
   const [contacts, setContacts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -48,6 +48,37 @@ export default function Workspace() {
         setCalendarSource(cal.source);
         if (cal.error && cal.source === 'demo') {
           console.warn('[Workspace] Calendar fell back to demo:', cal.error);
+        }
+        // Durable LWW calendar snapshot (Persist stage)
+        try {
+          const { persistCalendarSnapshot, loadCalendarSnapshot } = await import(
+            '../lib/calendarSnapshot'
+          );
+          if (cal.events?.length) {
+            await persistCalendarSnapshot(
+              cal.events.map((e, i) => ({
+                id: String((e as { id?: string }).id ?? `ev-${i}`),
+                summary: String(e.summary ?? 'Event'),
+                start: String(e.start?.dateTime ?? ''),
+                end: e.end?.dateTime ? String(e.end.dateTime) : undefined,
+              })),
+            );
+          } else {
+            const cached = await loadCalendarSnapshot();
+            if (cached?.events?.length) {
+              setEvents(
+                cached.events.map((ev) => ({
+                  id: ev.id,
+                  summary: ev.summary,
+                  start: { dateTime: ev.start },
+                  end: ev.end ? { dateTime: ev.end } : undefined,
+                })),
+              );
+              setCalendarSource('cache');
+            }
+          }
+        } catch {
+          /* ignore snapshot errors */
         }
 
         if (isDemoMode && libraryCourses.length > 0) {

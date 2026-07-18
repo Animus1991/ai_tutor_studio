@@ -28,7 +28,10 @@ async function purgeUserCollections(db: Firestore, uid: string): Promise<void> {
   };
 
   await deleteLimited(`users/${uid}/library`);
+  await deleteLimited(`users/${uid}/tasks`);
   await deleteLimited(`userLearningEvents/${uid}/events`);
+  await deleteLimited(`userLibrary/${uid}/courses`);
+  await deleteLimited(`userRag/${uid}/chunks`);
 
   try {
     await db.collection('matchQueue').doc(uid).delete();

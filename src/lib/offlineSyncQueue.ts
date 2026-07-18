@@ -172,6 +172,20 @@ export async function flushOfflineMutationQueue(): Promise<{
     return { applied: 0, remaining: size, conflicts: await getConflictCount() };
   }
 
+  // Authorize: server-scoped ops require a signed-in principal when auth is enforced.
+  try {
+    const { useAuthStore } = await import('../store/useAuthStore');
+    const { auth } = await import('./firebase');
+    const requireAuth =
+      String(import.meta.env.VITE_REQUIRE_API_AUTH ?? '').toLowerCase() === 'true';
+    if (requireAuth && !auth.currentUser && !useAuthStore.getState().isDemoMode) {
+      const size = await getOfflineQueueSize();
+      return { applied: 0, remaining: size, conflicts: await getConflictCount() };
+    }
+  } catch {
+    /* continue best-effort */
+  }
+
   const queue = await readQueue();
   const remaining: OfflineMutation[] = [];
   let applied = 0;
@@ -181,8 +195,17 @@ export async function flushOfflineMutationQueue(): Promise<{
     try {
       if (mutation.op === 'upsert_task' || mutation.op === 'delete_task') {
         const result = await applyTaskMutation(mutation);
-        if (result === 'applied') applied += 1;
-        else if (result === 'conflict') conflicts += 1;
+        if (result === 'applied') {
+          applied += 1;
+          const { postLearningEvent } = await import('./spineEvents');
+          postLearningEvent({
+            kind: mutation.op === 'delete_task' ? 'task_complete' : 'task_review',
+            surface: 'offline',
+            success: true,
+            principles: ['retrieval', 'spacing'],
+            meta: { mutationId: mutation.id },
+          });
+        } else if (result === 'conflict') conflicts += 1;
         else remaining.push({ ...mutation, retries: mutation.retries + 1 });
       } else {
         // library upsert — keep for future server merge; don't silent-drop
@@ -194,6 +217,8 @@ export async function flushOfflineMutationQueue(): Promise<{
   }
 
   await writeQueue(remaining.slice(0, 200));
+  const { postAuditBeacon } = await import('./spineEvents');
+  postAuditBeacon('OFFLINE_FLUSH', { applied, remaining: remaining.length, conflicts });
   return { applied, remaining: remaining.length, conflicts: conflicts + (await getConflictCount()) };
 }
 

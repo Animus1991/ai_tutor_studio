@@ -125,8 +125,15 @@ export default function AnnotationOverlay({ sectionId, body, progressKey, focusT
     clearSelectionUi();
   }, [selection, sectionId, allAnnotations, persist, clearSelectionUi]);
 
-  const confirmComment = useCallback(() => {
+  const confirmComment = useCallback(async () => {
     if (!selection || !commentDraft.trim()) return;
+    const { moderatePlatformText } = await import('../../lib/platformModeration');
+    const mod = await moderatePlatformText(commentDraft.trim(), 'notes');
+    if (!mod.allowed) {
+      const { toast } = await import('sonner');
+      toast.error(mod.reason || 'Note blocked by safety filter');
+      return;
+    }
     const ann: StoredAnnotation = {
       id: `ann-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       sectionId,
@@ -142,6 +149,14 @@ export default function AnnotationOverlay({ sectionId, body, progressKey, focusT
     };
     persist([...allAnnotations, ann]);
     noteConceptActivity(selection.excerpt.slice(0, 40), 'reader', 'annotated');
+    const { postLearningEvent } = await import('../../lib/spineEvents');
+    postLearningEvent({
+      kind: 'focus_session',
+      surface: 'workspace',
+      domainKey: selection.excerpt.slice(0, 80),
+      success: true,
+      principles: ['retrieval'],
+    });
     clearSelectionUi();
   }, [selection, commentDraft, sectionId, allAnnotations, persist, clearSelectionUi]);
 

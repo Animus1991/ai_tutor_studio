@@ -1,6 +1,7 @@
 import { toast } from 'sonner';
 import { useState, useRef, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 import { Send, Bot, User, Sparkles, BookOpen, ChevronDown, Activity, Mic, Square, Trash2, Copy, Check, Globe, HelpCircle, Layers, FlaskConical, Brain, Zap, GraduationCap, FileText, Swords, Compass } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -106,6 +107,7 @@ export default function Agent() {
   );
   const [isModeOpen, setIsModeOpen] = useState(false);
   const [hasSelectedMode, setHasSelectedMode] = useState(false);
+  const modeDialogRef = useFocusTrap<HTMLDivElement>(!hasSelectedMode);
   const [isRecording, setIsRecording] = useState(false);
   const [recognition, setRecognition] = useState<any>(null);
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
@@ -444,6 +446,16 @@ export default function Agent() {
         window.speechSynthesis.speak(utterance);
       }
 
+      const { postLearningEvent } = await import('../lib/spineEvents');
+      postLearningEvent({
+        kind: 'agent_turn',
+        surface: 'agent',
+        domainKey,
+        success: true,
+        mode: activeMode.id,
+        principles: activeMode.id === 'feynman' ? ['feynman', 'retrieval'] : ['retrieval', 'scaffolding'],
+      });
+
       trackEvent({
         kind: 'agent_turn',
         surface: 'agent',
@@ -531,6 +543,7 @@ export default function Agent() {
             aria-labelledby="agent-mode-title"
           >
             <motion.div 
+              ref={modeDialogRef}
               initial={{ scale: 0.98, opacity: 0, y: 24 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.98, opacity: 0, y: 24 }}

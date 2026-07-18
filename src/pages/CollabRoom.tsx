@@ -862,6 +862,16 @@ export default function CollabRoom() {
       return;
     }
     setChatMessage("");
+    void import('../lib/spineEvents').then(({ postLearningEvent, postAuditBeacon }) => {
+      postAuditBeacon('COLLAB_MESSAGE', { roomId });
+      postLearningEvent({
+        kind: 'focus_session',
+        surface: 'collab',
+        domainKey: roomId.slice(0, 80),
+        success: true,
+        principles: ['retrieval', 'self_determination'],
+      });
+    });
 
     if (isDemoModeActive()) {
       await appendLocalMessage({

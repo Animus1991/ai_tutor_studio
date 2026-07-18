@@ -96,6 +96,15 @@ export default function StudyCircles() {
         ownerId: user.uid,
         ownerEmail: user.email,
       });
+      const { postLearningEvent, postAuditBeacon } = await import('../lib/spineEvents');
+      postAuditBeacon('CIRCLE_CREATE', { circleId: id });
+      postLearningEvent({
+        kind: 'focus_session',
+        surface: 'circles',
+        domainKey: topic.trim() || 'General study',
+        success: true,
+        principles: ['self_determination'],
+      });
       setName('');
       setTopic('');
       toast.success(t('Study circle created', 'Ο κύκλος μελέτης δημιουργήθηκε'));
@@ -141,6 +150,16 @@ export default function StudyCircles() {
 
   const openCollab = () => {
     if (!active) return;
+    void import('../lib/spineEvents').then(({ postLearningEvent, postAuditBeacon }) => {
+      postLearningEvent({
+        kind: 'focus_session',
+        surface: 'circles',
+        domainKey: active.topic,
+        success: true,
+        principles: ['self_determination', 'retrieval'],
+      });
+      postAuditBeacon('CIRCLE_OPEN', { circleId: active.id, topic: active.topic });
+    });
     return `/collab?room=${encodeURIComponent(circleCollabRoomId(active.id))}`;
   };
 

@@ -20,6 +20,10 @@ export interface OfflineStudyPackManifest {
 export interface OfflineStudyPack {
   version: 2;
   exportedAt: string;
+  /** Bound owner uid when signed in (Authorize offline pack). */
+  uid?: string;
+  /** Soft Privacy TTL for pack expiry */
+  expireAt?: string;
   courses: unknown[];
   stats: { courseCount: number; fileCount: number };
   /** Route shells recommended for SW precache */
@@ -41,6 +45,8 @@ function canonicalPayload(pack: Omit<OfflineStudyPack, 'manifest'>): string {
   return JSON.stringify({
     version: pack.version,
     exportedAt: pack.exportedAt,
+    uid: pack.uid ?? null,
+    expireAt: pack.expireAt ?? null,
     courses: pack.courses,
     stats: pack.stats,
     routes: pack.routes,
@@ -103,6 +109,8 @@ export async function verifyOfflinePack(pack: OfflineStudyPack): Promise<{
   const unsigned: Omit<OfflineStudyPack, 'manifest'> = {
     version: 2,
     exportedAt: rest.exportedAt,
+    uid: rest.uid,
+    expireAt: rest.expireAt,
     courses: rest.courses,
     stats: rest.stats,
     routes: rest.routes ?? [...OFFLINE_PRECACHE_ROUTES],
@@ -111,15 +119,22 @@ export async function verifyOfflinePack(pack: OfflineStudyPack): Promise<{
   if (expectedHash !== manifest.contentHash) {
     return { ok: false, reason: 'content hash mismatch' };
   }
+  if (rest.expireAt && Date.parse(rest.expireAt) < Date.now()) {
+    return { ok: false, reason: 'pack expired (privacy TTL)' };
+  }
   if (manifest.algorithm === 'sha256') {
+    // When REQUIRE_API_AUTH-style secret is configured, reject hash-only packs.
+    const secret = (import.meta.env.VITE_OFFLINE_PACK_SECRET as string | undefined)?.trim();
+    if (secret) {
+      return { ok: false, reason: 'HMAC required when pack secret is configured' };
+    }
     return manifest.signature === manifest.contentHash
       ? { ok: true }
       : { ok: false, reason: 'sha256 signature mismatch' };
   }
   const secret = (import.meta.env.VITE_OFFLINE_PACK_SECRET as string | undefined)?.trim();
   if (!secret) {
-    // HMAC pack without secret: accept hash integrity only
-    return { ok: true };
+    return { ok: false, reason: 'HMAC pack requires VITE_OFFLINE_PACK_SECRET' };
   }
   const expectedSig = await hmacSha256Hex(manifest.contentHash, secret);
   return expectedSig === manifest.signature
@@ -127,11 +142,13 @@ export async function verifyOfflinePack(pack: OfflineStudyPack): Promise<{
     : { ok: false, reason: 'hmac signature mismatch' };
 }
 
-export async function buildOfflineStudyPack(): Promise<OfflineStudyPack> {
+export async function buildOfflineStudyPack(uid?: string): Promise<OfflineStudyPack> {
   const lib = await loadLibrary();
   const unsigned: Omit<OfflineStudyPack, 'manifest'> = {
     version: 2,
     exportedAt: new Date().toISOString(),
+    uid: uid || undefined,
+    expireAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
     courses: lib.courses,
     stats: { courseCount: lib.courses.length, fileCount: lib.uploadedFiles.length },
     routes: [...OFFLINE_PRECACHE_ROUTES],
@@ -140,9 +157,15 @@ export async function buildOfflineStudyPack(): Promise<OfflineStudyPack> {
   return { ...unsigned, manifest };
 }
 
-export async function saveOfflineStudyPack(): Promise<OfflineStudyPack> {
-  const pack = await buildOfflineStudyPack();
+export async function saveOfflineStudyPack(uid?: string): Promise<OfflineStudyPack> {
+  const pack = await buildOfflineStudyPack(uid);
   await localforage.setItem(PACK_KEY, pack);
+  void import('./spineEvents').then(({ postAuditBeacon }) => {
+    postAuditBeacon('OFFLINE_PACK_EXPORT', {
+      courseCount: pack.stats.courseCount,
+      uid: pack.uid ?? null,
+    });
+  });
   if ('caches' in window) {
     const cache = await caches.open(CACHE_NAME);
     await cache.put(
