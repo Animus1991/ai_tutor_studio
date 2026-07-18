@@ -10,8 +10,10 @@ export const BREAK_AFTER_POMODOROS = 4;
 /** Soft daily focus budget (seconds) — warn, do not hard-block learning. */
 export const DAILY_FOCUS_BUDGET_SEC = 4 * 60 * 60;
 
+export type WellbeingLevel = 'ok' | 'break' | 'suggest';
+
 export type WellbeingNudge = {
-  level: 'ok' | 'break' | 'break';
+  level: WellbeingLevel;
   reason: string;
   reasonEl: string;
   suggestBreak: boolean;
