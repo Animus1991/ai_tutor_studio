@@ -52,6 +52,10 @@ records, credentials or API keys.
 - [x] Playwright spine smoke for `/match`, `/circles`, `/voice`, `/teacher`
       (`e2e/spine-smoke.spec.ts`).
 - [x] Chaos/load harness: `npm run chaos:match` (Match enqueue + Yjs upgrade).
+- [x] Upload MIME sniff + extract budgets (`server/contentGuard.ts`).
+- [x] Session revoke API (`POST /api/auth/revoke-sessions`) + optional device trust.
+- [x] Match multimodal image moderation (`kind: 'image'`).
+- [x] Yjs: deny `new_room` when `REQUIRE_API_AUTH` (invite allow-list first).
 
 ## Implemented controls
 

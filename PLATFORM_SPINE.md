@@ -9,19 +9,20 @@ Checklist for every route/API:
 
 | # | Layer / surface | Status | Implementation |
 |---|-----------------|--------|----------------|
-| 0 | Identity & trust | **Ops wired** | Bearer · App Check soft/enforce · health exposes mode · referrer-key runbook (`docs/APP_CHECK_AND_API_KEYS.md`) · verified email on Match |
-| 0 | Authorization | **Partial** | `server/authz.ts` room ACL · Firestore rules · Yjs membership when `REQUIRE_API_AUTH` |
-| 0 | Data contracts | **Partial** | `validateObject` contracts (`server/requestSpine.ts`) · Match `notesVersion` concurrency |
-| 0 | Safety | **Live spine** | Heuristics→Gemini · `POST /api/moderate` (+ `board`) · Match + Collab + Agent + Voice + whiteboard stickies |
+| 0 | Identity & trust | **Ops wired** | Bearer · App Check · session revoke (`/api/auth/revoke-sessions`) · device trust stub · claims/break-glass |
+| 0 | Authorization | **Hardened** | Room ACL · Yjs membership · `new_room` denied when `REQUIRE_API_AUTH` (invite allow-list first) |
+| 0 | Data contracts | **Partial** | `validateObject` on agent/tts + admin paths · Match `notesVersion` · extract budgets |
+| 0 | Safety | **Live spine** | Heuristics→Gemini · `POST /api/moderate` (+ `board`/`image`) · MIME sniff · Match image attach |
 | 0 | Reliability | **Partial** | Gemini circuit breaker · Idempotency-Key middleware · Firestore Match queue when Admin SDK present |
 | 0 | Observability | **Partial** | `X-Request-Id` trace middleware · audit / room-reports / social-reports / match metrics |
 | 0 | Pedagogy telemetry | **Evidence wired** | xAPI persist + 90d TTL · local cap · `/api/learning/*` · research export |
 | 0 | Privacy | **Partial** | `GET /api/privacy/export` · research export · delete-request · no peer PII |
 | 0 | Deploy | **Done** | Dockerfile ships `server/` + `dist/server.cjs` · authenticated Yjs |
 | 1 | Auth / Google | **Ops wired** | App Check hooks · scoped OAuth (Classroom/Meet/Forms/Tasks/Calendar/Contacts) · `POST /api/admin/claims` + break-glass |
-| 4 / 7 | Agent / Voice | **Learning wired** | Mode contracts · exam-coach refusal · hybrid server RAG · groundedness · STT/TTS mod |
+| 4 / 7 | Agent / Voice | **Learning wired** | Mode contracts · grounded RAG · Voice barge-in SM · latency headers · transcript 24h TTL · audio ephemeral |
 | 2–3 / 15 | Dashboard / Tasks / Mastery | **Evidence wired** | Learning OS strip · due FSRS · offline sync debt · joint scheduler · why-now · calibration |
-| 8–10 | Collab / Circles / Match | **Social spine** | Unified `socialPolicy` · dual Meet · Circle↔Match bridge · board mod · admin triage |
+| 5 | Library / ingest | **Guarded** | Magic-byte MIME sniff · max pages/chars budgets · OCR/media gated |
+| 8–10 | Collab / Circles / Match | **Social spine** | Unified policy · dual Meet · multimodal image mod · invite allow-list on Yjs when auth required |
 | 11 | Teacher / Classroom | **Institution spine** | Class ACL · DP aggregates · at-risk · Classroom sync · assignment maps · domain tenancy |
 | 4 / 15 | Eval / research | **Evidence spine** | Golden-question harness · `/api/evidence/*` · anonymized research export · blueprint principles catalog |
 | 6 | Study Workspace | **Workspace spine** | `workspaceToolRegistry` (schema, persistence, pedagogy, a11y) · typed concept-bus event log |
@@ -58,6 +59,9 @@ Checklist for every route/API:
 | `server/googleWorkspaceAudit.ts` | Meet/Forms → `platform_audit` with room/class |
 | `src/lib/contactsConsent.ts` | Contacts opt-in · demo email ACL guard |
 | `docs/GDPR_FERPA_PLAYBOOK.md` | Retention, subject rights, DPA checklist |
+| `server/contentGuard.ts` | MIME sniff + extract budgets |
+| `server/sessionTrust.ts` | Revoke sessions · trusted devices |
+| `src/lib/voiceTutorSession.ts` | Barge-in SM · transcript TTL · latency budgets |
 | `yjsServer.ts` | Authenticated WS upgrades |
 
 ## Env knobs
@@ -70,6 +74,8 @@ Checklist for every route/API:
 | `VITE_APPCHECK_DEBUG_TOKEN` | Dev debug token |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | Durable queue, privacy/research export, xAPI persist, Teacher, claims |
 | `BREAK_GLASS_REQUIRED=true` | Claims require second-admin approval |
+| `TRUST_DEVICES=true` | Require registered `device_id` claim |
+| `MAX_EXTRACT_CHARS` / `MAX_PDF_PAGES` | Ingest/OCR budgets |
 | `XAPI_LRS_ENDPOINT` / `XAPI_LRS_KEY` | Optional external LRS forward |
 
 ## API additions
@@ -80,13 +86,14 @@ Checklist for every route/API:
 - `POST /api/evidence/eval`
 - `POST /api/admin/xapi/purge-expired`
 - `POST /api/admin/claims` · `GET /api/admin/break-glass` · `POST /api/admin/break-glass/:id/approve`
+- `POST /api/auth/revoke-sessions` · `POST /api/auth/trusted-devices`
+- `POST /api/moderate` accepts `kind: 'image'` + `imageBase64`
 - Meet/Forms bodies accept `roomId` / `classId` for audit linkage
-- Social / institution / privacy endpoints from prior spines
-- Headers: `X-Request-Id`, `Idempotency-Key`, `X-Firebase-AppCheck`
+- Headers: `X-Request-Id`, `Idempotency-Key`, `X-Firebase-AppCheck`, `X-Voice-Latency-Ms`
 
 ## Next implementation order
 
-1. Turn on `APP_CHECK_ENFORCE=true` in production after site key + referrer keys (runbook done)
-2. Full bilingual catalog coverage + remaining modal focus traps
-3. Content pipeline virus/MIME budgets · Voice barge-in latency budgets
-4. Match multimodal moderator · regional sticky queue
+1. Turn on `APP_CHECK_ENFORCE=true` + referrer keys in production (runbook done)
+2. Full bilingual `locales/` catalogs + remaining modal focus traps
+3. Resumable uploads · virus AV service · Match regional sticky / PubSub
+4. Content re-index tombstones protocol · Voice offline fallback packs

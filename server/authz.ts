@@ -81,7 +81,11 @@ export async function evaluateRoomAccess(input: {
 
   const snap = await input.db.collection('rooms').doc(roomId).get();
   if (!snap.exists) {
-    // First joiner will create the room doc from the client — allow if signed in.
+    // Under REQUIRE_API_AUTH, room + invite allow-list must exist before Yjs join.
+    // Soft/preview mode still allows first-joiner bootstrap.
+    if (input.requireAuth) {
+      return { allowed: false, reason: 'not_member' };
+    }
     return { allowed: true, reason: 'new_room' };
   }
   const data = snap.data() as {

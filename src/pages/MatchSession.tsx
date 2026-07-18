@@ -18,6 +18,8 @@ import {
   ThumbsUp,
   Sparkles,
   HandHeart,
+  ImagePlus,
+  Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuthStore } from '../store/useAuthStore';
@@ -25,6 +27,7 @@ import { useLanguage } from '../lib/i18n';
 import { isDemoModeActive } from '../lib/demoStorage';
 import { useGoogleOAuth } from '../hooks/useGoogleOAuth';
 import { heuristicModerateText } from '../../server/matchModeratorHeuristics';
+import { apiRequest } from '../lib/apiClient';
 import {
   ENCOURAGE_REACTIONS,
   MATCH_REPORT_REASONS,
@@ -80,7 +83,9 @@ export default function MatchSession() {
   const [respectOpen, setRespectOpen] = useState(false);
   const [sessionClosed, setSessionClosed] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [imageBusy, setImageBusy] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const notesTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const notesVersionRef = useRef(0);
   const respectOpenRef = useRef(false);
@@ -202,6 +207,78 @@ export default function MatchSession() {
       setSession(next);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Send failed');
+    }
+  };
+
+  /** Multimodal safety: moderate image before sending a study-diagram caption. */
+  const handleImageAttach = async (file: File | null) => {
+    if (!file || !session) return;
+    if (!file.type.startsWith('image/')) {
+      toast.error(t('Only images can be attached', 'Μόνο εικόνες επιτρέπονται'));
+      return;
+    }
+    if (file.size > 3_500_000) {
+      toast.error(t('Image too large (max ~3.5MB)', 'Πολύ μεγάλη εικόνα (μέγ. ~3.5MB)'));
+      return;
+    }
+    setImageBusy(true);
+    try {
+      const buf = await file.arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      let binary = '';
+      for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]!);
+      const imageBase64 = btoa(binary);
+      const caption =
+        chatInput.trim() ||
+        t('[Study diagram attached — describe what you need]', '[Συνημμένο διάγραμμα — περιέγραψε τι χρειάζεσαι]');
+      const res = await apiRequest('/api/moderate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kind: 'image',
+          mimeType: file.type,
+          imageBase64,
+          text: caption,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        allowed?: boolean;
+        reason?: string;
+      };
+      if (!res.ok || data.allowed === false) {
+        toast.error(data.reason || t('Image blocked by safety moderator', 'Η εικόνα μπλοκαρίστηκε'));
+        return;
+      }
+      const message = `${caption} · 📎 ${file.name.slice(0, 40)}`;
+      setChatInput('');
+      if (demo) {
+        const next: MatchSessionView = {
+          ...session,
+          messages: [
+            ...session.messages,
+            {
+              id: `d-img-${Date.now()}`,
+              userId: 'demo',
+              displayName: 'You',
+              text: message,
+              createdAt: new Date().toISOString(),
+              reactions: {},
+            },
+          ],
+        };
+        saveDemoSession(next);
+        setSession(next);
+        toast.success(t('Image cleared safety check', 'Η εικόνα πέρασε έλεγχο ασφαλείας'));
+        return;
+      }
+      const { session: next } = await sendMatchMessage(session.id, message);
+      setSession(next);
+      toast.success(t('Image cleared safety check', 'Η εικόνα πέρασε έλεγχο ασφαλείας'));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Image moderation failed');
+    } finally {
+      setImageBusy(false);
+      if (imageInputRef.current) imageInputRef.current.value = '';
     }
   };
 
@@ -758,6 +835,23 @@ export default function MatchSession() {
                   void handleSend();
                 }}
               >
+                <input
+                  ref={imageInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => void handleImageAttach(e.target.files?.[0] ?? null)}
+                />
+                <button
+                  type="button"
+                  disabled={imageBusy}
+                  onClick={() => imageInputRef.current?.click()}
+                  className="min-h-11 min-w-11 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-500 inline-flex items-center justify-center disabled:opacity-50"
+                  aria-label={t('Attach study image (moderated)', 'Επισύναψη εικόνας (με moderation)')}
+                  title={t('Attach study image (moderated)', 'Επισύναψη εικόνας (με moderation)')}
+                >
+                  {imageBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImagePlus className="w-4 h-4" />}
+                </button>
                 <input
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}

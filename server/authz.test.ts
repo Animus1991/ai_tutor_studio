@@ -41,4 +41,22 @@ describe('authz room mapping', () => {
     });
     expect(r).toEqual({ allowed: true, reason: 'auth_optional' });
   });
+
+  it('rejects missing room docs when auth is required (invite allow-list)', async () => {
+    const fakeDb = {
+      collection: () => ({
+        doc: () => ({
+          get: async () => ({ exists: false, data: () => undefined }),
+        }),
+      }),
+    } as never;
+    const r = await evaluateRoomAccess({
+      db: fakeDb,
+      roomId: 'room-12345678',
+      uid: 'u1',
+      email: 'a@uni.edu',
+      requireAuth: true,
+    });
+    expect(r).toEqual({ allowed: false, reason: 'not_member' });
+  });
 });

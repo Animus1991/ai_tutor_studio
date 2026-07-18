@@ -33,6 +33,17 @@ export function createFirebaseAuthMiddleware(
 
     try {
       const user = await verifyFirebaseIdToken(token, projectId);
+      const { assertSessionNotRevoked, assertDeviceTrusted } = await import("./sessionTrust.js");
+      try {
+        await assertSessionNotRevoked(user.uid, user.claims);
+        await assertDeviceTrusted(user.uid, user.claims);
+      } catch (trustErr) {
+        if (trustErr instanceof HttpError) {
+          res.status(trustErr.status).json({ error: trustErr.message });
+          return;
+        }
+        throw trustErr;
+      }
       res.locals.user = { uid: user.uid, claims: user.claims };
       next();
     } catch {

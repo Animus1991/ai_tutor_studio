@@ -9,9 +9,19 @@ import { useAuthStore } from '../store/useAuthStore';
 import { ensureDemoSandboxReady } from '../lib/demoMode';
 import { VIEW_SHELL } from '../components/layout/pageLayout';
 import { cn } from '../lib/utils';
+import {
+  clearVoiceTurns,
+  latencyWithinBudget,
+  loadVoiceTurns,
+  nextPhaseOnMic,
+  pruneExpiredTurns,
+  saveVoiceTurns,
+  type VoicePhase,
+  type VoiceTurn,
+} from '../lib/voiceTutorSession';
 
-type Phase = 'idle' | 'listening' | 'transcribing' | 'thinking' | 'speaking';
-interface Turn { id: string; role: 'user' | 'model'; content: string }
+type Phase = VoicePhase;
+type Turn = VoiceTurn;
 
 const VOICES = ['alloy', 'nova', 'shimmer', 'echo', 'fable', 'onyx'];
 
@@ -35,7 +45,7 @@ export default function VoiceTutor() {
   const { isRecording, startRecording, stopRecording, audioBlob, error } = useMicrophone();
   const [phase, setPhase] = useState<Phase>('idle');
   const [transcript, setTranscript] = useState('');
-  const [turns, setTurns] = useState<Turn[]>([]);
+  const [turns, setTurns] = useState<Turn[]>(() => loadVoiceTurns());
   const [voice, setVoice] = useState('nova');
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -50,10 +60,27 @@ export default function VoiceTutor() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [turns, transcript]);
 
+  useEffect(() => {
+    saveVoiceTurns(turns);
+  }, [turns]);
+
+  // Transcript retention: purge turns older than 24h on mount / hourly
+  useEffect(() => {
+    const prune = () => setTurns((prev) => pruneExpiredTurns(prev));
+    prune();
+    const id = window.setInterval(prune, 60 * 60 * 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
   const speak = useCallback(async (text: string) => {
     try {
       setPhase('speaking');
+      const t0 = performance.now();
       const { audio } = await synthesizeSpeech(text, voice);
+      const ttsMs = performance.now() - t0;
+      if (!latencyWithinBudget('tts', ttsMs)) {
+        console.warn('[VoiceTutor] TTS latency budget exceeded', Math.round(ttsMs));
+      }
       if (audio.startsWith('browser-tts://')) {
         setPhase('idle');
         return;
@@ -70,17 +97,27 @@ export default function VoiceTutor() {
   const processBlob = useCallback(async (blob: Blob) => {
     setPhase('transcribing');
     setTranscript('');
+    const roundStart = performance.now();
     try {
       if (isDemoMode) await ensureDemoSandboxReady();
+      const sttStart = performance.now();
       const { text } = await transcribeAudio(blob);
+      if (!latencyWithinBudget('stt', performance.now() - sttStart)) {
+        console.warn('[VoiceTutor] STT latency budget exceeded');
+      }
       if (!text.trim()) {
         toast.info(t('No speech detected. Try again.', 'Δεν εντοπίστηκε ομιλία. Δοκίμασε ξανά.'));
         setPhase('idle');
         return;
       }
       setTranscript(text);
-      const userTurn: Turn = { id: Date.now().toString(), role: 'user', content: text };
-      setTurns((prev) => [...prev, userTurn]);
+      const userTurn: Turn = {
+        id: Date.now().toString(),
+        role: 'user',
+        content: text,
+        at: Date.now(),
+      };
+      setTurns((prev) => pruneExpiredTurns([...prev, userTurn]));
 
       setPhase('thinking');
       const history = [...turnsRef.current, userTurn].map((tn) => ({
@@ -90,9 +127,21 @@ export default function VoiceTutor() {
       const system =
         'You are Memora, a friendly spoken AI tutor. Reply conversationally and concisely (2-5 sentences), ' +
         'as if speaking aloud. Avoid markdown, lists, or code blocks — plain spoken language only.';
+      const chatStart = performance.now();
       const { text: reply } = await chatWithAgent(history, system);
+      if (!latencyWithinBudget('chat', performance.now() - chatStart)) {
+        console.warn('[VoiceTutor] Chat latency budget exceeded');
+      }
       setTranscript('');
-      setTurns((prev) => [...prev, { id: (Date.now() + 1).toString(), role: 'model', content: reply }]);
+      setTurns((prev) =>
+        pruneExpiredTurns([
+          ...prev,
+          { id: (Date.now() + 1).toString(), role: 'model', content: reply, at: Date.now() },
+        ]),
+      );
+      if (!latencyWithinBudget('roundTrip', performance.now() - roundStart)) {
+        console.warn('[VoiceTutor] Round-trip latency budget exceeded');
+      }
       await speak(reply);
     } catch (e) {
       toast.error(t('Voice tutor failed. Please try again.', 'Αποτυχία φωνητικού βοηθού. Δοκίμασε ξανά.'));
@@ -108,14 +157,20 @@ export default function VoiceTutor() {
   }, [audioBlob]);
 
   const handleMicClick = async () => {
-    if (phase === 'speaking') {
-      audioRef.current?.pause();
-      setPhase('idle');
+    // Explicit mic permission UX: getUserMedia errors surface via useMicrophone
+    const next = nextPhaseOnMic(phase, isRecording);
+    if (next === 'toggle_stop') {
+      stopRecording();
       return;
     }
-    if (isRecording) {
-      stopRecording();
-      return; // audioBlob effect picks up
+    if (next === 'listening' && phase === 'speaking') {
+      // Barge-in: abort TTS and immediately open the mic
+      audioRef.current?.pause();
+      if (audioRef.current) audioRef.current.src = '';
+      setTranscript('');
+      setPhase('listening');
+      await startRecording();
+      return;
     }
     if (phase !== 'idle') return;
     setTranscript('');
@@ -125,6 +180,7 @@ export default function VoiceTutor() {
 
   const reset = () => {
     audioRef.current?.pause();
+    clearVoiceTurns();
     setTurns([]);
     setTranscript('');
     setPhase('idle');

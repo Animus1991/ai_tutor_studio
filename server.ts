@@ -114,6 +114,15 @@ import {
   socialReportHandler,
   triageSocialReportHandler,
 } from './server/socialPolicy.js';
+import {
+  assertUploadAllowed,
+  enforceExtractBudgets,
+} from './server/contentGuard.js';
+import {
+  registerTrustedDeviceHandler,
+  revokeSessionsHandler,
+} from './server/sessionTrust.js';
+import { validateObject } from './server/requestSpine.js';
 const _require = createRequire(typeof import.meta !== 'undefined' && import.meta.url ? import.meta.url : 'file://' + process.cwd() + '/server.ts');
 const pdfParse = _require('pdf-parse');
 
@@ -624,9 +633,7 @@ async function startServer() {
   app.post('/api/ocr', upload.single('image'), async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ error: 'Image file is required' });
-      if (!req.file.mimetype.startsWith('image/')) {
-        return res.status(400).json({ error: 'Only image files are supported for OCR' });
-      }
+      const guarded = assertUploadAllowed(req.file.buffer, req.file.mimetype, 'ocr');
 
       const base64Image = req.file.buffer.toString('base64');
       const response = await ai.models.generateContent({
@@ -637,7 +644,7 @@ async function startServer() {
             parts: [
               {
                 inlineData: {
-                  mimeType: req.file.mimetype,
+                  mimeType: guarded.mime,
                   data: base64Image,
                 },
               },
@@ -649,20 +656,24 @@ async function startServer() {
         ],
       });
 
-      res.json({ text: response.text ?? '', filename: req.file.originalname });
+      const budgeted = enforceExtractBudgets(response.text ?? '');
+      res.json({
+        text: budgeted.text,
+        filename: req.file.originalname,
+        truncated: budgeted.truncated,
+        sniffedMime: guarded.sniffed,
+      });
     } catch (error) {
       console.error('OCR Error:', error);
-      res.status(500).json({ error: 'Failed to extract text from image' });
+      sendRouteError(res, error, 'OCR Error', 'Failed to extract text from image');
     }
   });
 
   app.post('/api/analyze-media', upload.single('media'), async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ error: 'Media file is required' });
-      const mime = req.file.mimetype;
-      if (!mime.startsWith('image/') && !mime.startsWith('video/') && !mime.startsWith('audio/')) {
-        return res.status(400).json({ error: 'Only image, video, or audio files are supported' });
-      }
+      const guarded = assertUploadAllowed(req.file.buffer, req.file.mimetype, 'media');
+      const mime = guarded.mime;
 
       const base64 = req.file.buffer.toString('base64');
       const response = await ai.models.generateContent({
@@ -680,15 +691,17 @@ async function startServer() {
         ],
       });
 
-      const summary = response.text ?? '';
+      const budgeted = enforceExtractBudgets(response.text ?? '');
       res.json({
-        summary,
-        text: mime.startsWith('image/') ? summary : undefined,
+        summary: budgeted.text,
+        text: mime.startsWith('image/') ? budgeted.text : undefined,
         filename: req.file.originalname,
+        truncated: budgeted.truncated,
+        sniffedMime: guarded.sniffed,
       });
     } catch (error) {
       console.error('Analyze Media Error:', error);
-      res.status(500).json({ error: 'Failed to analyze media' });
+      sendRouteError(res, error, 'Analyze Media Error', 'Failed to analyze media');
     }
   });
 
@@ -703,56 +716,64 @@ async function startServer() {
   app.post('/api/ingest/file', upload.single('file'), async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ error: 'File is required' });
-      
+
       const buffer = req.file.buffer;
-      const mimeType = req.file.mimetype;
+      const guarded = assertUploadAllowed(buffer, req.file.mimetype, 'ingest');
+      const mimeType = guarded.mime;
 
       let text = '';
-      let extractionMethod = "plain-text";
-      if (mimeType === 'application/pdf') {
+      let extractionMethod = 'plain-text';
+      let pageCount: number | undefined;
+      if (mimeType === 'application/pdf' || guarded.sniffed === 'application/pdf') {
         const data = await pdfParse(buffer);
         text = data.text;
-        extractionMethod = "pdf-text";
+        pageCount = typeof data.numpages === 'number' ? data.numpages : undefined;
+        extractionMethod = 'pdf-text';
         if (text.trim().length < 50) {
-          text = await extractVisualDocumentText(buffer, mimeType);
-          extractionMethod = "vision-ocr";
+          text = await extractVisualDocumentText(buffer, 'application/pdf');
+          extractionMethod = 'vision-ocr';
         }
       } else if (mimeType.startsWith('text/')) {
         text = buffer.toString('utf-8');
-      } else if (mimeType.startsWith("image/")) {
+      } else if (mimeType.startsWith('image/')) {
         text = await extractVisualDocumentText(buffer, mimeType);
-        extractionMethod = "vision-ocr";
+        extractionMethod = 'vision-ocr';
       } else if (
         [
-          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-          "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          "application/vnd.oasis.opendocument.text",
-          "application/vnd.oasis.opendocument.presentation",
-          "application/rtf",
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'application/vnd.oasis.opendocument.text',
+          'application/vnd.oasis.opendocument.presentation',
+          'application/rtf',
+          'application/zip',
         ].includes(mimeType)
       ) {
         const document = await OfficeParser.parseOffice(buffer);
-        text = (await document.to("text")).value;
-        extractionMethod = "office-parser";
+        text = (await document.to('text')).value;
+        extractionMethod = 'office-parser';
       } else {
         return res.status(400).json({
           error:
-            "Unsupported file type. Upload text, PDF, image, Word, PowerPoint, spreadsheet, OpenDocument, or RTF material.",
+            'Unsupported file type. Upload text, PDF, image, Word, PowerPoint, spreadsheet, OpenDocument, or RTF material.',
         });
       }
 
       if (!text.trim()) {
-        throw new HttpError(422, "No readable text was found in this file");
+        throw new HttpError(422, 'No readable text was found in this file');
       }
+      const budgeted = enforceExtractBudgets(text, { pageCount });
       res.json({
-        text,
+        text: budgeted.text,
         filename: req.file.originalname,
         extractionMethod,
+        truncated: budgeted.truncated,
+        pageCount: budgeted.pageCount,
+        sniffedMime: guarded.sniffed,
       });
     } catch (error) {
       console.error('Ingest File Error:', error);
-      res.status(500).json({ error: 'Failed to extract content from file' });
+      sendRouteError(res, error, 'Ingest File Error', 'Failed to extract content from file');
     }
   });
 
@@ -776,6 +797,12 @@ async function startServer() {
   // AI Agent Route
   app.post('/api/agent/chat', async (req, res) => {
     try {
+      validateObject(req.body ?? {}, {
+        messages: { type: 'array', required: true },
+        systemInstruction: { type: 'string', maxLength: 20_000 },
+        mode: { type: 'string', maxLength: 64 },
+        model: { type: 'string', maxLength: 128 },
+      });
       const { messages, systemInstruction, model } = req.body;
       const mode = normalizeAgentMode(req.body?.mode);
       const userTexts = extractAgentUserTexts(messages);
@@ -1622,10 +1649,12 @@ Use pixel coordinates relative to the image. Include 1-12 labels. confidence is 
     }
   });
 
-  // Voice tutor — Gemini STT + optional client TTS fallback
+  // Voice tutor — Gemini STT + optional client TTS fallback (audio never persisted)
   app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
+    const started = Date.now();
     try {
       if (!req.file) return res.status(400).json({ error: 'Audio file is required' });
+      assertUploadAllowed(req.file.buffer, req.file.mimetype || 'audio/webm', 'audio');
 
       const response = await ai.models.generateContent({
         model: geminiChatModel,
@@ -1647,6 +1676,10 @@ Use pixel coordinates relative to the image. Include 1-12 labels. confidence is 
         ],
       });
 
+      // Drop buffer reference ASAP — ephemeral audio policy
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (req as any).file = undefined;
+
       const text = (response.text ?? '').trim();
       if (text) {
         const mod = await moderatePlatformContent(text, 'chat');
@@ -1658,14 +1691,27 @@ Use pixel coordinates relative to the image. Include 1-12 labels. confidence is 
           });
         }
       }
-      res.json({ text, retention: 'ephemeral_client', traceId: res.locals.traceId });
+      const latencyMs = Date.now() - started;
+      res.setHeader('X-Voice-Latency-Ms', String(latencyMs));
+      res.json({
+        text,
+        retention: 'ephemeral_client',
+        audioRetention: 'none',
+        latencyMs,
+        traceId: res.locals.traceId,
+      });
     } catch (error) {
       sendRouteError(res, error, 'Transcribe Error', 'Failed to transcribe audio');
     }
   });
 
   app.post('/api/tts', async (req, res) => {
+    const started = Date.now();
     try {
+      validateObject(req.body ?? {}, {
+        text: { type: 'string', required: true, maxLength: 4000 },
+        voice: { type: 'string', maxLength: 64 },
+      });
       const text = String(req.body?.text ?? '').trim();
       if (!text) return res.status(400).json({ error: 'Text is required' });
       const mod = await moderatePlatformContent(text, 'chat');
@@ -1700,7 +1746,12 @@ Use pixel coordinates relative to the image. Include 1-12 labels. confidence is 
         const audioPart = parts.find((part) => part.inlineData?.mimeType?.startsWith('audio/'));
         if (audioPart?.inlineData?.data) {
           const mime = audioPart.inlineData.mimeType || 'audio/mp3';
-          res.json({ audio: `data:${mime};base64,${audioPart.inlineData.data}` });
+          res.setHeader('X-Voice-Latency-Ms', String(Date.now() - started));
+          res.json({
+            audio: `data:${mime};base64,${audioPart.inlineData.data}`,
+            audioRetention: 'none',
+            latencyMs: Date.now() - started,
+          });
           return;
         }
       } catch (ttsError) {
@@ -1945,6 +1996,22 @@ Use pixel coordinates relative to the image. Include 1-12 labels. confidence is 
       await purgeExpiredXapiHandler(req, res);
     } catch (error) {
       sendRouteError(res, error, 'xAPI Purge Error', 'Failed to purge expired statements');
+    }
+  });
+
+  // Session trust — revoke-all + optional device registration
+  app.post('/api/auth/revoke-sessions', async (req, res) => {
+    try {
+      await revokeSessionsHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Revoke Sessions Error', 'Failed to revoke sessions');
+    }
+  });
+  app.post('/api/auth/trusted-devices', async (req, res) => {
+    try {
+      await registerTrustedDeviceHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Trusted Device Error', 'Failed to register trusted device');
     }
   });
 

@@ -90,3 +90,94 @@ ${text.slice(0, 1500)}
     return heuristic;
   }
 }
+
+const MAX_IMAGE_MOD_BYTES = 4 * 1024 * 1024;
+
+/**
+ * Multimodal image moderation for Match / platform uploads.
+ * Heuristic size/MIME gate, then Gemini vision when key present.
+ */
+export async function moderateMatchImage(
+  buffer: Buffer,
+  mimeType: string,
+): Promise<ModerationVerdict> {
+  const mime = mimeType.split(';')[0]?.trim().toLowerCase() || '';
+  if (!mime.startsWith('image/')) {
+    return {
+      allowed: false,
+      category: 'unsafe',
+      reason: 'Only image attachments are accepted.',
+      source: 'heuristic',
+    };
+  }
+  if (!buffer?.length || buffer.length > MAX_IMAGE_MOD_BYTES) {
+    return {
+      allowed: false,
+      category: 'unsafe',
+      reason: 'Image exceeds size limit for moderation.',
+      source: 'heuristic',
+    };
+  }
+
+  const key = resolveGeminiApiKey();
+  if (!key) {
+    // Without Gemini, allow only after text caption is moderated separately.
+    return {
+      allowed: true,
+      category: 'ok',
+      reason: 'image_heuristic_pass_no_vision',
+      source: 'heuristic',
+    };
+  }
+
+  try {
+    const ai = new GoogleGenAI({ apiKey: key });
+    const prompt = `You are a strict safety moderator for a student peer study app.
+Reject sexual content, nudity, erotic imagery, dating selfies, weapons used as threats, and gore.
+Allow diagrams, textbooks, whiteboards, math, and academic notes photos.
+Respond ONLY with JSON: {"allowed":boolean,"category":"ok"|"sexual"|"nude"|"harassment"|"unsafe","reason":"short english reason"}`;
+
+    const response = await generateChatWithFallback(ai, {
+      model: geminiChatModel,
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            { inlineData: { mimeType: mime, data: buffer.toString('base64') } },
+            { text: prompt },
+          ],
+        },
+      ],
+    });
+    const raw =
+      response.candidates?.[0]?.content?.parts
+        ?.map((p) => ('text' in p ? String(p.text ?? '') : ''))
+        .join('') ?? '';
+    const parsed = parseGeminiJson(raw);
+    if (!parsed || typeof parsed.allowed !== 'boolean') {
+      return { allowed: true, category: 'ok', reason: '', source: 'gemini' };
+    }
+    if (parsed.allowed) {
+      return { allowed: true, category: 'ok', reason: '', source: 'gemini' };
+    }
+    const cat = String(parsed.category ?? 'unsafe');
+    const category: ModerationVerdict['category'] =
+      cat === 'sexual' || cat === 'nude' || cat === 'harassment' || cat === 'unsafe'
+        ? cat
+        : 'unsafe';
+    return {
+      allowed: false,
+      category,
+      reason: parsed.reason?.slice(0, 200) || 'This image was blocked by the safety moderator.',
+      source: 'gemini',
+    };
+  } catch (err) {
+    console.warn('[MatchModerator] Image moderation failed:', err);
+    return {
+      allowed: false,
+      category: 'unsafe',
+      reason: 'Image could not be safety-checked. Try again or send text only.',
+      source: 'heuristic',
+    };
+  }
+}
