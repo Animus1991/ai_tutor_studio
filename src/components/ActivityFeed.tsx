@@ -47,9 +47,9 @@ export default function ActivityFeed() {
       <div className="relative">
         <div className="absolute top-0 bottom-0 left-[19px] w-px bg-slate-200 dark:bg-slate-700" />
         
-        <div className="space-y-6">
+        <div className="space-y-4">
           {mockActivities.map((activity) => (
-            <div key={activity.id} className="relative flex gap-4">
+            <div key={activity.id} className="relative flex gap-3">
               <div className={cn("w-10 h-10 rounded-full flex items-center justify-center shrink-0 border-4 border-white dark:border-slate-900 z-10", activity.bg)}>
                 <activity.icon className={cn("w-4 h-4", activity.color)} />
               </div>
