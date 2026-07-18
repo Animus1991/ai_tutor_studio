@@ -120,9 +120,23 @@ import {
   enforceExtractBudgets,
 } from './server/contentGuard.js';
 import {
+  listTrustedDevicesHandler,
   registerTrustedDeviceHandler,
   revokeSessionsHandler,
+  revokeTrustedDeviceHandler,
 } from './server/sessionTrust.js';
+import {
+  appendResumableChunkHandler,
+  getResumableUploadHandler,
+  initResumableUploadHandler,
+  resumableUploadStats,
+} from './server/resumableUpload.js';
+import { matchAffinityHealth } from './server/matchAffinity.js';
+import { spineAdoptionSummary } from './server/spineAdoption.js';
+import {
+  compactExpiredYjsSnapshots,
+  yjsSnapshotStats,
+} from './server/yjsSnapshotStore.js';
 import { validateObject } from './server/requestSpine.js';
 const _require = createRequire(typeof import.meta !== 'undefined' && import.meta.url ? import.meta.url : 'file://' + process.cwd() + '/server.ts');
 const pdfParse = _require('pdf-parse');
@@ -449,6 +463,7 @@ async function startServer() {
   app.get('/api/health', (_req, res) => {
     const appCheckEnforce = process.env.APP_CHECK_ENFORCE === 'true';
     const adminReady = Boolean(process.env.FIREBASE_SERVICE_ACCOUNT_JSON?.trim());
+    const trustDevices = process.env.TRUST_DEVICES === 'true';
     res.json({
       status: 'ok',
       appCheck: {
@@ -456,7 +471,19 @@ async function startServer() {
         adminReady,
         mode: appCheckEnforce ? (adminReady ? 'enforce' : 'enforce_unavailable') : 'soft',
       },
+      sessionTrust: {
+        trustDevices,
+        revokeSupported: true,
+      },
+      match: matchAffinityHealth(),
+      yjs: yjsSnapshotStats(),
+      uploads: resumableUploadStats(),
     });
+  });
+
+  /** Machine-readable spine adoption cards (0–17). */
+  app.get('/api/spine/adoption', (_req, res) => {
+    res.json(spineAdoptionSummary());
   });
 
   app.get('/api/health/gemini', async (_req, res) => {
@@ -2001,7 +2028,7 @@ Use pixel coordinates relative to the image. Include 1-12 labels. confidence is 
     }
   });
 
-  // Session trust — revoke-all + optional device registration
+  // Session trust — revoke-all + durable device registry
   app.post('/api/auth/revoke-sessions', async (req, res) => {
     try {
       await revokeSessionsHandler(req, res);
@@ -2015,6 +2042,47 @@ Use pixel coordinates relative to the image. Include 1-12 labels. confidence is 
     } catch (error) {
       sendRouteError(res, error, 'Trusted Device Error', 'Failed to register trusted device');
     }
+  });
+  app.get('/api/auth/trusted-devices', async (req, res) => {
+    try {
+      await listTrustedDevicesHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Trusted Device List Error', 'Failed to list trusted devices');
+    }
+  });
+  app.delete('/api/auth/trusted-devices/:deviceId', async (req, res) => {
+    try {
+      await revokeTrustedDeviceHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Trusted Device Revoke Error', 'Failed to revoke device');
+    }
+  });
+
+  // Resumable uploads + AV quarantine
+  app.post('/api/uploads/resumable', async (req, res) => {
+    try {
+      await initResumableUploadHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Resumable Init Error', 'Failed to start upload');
+    }
+  });
+  app.put('/api/uploads/resumable/:id', async (req, res) => {
+    try {
+      await appendResumableChunkHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Resumable Chunk Error', 'Failed to append chunk');
+    }
+  });
+  app.get('/api/uploads/resumable/:id', async (req, res) => {
+    try {
+      await getResumableUploadHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Resumable Status Error', 'Failed to read upload');
+    }
+  });
+  app.post('/api/admin/yjs/compact', async (_req, res) => {
+    const removed = compactExpiredYjsSnapshots();
+    res.json({ ok: true, removed, ...yjsSnapshotStats() });
   });
 
   // Claims + break-glass (two-person rule when BREAK_GLASS_REQUIRED=true)

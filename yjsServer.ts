@@ -8,6 +8,11 @@ import {
 } from './server/authz.js';
 import { verifyFirebaseIdToken } from './server/firebaseToken.js';
 import { createRateLimiter } from './server/studyMatchCore.js';
+import {
+  compactExpiredYjsSnapshots,
+  touchYjsSnapshot,
+  yjsSnapshotStats,
+} from './server/yjsSnapshotStore.js';
 
 /** Room document names must be unguessable enough for collab. */
 const ROOM_DOC_PATTERN = /^\/?[a-zA-Z0-9_-]{8,128}$/;
@@ -16,10 +21,6 @@ const ROOM_DOC_PATTERN = /^\/?[a-zA-Z0-9_-]{8,128}$/;
 const upgradeLimiter = createRateLimiter(40, 60_000);
 /** Per-connection message burst: 120 frames / 10s */
 const messageLimiter = createRateLimiter(120, 10_000);
-
-/** Light in-memory snapshot metadata (bytes + last refresh) — compaction stub. */
-const docSnapshots = new Map<string, { bytes: number; updatedAt: number; connects: number }>();
-const MAX_SNAPSHOT_DOCS = 200;
 
 export type YjsAttachOptions = {
   projectId: string;
@@ -40,20 +41,6 @@ function clientKey(uid: string | null, request: { headers: { [k: string]: string
   const xf = request.headers['x-forwarded-for'];
   const ip = Array.isArray(xf) ? xf[0] : xf?.split(',')[0]?.trim();
   return `ip:${ip || request.socket?.remoteAddress || 'unknown'}`;
-}
-
-function touchSnapshot(docName: string, approxBytes: number): void {
-  const prev = docSnapshots.get(docName);
-  docSnapshots.set(docName, {
-    bytes: Math.min(8_000_000, (prev?.bytes ?? 0) + approxBytes),
-    updatedAt: Date.now(),
-    connects: (prev?.connects ?? 0) + 1,
-  });
-  if (docSnapshots.size > MAX_SNAPSHOT_DOCS) {
-    // Prune oldest
-    const oldest = [...docSnapshots.entries()].sort((a, b) => a[1].updatedAt - b[1].updatedAt)[0];
-    if (oldest) docSnapshots.delete(oldest[0]);
-  }
 }
 
 /** Attach a Yjs-compatible websocket endpoint at `/yjs/*` on the HTTP server. */
@@ -144,7 +131,9 @@ export function attachYjsWebSocketServer(
       }
 
       request.url = docPath.startsWith('/') ? docPath : `/${docPath}`;
-      touchSnapshot(docPath, 0);
+      void touchYjsSnapshot(docPath, 0, { connect: true });
+      // Opportunistic TTL compaction (cheap; file-backed store)
+      if (Math.random() < 0.02) compactExpiredYjsSnapshots();
 
       wss.handleUpgrade(request, socket, head, (ws) => {
         wss.emit('connection', ws, request);
@@ -177,7 +166,7 @@ export function attachYjsWebSocketServer(
       else if (Array.isArray(raw)) {
         size = raw.reduce((n: number, b: Buffer) => n + (Buffer.isBuffer(b) ? b.byteLength : 0), 0);
       } else if (raw instanceof ArrayBuffer) size = raw.byteLength;
-      touchSnapshot(docName, Math.min(size, 64_000));
+      void touchYjsSnapshot(docName, Math.min(size, 64_000));
     });
     setupWSConnection(conn, req, { gc: true });
   });
@@ -185,6 +174,7 @@ export function attachYjsWebSocketServer(
   return wss;
 }
 
-export function __yjsSnapshotStatsForTests(): { docs: number } {
-  return { docs: docSnapshots.size };
+export function __yjsSnapshotStatsForTests(): { docs: number; withPayload: number } {
+  const s = yjsSnapshotStats();
+  return { docs: s.docs, withPayload: s.withPayload };
 }

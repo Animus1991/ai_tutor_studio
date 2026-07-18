@@ -1,8 +1,11 @@
 import { useState, useCallback } from 'react';
 import { ChevronDown, ChevronRight, Shield, Swords } from 'lucide-react';
 import { useLanguage } from '../../lib/i18n';
-import { noteConceptActivity } from '../../lib/workspaceConceptBus';
 import type { DebateNode } from '../../lib/noteContentExtractors';
+import {
+  applyPedagogyWriteback,
+  debateCountersToScore01,
+} from '../../lib/pedagogyWriteback';
 import WorkspaceToolHeader from './WorkspaceToolHeader';
 
 interface DebatePanelProps { debateNodes: DebateNode[]; }
@@ -25,10 +28,20 @@ export default function DebatePanel({ debateNodes }: DebatePanelProps) {
 
   const addCounter = useCallback((nodeId: string) => {
     if (!input.trim()) return;
-    setUserCounters((p) => { const n = new Map(p); n.set(nodeId, [...(n.get(nodeId) ?? []), input.trim()]); return n; });
-    noteConceptActivity(input.trim().slice(0, 40), 'debate', 'mapped');
+    const claim = debateNodes.find((n) => n.id === nodeId)?.claim ?? 'debate';
+    setUserCounters((p) => {
+      const n = new Map(p);
+      const next = [...(n.get(nodeId) ?? []), input.trim()];
+      n.set(nodeId, next);
+      applyPedagogyWriteback({
+        surface: 'debate',
+        concept: claim.slice(0, 80),
+        score01: debateCountersToScore01(next.length),
+      });
+      return n;
+    });
     setInput(''); setActiveId(null);
-  }, [input]);
+  }, [input, debateNodes]);
 
   if (!debateNodes.length) return null;
 

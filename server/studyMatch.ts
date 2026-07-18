@@ -534,6 +534,8 @@ function parseDuration(raw: unknown): MatchDuration {
 export async function enqueueMatchHandler(req: Request, res: Response): Promise<void> {
   const user = getAuthUser(res);
   const email = claimEmail(user);
+  const { assertMatchAffinity } = await import('./matchAffinity.js');
+  const affinity = assertMatchAffinity(req, res, user.uid);
   if (!enqueueLimiter.allow(user.uid)) {
     throw new HttpError(429, 'Too many match attempts — wait a few minutes');
   }
@@ -587,7 +589,7 @@ export async function enqueueMatchHandler(req: Request, res: Response): Promise<
   if (existing?.status === 'matched' && existing.sessionId) {
     const session = await getSession(db, existing.sessionId);
     if (session && session.status === 'active') {
-      res.json({ status: 'matched', session: toSessionView(session, user.uid) });
+      res.json({ status: 'matched', session: toSessionView(session, user.uid), affinity });
       return;
     }
   }
@@ -613,7 +615,11 @@ export async function enqueueMatchHandler(req: Request, res: Response): Promise<
 
   const session = await tryMatch(db, entry);
   if (session) {
-    res.json({ status: 'matched', session: toSessionView(session, user.uid) });
+    res.json({
+      status: 'matched',
+      session: toSessionView(session, user.uid),
+      affinity,
+    });
     return;
   }
 
@@ -622,6 +628,7 @@ export async function enqueueMatchHandler(req: Request, res: Response): Promise<
     topicLabel,
     durationMin,
     queuedAt: entry.createdAt,
+    affinity,
   });
 }
 
