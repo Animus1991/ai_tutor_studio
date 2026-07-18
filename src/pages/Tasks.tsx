@@ -24,6 +24,7 @@ import { useStore } from "../store/useStore";
 import { xapi } from "../lib/xapiTracker";
 import { auditLogger } from "../lib/auditLogger";
 import { cn } from "../lib/utils";
+import { PAGE_CONTENT } from "../components/layout/pageLayout";
 import { auth, db } from "../lib/firebase";
 import {
   collection,
@@ -561,18 +562,18 @@ export default function Tasks() {
   };
 
   return (
-    <div className="pb-16">
-      <header className="mb-6 flex items-end justify-between">
-        <div>
+    <div className={`${PAGE_CONTENT} pb-8`}>
+      <header className="ux-page-header">
+        <div className="min-w-0">
           <h2 className="text-xl md:text-2xl font-display font-bold text-slate-900 dark:text-white tracking-tight">
             Command Center
           </h2>
-          <p className="text-slate-500 dark:text-slate-400 mt-1.5 text-sm max-w-xl leading-relaxed">
+          <p className="text-slate-500 dark:text-slate-400 mt-0.5 text-sm leading-relaxed">
             Your adaptive study plan based on retention curves and upcoming
             goals.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={exportSessionData}
             className="hidden sm:flex items-center gap-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 px-3 py-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors font-medium text-xs shadow-sm"
@@ -593,10 +594,10 @@ export default function Tasks() {
       <DashboardStats />
 
       {/* Focus Modes */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
-        <button className="group relative overflow-hidden bg-slate-900 dark:bg-indigo-600 text-white p-5 rounded-2xl shadow-lg dark:shadow-[0_4px_14px_0_rgba(79,70,229,0.39)] hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 text-left flex flex-col justify-between min-h-[140px]">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 mb-4">
+        <button className="group relative overflow-hidden bg-slate-900 dark:bg-indigo-600 text-white p-4 rounded-2xl shadow-lg dark:shadow-[0_4px_14px_0_rgba(79,70,229,0.39)] hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 text-left flex flex-col justify-between min-h-[120px]">
           <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-          <Zap className="w-6 h-6 mb-3 text-indigo-400 dark:text-white relative z-10" />
+          <Zap className="w-6 h-6 mb-2 text-indigo-400 dark:text-white relative z-10" />
           <div className="relative z-10">
             <h3 className="font-display font-bold text-base mb-1">
               Quick Session
@@ -607,8 +608,8 @@ export default function Tasks() {
           </div>
         </button>
 
-        <button className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 p-5 rounded-2xl shadow-sm hover:shadow-md hover:border-emerald-200 dark:hover:border-emerald-500/50 hover:-translate-y-0.5 transition-all duration-300 text-left flex flex-col justify-between min-h-[140px] group">
-          <Target className="w-6 h-6 mb-3 text-emerald-500 dark:text-emerald-400 group-hover:scale-110 transition-transform duration-300" />
+        <button className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 p-4 rounded-2xl shadow-sm hover:shadow-md hover:border-emerald-200 dark:hover:border-emerald-500/50 hover:-translate-y-0.5 transition-all duration-300 text-left flex flex-col justify-between min-h-[120px] group">
+          <Target className="w-6 h-6 mb-2 text-emerald-500 dark:text-emerald-400 group-hover:scale-110 transition-transform duration-300" />
           <div>
             <h3 className="font-display font-bold text-base text-slate-900 dark:text-white mb-1">
               Deep Focus
@@ -619,8 +620,8 @@ export default function Tasks() {
           </div>
         </button>
 
-        <button className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 p-5 rounded-2xl shadow-sm hover:shadow-md hover:border-amber-200 dark:hover:border-amber-500/50 hover:-translate-y-0.5 transition-all duration-300 text-left flex flex-col justify-between min-h-[140px] group">
-          <AlertTriangle className="w-6 h-6 mb-3 text-amber-500 group-hover:scale-110 transition-transform duration-300" />
+        <button className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 p-4 rounded-2xl shadow-sm hover:shadow-md hover:border-amber-200 dark:hover:border-amber-500/50 hover:-translate-y-0.5 transition-all duration-300 text-left flex flex-col justify-between min-h-[120px] group">
+          <AlertTriangle className="w-6 h-6 mb-2 text-amber-500 group-hover:scale-110 transition-transform duration-300" />
           <div>
             <h3 className="font-display font-bold text-base text-slate-900 dark:text-white mb-1">
               Danger Zone
@@ -631,8 +632,8 @@ export default function Tasks() {
           </div>
         </button>
 
-        <button className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 p-5 rounded-2xl shadow-sm hover:shadow-md hover:border-blue-200 dark:hover:border-blue-500/50 hover:-translate-y-0.5 transition-all duration-300 text-left flex flex-col justify-between min-h-[140px] group">
-          <Calendar className="w-6 h-6 mb-3 text-blue-500 group-hover:scale-110 transition-transform duration-300" />
+        <button className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 p-4 rounded-2xl shadow-sm hover:shadow-md hover:border-blue-200 dark:hover:border-blue-500/50 hover:-translate-y-0.5 transition-all duration-300 text-left flex flex-col justify-between min-h-[120px] group">
+          <Calendar className="w-6 h-6 mb-2 text-blue-500 group-hover:scale-110 transition-transform duration-300" />
           <div>
             <h3 className="font-display font-bold text-base text-slate-900 dark:text-white mb-1">
               Exam Cram
@@ -644,9 +645,9 @@ export default function Tasks() {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        <div className="xl:col-span-2">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 border-b border-slate-200/60 dark:border-slate-800/60 pb-3 gap-3">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-3 xl:gap-4">
+        <div className="xl:col-span-2 min-w-0">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-3 border-b border-slate-200/60 dark:border-slate-800/60 pb-2.5 gap-3">
             <div className="flex items-center gap-2">
               <h3 className="text-lg font-display font-bold text-slate-900 dark:text-white tracking-tight">
                 Up Next
@@ -727,8 +728,8 @@ export default function Tasks() {
           </div>
 
           {viewMode === "calendar" ? (
-            <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 overflow-hidden">
-              <div className="flex items-center justify-between mb-6">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 overflow-hidden">
+              <div className="flex items-center justify-between mb-3">
                 <h4 className="font-bold text-slate-700 dark:text-slate-200">
                   This Week
                 </h4>
@@ -737,7 +738,7 @@ export default function Tasks() {
                   <span className="text-xs text-slate-500">Urgent</span>
                 </div>
               </div>
-              <div className="relative border-l-2 border-slate-100 dark:border-slate-800 ml-4 pl-6 pb-4 space-y-8">
+              <div className="relative border-l-2 border-slate-100 dark:border-slate-800 ml-4 pl-6 pb-2 space-y-4">
                 {filteredTasks
                   .filter((t) => !t.completed)
                   .map((task, i) => {
@@ -811,7 +812,7 @@ export default function Tasks() {
               } else if (isDemoMode) {
                 await writeLocalTasks(newTasks);
               }
-            }} className="space-y-4 max-w-4xl">
+            }} className="space-y-3 w-full min-w-0">
               {filteredTasks.map((task, i) => {
                 const Icon = getIcon(task.icon);
                 if (task.completed) {
@@ -941,11 +942,11 @@ export default function Tasks() {
         </div>
 
         {/* Focus Timer & Stats Column */}
-        <div className="space-y-6">
+        <div className="space-y-3 xl:space-y-4 min-w-0">
           <PomodoroTimer />
 
-          <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800 p-6 rounded-3xl shadow-sm transition-colors duration-300">
-            <div className="flex items-center gap-3 mb-6">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800 p-4 sm:p-5 rounded-2xl shadow-sm transition-colors duration-300">
+            <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center">
                 <Target className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
               </div>
@@ -954,7 +955,7 @@ export default function Tasks() {
               </h3>
             </div>
             
-            <div className="space-y-6">
+            <div className="space-y-4">
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Focus Time (Last 7 Days)</span>

@@ -219,11 +219,11 @@ export default function Dashboard() {
 
   const blocks: Record<string, React.ReactNode> = {
     stats: (
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <DailyStreak />
         <DailyGoalRing />
         
-        <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 rounded-xl p-4 sm:p-5 shadow-sm flex flex-col justify-between print-break-inside-avoid">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 rounded-xl p-4 shadow-sm flex flex-col justify-between print-break-inside-avoid">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-8 h-8 rounded-lg bg-sky-50 dark:bg-sky-900/30 flex items-center justify-center text-sky-500 shrink-0">
               <Clock className="w-4 h-4" />
@@ -244,7 +244,7 @@ export default function Dashboard() {
           )}
         </div>
 
-        <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 rounded-xl p-4 sm:p-5 shadow-sm flex flex-col justify-between print-break-inside-avoid">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 rounded-xl p-4 shadow-sm flex flex-col justify-between print-break-inside-avoid">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-900/30 flex items-center justify-center text-emerald-500 shrink-0">
               <CheckCircle2 className="w-4 h-4" />
@@ -268,23 +268,23 @@ export default function Dashboard() {
       </div>
     ),
     charts: (
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="h-[320px] lg:col-span-2 print-expand print-break-inside-avoid">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+        <div className="h-[300px] lg:col-span-2 print-expand print-break-inside-avoid">
           <StudyProgressChart />
         </div>
-        <div className="h-[320px] lg:col-span-1 print-expand print-break-inside-avoid">
+        <div className="h-[300px] lg:col-span-1 print-expand print-break-inside-avoid">
           <TaskCompletionChart />
         </div>
       </div>
     ),
     actionable: (
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        <div className="xl:col-span-1 h-[420px] md:h-[380px] print-expand print-break-inside-avoid">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+        <div className="h-[380px] md:h-[360px] print-expand print-break-inside-avoid">
           <Flashcards />
         </div>
         
         {/* FSRS / joint-scheduler due reviews */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 rounded-xl p-4 sm:p-5 shadow-sm xl:col-span-1 h-[420px] md:h-[380px] flex flex-col print-expand print-break-inside-avoid">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 rounded-xl p-4 shadow-sm h-[380px] md:h-[360px] flex flex-col print-expand print-break-inside-avoid">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-slate-900 dark:text-white tracking-tight">
               Due reviews
@@ -328,7 +328,7 @@ export default function Dashboard() {
         </div>
 
         {/* Upcoming Tasks */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 rounded-xl p-4 sm:p-5 shadow-sm xl:col-span-1 h-[420px] md:h-[380px] flex flex-col print-expand print-break-inside-avoid">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 rounded-xl p-4 shadow-sm h-[380px] md:h-[360px] flex flex-col print-expand print-break-inside-avoid">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-slate-900 dark:text-white tracking-tight">
               Upcoming Deadlines
@@ -373,7 +373,7 @@ export default function Dashboard() {
         </div>
 
         {/* Recent Activity */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 rounded-xl p-4 sm:p-5 shadow-sm xl:col-span-1 h-[420px] md:h-[380px] flex flex-col print-expand print-break-inside-avoid">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 rounded-xl p-4 shadow-sm h-[380px] md:h-[360px] flex flex-col print-expand print-break-inside-avoid">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-slate-900 dark:text-white tracking-tight">
               Recent Activity
@@ -416,20 +416,22 @@ export default function Dashboard() {
       </div>
     ),
     tools: (
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
-        <div className="h-[420px] lg:col-span-1 print-expand print-break-inside-avoid">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 items-stretch">
+        <div className="min-h-[360px] h-full print-expand print-break-inside-avoid">
           <StudyRoadmap />
         </div>
-        <div className="space-y-4 lg:col-span-1 print-expand print-break-inside-avoid">
-          <FocusSession />
+        <div className="flex flex-col gap-3 min-h-[360px] print-expand print-break-inside-avoid">
+          <div className="flex-1 min-h-0">
+            <FocusSession />
+          </div>
+          <div className="flex-1 min-h-0">
+            <AudioNoteRecorder />
+          </div>
         </div>
-        <div className="space-y-4 lg:col-span-1 print-expand print-break-inside-avoid">
-          <AudioNoteRecorder />
-        </div>
-        <div className="space-y-4 lg:col-span-1 print-expand print-break-inside-avoid">
+        <div className="min-h-[360px] h-full print-expand print-break-inside-avoid">
           <OptimalStudyTimes />
         </div>
-        <div className="space-y-4 lg:col-span-1 print-expand print-break-inside-avoid">
+        <div className="flex flex-col gap-3 min-h-[360px] print-expand print-break-inside-avoid">
           <LearningProfileInsights />
           <MasteryDashboard />
         </div>
@@ -588,7 +590,7 @@ export default function Dashboard() {
               <div 
                 {...provided.droppableProps}
                 ref={provided.innerRef}
-                className="space-y-4 sm:space-y-6"
+                className="space-y-3 sm:space-y-4"
               >
                 {layoutOrder.map((blockId, index) => (
                   <Draggable key={blockId} draggableId={blockId} index={index}>

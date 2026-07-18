@@ -340,7 +340,7 @@ export default function Layout() {
               'w-full min-w-0 max-w-none relative',
               isFullBleedRoute(location.pathname)
                 ? 'p-0 h-full min-h-0'
-                : cn(CONTENT_GUTTER, 'py-3 sm:py-4 md:py-6', MOBILE_TAB_CLEARANCE),
+                : cn(CONTENT_GUTTER, 'py-3 sm:py-3 md:py-4', MOBILE_TAB_CLEARANCE),
             )}
           >
             {isFocusMode ? (
