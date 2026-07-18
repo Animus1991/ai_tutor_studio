@@ -16,11 +16,17 @@ const CollabRoom = lazy(() => import("./pages/CollabRoom"));
 const Admin = lazy(() => import("./pages/Admin"));
 const Workspace = lazy(() => import("./pages/Workspace"));
 const StudyWorkspacePage = lazy(() => import("./pages/StudyWorkspacePage"));
+const VoiceTutor = lazy(() => import("./pages/VoiceTutor"));
+const Teacher = lazy(() => import("./pages/Teacher"));
+const StudyCircles = lazy(() => import("./pages/StudyCircles"));
+const StudyMatch = lazy(() => import("./pages/StudyMatch"));
+const MatchSession = lazy(() => import("./pages/MatchSession"));
 const OAuthCallback = lazy(() => import("./pages/OAuthCallback"));
 import ThemeProvider from "./components/ThemeProvider";
 import TimerManager from "./components/TimerManager";
 import AudioController from "./components/AudioController";
 import { bootstrapAuth, googleSignIn, describeAuthError, isCancelledAuthError } from "./lib/auth";
+import { startLibrarySync } from "./lib/serverSync";
 import { useAuthStore } from "./store/useAuthStore";
 import { motion } from "framer-motion";
 import { Sparkles } from "lucide-react";
@@ -39,7 +45,7 @@ import Onboarding from "./components/Onboarding";
 import { hasCompletedOnboarding } from "./lib/onboardingProfile";
 
 export default function App() {
-  const { needsAuth, setNeedsAuth, setUser, setAccessToken, enterDemoMode, isDemoMode } = useAuthStore();
+  const { needsAuth, setNeedsAuth, setUser, setAccessToken, setClaimRole, enterDemoMode, isDemoMode } = useAuthStore();
   const hydrateLibrary = useLibraryStore((s) => s.hydrate);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isEnteringDemo, setIsEnteringDemo] = useState(false);
@@ -52,10 +58,13 @@ export default function App() {
 
     void bootstrapAuth({
       onRedirectSuccess: (session) => {
-        void session.user.getIdToken().then((idToken) => {
+        void session.user.getIdToken().then(async (idToken) => {
+          const tokenResult = await session.user.getIdTokenResult();
           setUser(session.user);
           setAccessToken(idToken);
+          setClaimRole(tokenResult.claims.role);
           setNeedsAuth(false);
+          void startLibrarySync();
           toast.success('Signed in with Google');
         });
       },
@@ -64,9 +73,13 @@ export default function App() {
         toast.error(describeAuthError(err));
       },
       onAuthSuccess: (user, token) => {
-        setUser(user);
-        setAccessToken(token);
-        setNeedsAuth(false);
+        void user.getIdTokenResult().then((tokenResult) => {
+          setUser(user);
+          setAccessToken(token);
+          setClaimRole(tokenResult.claims.role);
+          setNeedsAuth(false);
+          void startLibrarySync();
+        });
       },
       onAuthFailure: () => {
         // Demo flag may live in storage before enterDemoMode() runs in .then()
@@ -84,7 +97,15 @@ export default function App() {
       } else if (isDemoModeActive() && useAuthStore.getState().needsAuth) {
         enterDemoMode();
       } else if (isDemoModeActive()) {
-        useAuthStore.setState({ isDemoMode: true, needsAuth: false });
+        const roleParam = new URLSearchParams(window.location.search).get('role');
+        useAuthStore.setState({
+          isDemoMode: true,
+          needsAuth: false,
+          accessToken: useAuthStore.getState().accessToken || 'demo-token',
+          userRole: roleParam === 'student' || roleParam === 'admin' || roleParam === 'instructor'
+            ? roleParam
+            : 'instructor',
+        });
       }
 
       if (useAuthStore.getState().isDemoMode || isDemoModeActive()) {
@@ -97,7 +118,7 @@ export default function App() {
     });
 
     return () => unsubscribe();
-  }, [enterDemoMode, setUser, setAccessToken, setNeedsAuth, hydrateLibrary]);
+  }, [enterDemoMode, setUser, setAccessToken, setNeedsAuth, setClaimRole, hydrateLibrary]);
 
   // Check onboarding status after auth resolves (demo sandbox skips the wizard)
   useEffect(() => {
@@ -124,7 +145,10 @@ export default function App() {
       if (result) {
         setUser(result.user);
         if (result.accessToken) setAccessToken(result.accessToken);
+        const tokenResult = await result.user.getIdTokenResult();
+        setClaimRole(tokenResult.claims.role);
         setNeedsAuth(false);
+        void startLibrarySync();
       }
       // null → redirect in progress on localhost
     } catch (err: unknown) {
@@ -153,7 +177,7 @@ export default function App() {
 
   if (authBootstrapping) {
     return (
-      <div className="flex h-screen w-full items-center justify-center bg-slate-50 dark:bg-slate-900">
+      <div className="flex min-h-dvh w-full items-center justify-center bg-slate-50 dark:bg-slate-900 pt-safe pb-safe">
         <p className="text-sm text-slate-500 dark:text-slate-400">Loading Memora…</p>
       </div>
     );
@@ -161,22 +185,22 @@ export default function App() {
 
   if (needsAuth) {
     return (
-      <div className="flex h-screen w-full items-center justify-center bg-slate-50 dark:bg-slate-900">
+      <div className="flex min-h-dvh w-full items-center justify-center bg-gradient-to-b from-slate-50 via-indigo-50/40 to-slate-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 px-4 py-8 pt-safe pb-safe">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white dark:bg-slate-800 p-6 md:p-8 rounded-2xl md:rounded-3xl shadow-xl max-w-md w-full text-center border border-slate-100 dark:border-slate-700"
+          className="bg-white/95 dark:bg-slate-800/95 backdrop-blur p-6 sm:p-8 rounded-2xl sm:rounded-3xl shadow-xl max-w-md w-full text-center border border-slate-100 dark:border-slate-700"
         >
-          <h1 className="text-2xl md:text-3xl font-display font-bold text-slate-900 dark:text-white mb-2">
+          <h1 className="text-2xl sm:text-3xl font-display font-bold text-slate-900 dark:text-white mb-2">
             Memora
           </h1>
-          <p className="text-slate-500 dark:text-slate-400 mb-6">
+          <p className="text-sm sm:text-base text-slate-500 dark:text-slate-400 mb-6 leading-relaxed">
             Sign in to access your AI tutoring workspace, or try the demo locally without Firebase.
           </p>
           <button
             onClick={handleEnterDemo}
             disabled={isEnteringDemo}
-            className="w-full mb-3 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl px-4 py-3 font-semibold transition-colors shadow-sm disabled:opacity-50"
+            className="w-full mb-3 min-h-12 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl px-4 py-3 font-semibold transition-colors shadow-sm disabled:opacity-50 touch-manipulation"
           >
             <Sparkles className="w-5 h-5" />
             {isEnteringDemo ? 'Loading demo…' : 'Try Demo Sandbox'}
@@ -235,9 +259,9 @@ export default function App() {
         <PwaInstallBanner />
         <QuickAddModal />
         <PostSessionModal />
-        <div className="md:contents fixed bottom-16 left-0 right-0 z-40 flex items-center justify-between px-4 py-2 bg-white/90 dark:bg-slate-900/90 backdrop-blur border-t border-slate-200 dark:border-slate-800 md:bg-transparent md:backdrop-blur-none md:border-none md:p-0 pointer-events-auto">
-          <div className="md:contents"><AudioController /></div>
-          <div className="md:contents"><TimerManager /></div>
+        <div className="md:contents fixed bottom-[calc(var(--mobile-tab-h)+env(safe-area-inset-bottom,0px))] left-0 right-0 z-40 flex items-center justify-between gap-2 px-3 py-2 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-t border-slate-200/80 dark:border-slate-800 md:static md:bg-transparent md:backdrop-blur-none md:border-none md:p-0 pointer-events-auto">
+          <div className="md:contents min-w-0 flex-1"><AudioController /></div>
+          <div className="md:contents shrink-0"><TimerManager /></div>
         </div>
         <BrowserRouter>
           <DemoSandboxBanner />
@@ -275,6 +299,46 @@ export default function App() {
                 element={
                   <Suspense fallback={<RouteFallback />}>
                     <StudyWorkspacePage />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="voice"
+                element={
+                  <Suspense fallback={<RouteFallback />}>
+                    <VoiceTutor />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="teacher"
+                element={
+                  <Suspense fallback={<RouteFallback />}>
+                    <Teacher />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="circles"
+                element={
+                  <Suspense fallback={<RouteFallback />}>
+                    <StudyCircles />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="match"
+                element={
+                  <Suspense fallback={<RouteFallback />}>
+                    <StudyMatch />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="match/:sessionId"
+                element={
+                  <Suspense fallback={<RouteFallback />}>
+                    <MatchSession />
                   </Suspense>
                 }
               />

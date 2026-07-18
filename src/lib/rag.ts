@@ -8,6 +8,8 @@ export interface Citation {
   chunkIndex: number;
   snippet: string;
   locator: string;
+  /** Stable chunk id for groundedness / server RAG */
+  chunkId?: string;
 }
 
 export interface ScoredChunk {
@@ -88,6 +90,7 @@ export function toCitations(chunks: ScoredChunk[]): Citation[] {
     chunkIndex: c.chunkIndex,
     snippet: c.text.slice(0, 200) + (c.text.length > 200 ? '…' : ''),
     locator: `¶${c.chunkIndex + 1}`,
+    chunkId: c.id,
   }));
 }
 

@@ -1,7 +1,8 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Shield, FileText, Video, CheckCircle2, Loader2 } from 'lucide-react';
+import { X, Shield, FileText, Video, CheckCircle2, Loader2, Users, ListTodo, Calendar } from 'lucide-react';
 import { useLanguage } from '../lib/i18n';
 import type { GoogleOAuthScopes } from '../hooks/useGoogleOAuth';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 interface Props {
   open: boolean;
@@ -35,10 +36,32 @@ const SCOPE_META: Record<GoogleOAuthScopes, { icon: React.ReactNode; label: stri
     desc: 'Import your courses from Google Classroom',
     descEl: 'Εισαγωγή μαθημάτων από Classroom',
   },
+  contacts: {
+    icon: <Users className="w-4 h-4 text-sky-600" />,
+    label: 'Read Contacts (opt-in)',
+    labelEl: 'Ανάγνωση Επαφών (opt-in)',
+    desc: 'Suggest invitees — never writes demo emails to room ACL',
+    descEl: 'Προτάσεις προσκλήσεων — όχι demo emails στο ACL',
+  },
+  tasks: {
+    icon: <ListTodo className="w-4 h-4 text-violet-600" />,
+    label: 'Google Tasks sync',
+    labelEl: 'Συγχρονισμός Google Tasks',
+    desc: 'Two-way task sync with explicit consent',
+    descEl: 'Αμφίδρομος συγχρονισμός tasks με συναίνεση',
+  },
+  calendar: {
+    icon: <Calendar className="w-4 h-4 text-rose-600" />,
+    label: 'Read Google Calendar',
+    labelEl: 'Ανάγνωση Ημερολογίου',
+    desc: 'Show real upcoming events when connected',
+    descEl: 'Εμφάνιση πραγματικών γεγονότων όταν συνδεθείς',
+  },
 };
 
 export default function GoogleOAuthConsentModal({ open, scopes, isPending, isConnected, onConnect, onRevoke, onClose }: Props) {
   const { t } = useLanguage();
+  const dialogRef = useFocusTrap<HTMLDivElement>(open, onClose);
 
   return (
     <AnimatePresence>
@@ -49,14 +72,15 @@ export default function GoogleOAuthConsentModal({ open, scopes, isPending, isCon
           exit={{ opacity: 0 }}
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm"
           onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="google-oauth-title"
         >
           <motion.div
+            ref={dialogRef}
             initial={{ scale: 0.95, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.95, opacity: 0 }}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="google-oauth-title"
             className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200/60 dark:border-slate-800/60 w-full max-w-sm p-6"
           >
             <div className="flex items-center justify-between mb-5">

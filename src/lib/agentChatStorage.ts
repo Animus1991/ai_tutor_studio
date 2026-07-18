@@ -32,19 +32,28 @@ export async function saveAgentMode(modeId: AgentModeId): Promise<void> {
   await localforage.setItem(MODE_KEY, modeId);
 }
 
+export type AgentTranscriptEnvelope = {
+  version: number;
+  updatedAt: string;
+  messages: AgentMessage[];
+};
+
 export async function loadAgentMessages(
   modeId: AgentModeId,
   isDemo: boolean,
 ): Promise<AgentMessage[]> {
   const key = chatKey(modeId, isDemo);
-  const stored = await localforage.getItem<AgentMessage[]>(key);
-  if (stored && stored.length > 0) return stored;
+  const stored = await localforage.getItem<AgentMessage[] | AgentTranscriptEnvelope>(key);
+  if (stored && Array.isArray(stored) && stored.length > 0) return stored;
+  if (stored && typeof stored === 'object' && Array.isArray((stored as AgentTranscriptEnvelope).messages)) {
+    return (stored as AgentTranscriptEnvelope).messages;
+  }
 
   // One-time migration from legacy single-thread storage
   if (modeId === 'socratic') {
     const legacy = await localforage.getItem<AgentMessage[]>(LEGACY_KEY);
     if (legacy && legacy.length > 0) {
-      await localforage.setItem(key, legacy);
+      await saveAgentMessages(modeId, isDemo, legacy);
       return legacy;
     }
   }
@@ -56,13 +65,30 @@ export async function saveAgentMessages(
   modeId: AgentModeId,
   isDemo: boolean,
   messages: AgentMessage[],
-): Promise<void> {
+  expectedVersion?: number,
+): Promise<AgentTranscriptEnvelope | null> {
   const key = chatKey(modeId, isDemo);
   if (messages.length === 0) {
     await localforage.removeItem(key);
-    return;
+    return null;
   }
-  await localforage.setItem(key, messages);
+  const prev = await localforage.getItem<AgentMessage[] | AgentTranscriptEnvelope>(key);
+  let version = 1;
+  if (prev && typeof prev === 'object' && !Array.isArray(prev) && typeof prev.version === 'number') {
+    if (expectedVersion !== undefined && expectedVersion !== prev.version) {
+      const err = new Error('Agent transcript version conflict');
+      (err as Error & { code: string }).code = 'version_conflict';
+      throw err;
+    }
+    version = prev.version + 1;
+  }
+  const envelope: AgentTranscriptEnvelope = {
+    version,
+    updatedAt: new Date().toISOString(),
+    messages: messages.slice(-200),
+  };
+  await localforage.setItem(key, envelope);
+  return envelope;
 }
 
 export async function clearAgentMessages(modeId: AgentModeId, isDemo: boolean): Promise<void> {

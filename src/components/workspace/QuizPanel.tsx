@@ -332,6 +332,16 @@ export default function QuizPanel({
       setFinished(true);
       const totalCorrect = newAnswers.filter((a) => a.correct).length;
       await saveQuizScore(courseId, totalCorrect, shuffledQuestions.length);
+      const score01 = shuffledQuestions.length
+        ? totalCorrect / shuffledQuestions.length
+        : 0;
+      const { applyPedagogyWriteback } = await import('../../lib/pedagogyWriteback');
+      applyPedagogyWriteback({
+        surface: 'quiz',
+        concept: concept ?? courseTitle ?? courseId,
+        score01,
+        courseTitle,
+      });
       logActivity(
         `Quiz completed: ${courseTitle ?? courseId} (${totalCorrect}/${shuffledQuestions.length})`,
         'study',

@@ -9,6 +9,7 @@ import { auth, db } from "../lib/firebase";
 import { collection, query, getDocs } from "firebase/firestore";
 import { useSearch } from "../hooks/useSearch";
 import { useLanguage } from '../lib/i18n';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 type SearchResult = {
   id: string;
@@ -26,6 +27,7 @@ export default function CommandPalette() {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useFocusTrap<HTMLDivElement>(isOpen, closeSearch);
   const navigate = useNavigate();
 
   const toggleFeynmanMode = useStore(state => state.toggleFeynmanMode);
@@ -312,6 +314,10 @@ export default function CommandPalette() {
               onClick={() => closeSearch()}
             />
             <motion.div
+              ref={dialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-label={t('Command palette', 'Παλέτα εντολών')}
               initial={{ opacity: 0, scale: 0.95, y: -20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: -20 }}

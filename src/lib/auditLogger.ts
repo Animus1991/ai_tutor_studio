@@ -6,10 +6,14 @@ export type AuditAction =
   | 'DOCUMENT_UPLOADED'
   | 'DOCUMENT_DELETED'
   | 'ROLE_CHANGED'
+  | 'TASK_COMPLETED'
+  | 'TASK_REVIEWED'
   | 'PII_DETECTED'
   | 'ROOM_JOINED'
   | 'PERFORMANCE_METRIC'
-  | 'APP_ACCESSED';
+  | 'APP_ACCESSED'
+  | 'OFFLINE_FLUSH'
+  | 'CIRCLE_OPEN';
 
 export interface AuditEvent {
   id: string;

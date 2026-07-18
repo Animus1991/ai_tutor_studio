@@ -64,12 +64,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isDemoMode: readInitialDemoSession(),
   enterDemoMode: () => {
     setDemoModeFlag(true);
+    const roleParam =
+      typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search).get('role')
+        : null;
+    const demoRole = normalizeRole(roleParam ?? 'instructor');
     set({
       isDemoMode: true,
       needsAuth: false,
       user: null,
       accessToken: 'demo-token',
-      userRole: 'student',
+      // Demo defaults to instructor so Teacher / Admin surfaces are discoverable on mobile.
+      userRole: demoRole,
     });
   },
   exitDemoMode: () => {

@@ -23,12 +23,17 @@ async function indexFileForRag(file: UploadedFile) {
 export const useLibraryStore = create<LibraryStore>((set, get) => ({
   courses: [],
   uploadedFiles: [],
+  libraryVersion: 0,
   isProcessing: false,
   lastUploadQuality: null,
 
   hydrate: async () => {
     const lib = await loadLibrary();
-    set({ courses: lib.courses, uploadedFiles: lib.uploadedFiles });
+    set({
+      courses: lib.courses,
+      uploadedFiles: lib.uploadedFiles,
+      libraryVersion: lib.libraryVersion,
+    });
   },
 
   getCourse: (id) => get().courses.find((c) => c.id === id),
@@ -37,6 +42,17 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
   processUpload: async (file, extendCourseId) => {
     set({ isProcessing: true });
     try {
+      // Spine: resumable + MIME/AV quarantine when authenticated (soft-skip offline/demo).
+      try {
+        const { uploadFileResumable } = await import('../lib/resumableUploadClient');
+        await uploadFileResumable(file);
+      } catch (preflight) {
+        // Quarantine rejection is hard-fail; network/auth soft-fail continues local extract.
+        if (preflight instanceof Error && /rejected|quarantine|MIME|AV/i.test(preflight.message)) {
+          throw preflight;
+        }
+      }
+
       const text = await extractFileContent(file);
       if (text.length < 80) {
         throw new Error('Extracted text too short (minimum 80 characters). Try a longer document.');
@@ -60,10 +76,11 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
       }
 
       uploadedFile.courseId = course.id;
-      const lib = await persistLibraryCourse(course, uploadedFile);
+      const lib = await persistLibraryCourse(course, uploadedFile, get().libraryVersion);
       set({
         courses: lib.courses,
         uploadedFiles: lib.uploadedFiles,
+        libraryVersion: lib.libraryVersion,
         lastUploadQuality: { score: quality.score, band: quality.band, warnings: quality.warnings },
       });
 
@@ -108,10 +125,11 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
       }
 
       uploadedFile.courseId = course.id;
-      const lib = await persistLibraryCourse(course, uploadedFile);
+      const lib = await persistLibraryCourse(course, uploadedFile, get().libraryVersion);
       set({
         courses: lib.courses,
         uploadedFiles: lib.uploadedFiles,
+        libraryVersion: lib.libraryVersion,
         lastUploadQuality: { score: quality.score, band: quality.band, warnings: quality.warnings },
       });
 

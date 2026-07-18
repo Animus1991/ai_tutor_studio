@@ -22,6 +22,7 @@ import {
 import {
   assertPublicHttpUrl,
   createFirebaseAuthMiddleware,
+  fetchPublicText,
   HttpError,
   requiredString,
 } from './server/security.js';
@@ -35,6 +36,124 @@ import {
   streamChatWithFallback,
 } from './server/gemini.js';
 import { geminiKeyFingerprint, resolveGeminiApiKey } from './server/geminiEnv.js';
+import {
+  classDetailHandler,
+  createClassHandler,
+  joinClassHandler,
+  listAssignmentMapsHandler,
+  listClassesHandler,
+  mapAssignmentHandler,
+  reportProgressHandler,
+  syncClassroomRosterHandler,
+} from './server/teacher.js';
+import {
+  getLibraryHandler,
+  listRoomReportsHandler,
+  putLibraryHandler,
+  ragIndexHandler,
+  ragQueryHandler,
+} from './server/libraryRag.js';
+import {
+  createMeetHandler,
+  enqueueMatchHandler,
+  getSessionHandler,
+  leaveQueueHandler,
+  leaveSessionHandler,
+  matchStatusHandler,
+  heartbeatHandler,
+  matchMetricsHandler,
+  meetConsentHandler,
+  pomodoroHandler,
+  postMessageHandler,
+  quietFocusHandler,
+  reactMessageHandler,
+  respectVoteHandler,
+  reportSessionHandler,
+  saveNotesHandler,
+} from './server/studyMatch.js';
+import { moderateContentHandler, moderatePlatformContent } from './server/platformModeration.js';
+import {
+  createIdempotencyMiddleware,
+  createTraceMiddleware,
+  extractAgentUserTexts,
+} from './server/requestSpine.js';
+import { createAppCheckMiddleware } from './server/appCheck.js';
+import {
+  privacyDeleteRequestHandler,
+  privacyExportHandler,
+} from './server/privacy.js';
+import {
+  evidenceEvalHandler,
+  evidencePrinciplesHandler,
+  evidenceTransferHandler,
+  purgeExpiredXapiHandler,
+  researchExportHandler,
+  xapiStatementsHandler,
+} from './server/evidence.js';
+import {
+  approveBreakGlassHandler,
+  assignClaimHandler,
+  listBreakGlassHandler,
+} from './server/claims.js';
+import {
+  auditFormFromRequest,
+  auditMeetFromRequest,
+} from './server/googleWorkspaceAudit.js';
+import {
+  appendModeSafety,
+  looksLikeExamAnswerDump,
+  modeAllowsGoogleSearch,
+  normalizeAgentMode,
+} from './server/agentModes.js';
+import {
+  getLearningSummaryHandler,
+  postLearningEventHandler,
+} from './server/learningEvents.js';
+import {
+  listSocialReportsHandler,
+  roomCreateMeetHandler,
+  roomMeetConsentHandler,
+  socialReportHandler,
+  triageSocialReportHandler,
+} from './server/socialPolicy.js';
+import {
+  assertUploadAllowed,
+  enforceExtractBudgets,
+} from './server/contentGuard.js';
+import {
+  listTrustedDevicesHandler,
+  registerTrustedDeviceHandler,
+  revokeSessionsHandler,
+  revokeTrustedDeviceHandler,
+} from './server/sessionTrust.js';
+import {
+  appendResumableChunkHandler,
+  getResumableUploadHandler,
+  initResumableUploadHandler,
+  resumableUploadStats,
+} from './server/resumableUpload.js';
+import { matchAffinityHealth } from './server/matchAffinity.js';
+import { matchQueueBusStats } from './server/matchQueueBus.js';
+import {
+  matchPubSubConsumerStats,
+  startMatchPubSubConsumer,
+} from './server/matchPubSubConsumer.js';
+import { spineAdoptionSummary } from './server/spineAdoption.js';
+import {
+  compactExpiredYjsSnapshots,
+  yjsSnapshotStats,
+} from './server/yjsSnapshotStore.js';
+import {
+  privacyPurgeHandler,
+  privacyPurgeTickHandler,
+} from './server/privacyPurge.js';
+import { geminiCircuit, recentCircuitAlerts } from './server/circuitBreaker.js';
+import {
+  agentBudgetSnapshot,
+  assertAgentRequestBudget,
+  noteAgentLatency,
+} from './server/agentBudgets.js';
+import { validateObject } from './server/requestSpine.js';
 const _require = createRequire(typeof import.meta !== 'undefined' && import.meta.url ? import.meta.url : 'file://' + process.cwd() + '/server.ts');
 const pdfParse = _require('pdf-parse');
 
@@ -183,6 +302,9 @@ function buildContentSecurityPolicy(isProduction: boolean) {
         ...(isProduction ? [] : ["'unsafe-eval'"]),
         'https://cdn.jsdelivr.net',
         'https://apis.google.com',
+        // Firebase App Check (reCAPTCHA v3)
+        'https://www.google.com',
+        'https://www.gstatic.com',
       ],
       styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
@@ -230,13 +352,12 @@ function pushServerAudit(event: Record<string, unknown>) {
 }
 
 async function extractArticleText(url: string): Promise<string> {
-  const parsed = await assertPublicHttpUrl(url);
-  const res = await fetch(parsed.href, {
-    headers: { 'User-Agent': 'MemoraStudyBot/1.0 (+https://memora.app)' },
-    redirect: 'follow',
+  // SSRF-safe fetch with manual redirect re-validation (no redirect: 'follow')
+  const { text: html } = await fetchPublicText(url, {
+    maxBytes: 1_500_000,
+    timeoutMs: 10_000,
+    maxRedirects: 3,
   });
-  if (!res.ok) throw new Error(`Failed to fetch URL (${res.status})`);
-  const html = await res.text();
   const $ = cheerio.load(html);
   $('script, style, nav, footer, aside, noscript, iframe').remove();
   const article =
@@ -341,7 +462,7 @@ async function expandYoutubePlaylist(url: string, max = 500): Promise<string[]> 
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) > 0 ? Number(process.env.PORT) : 3000;
   const isProduction = process.env.NODE_ENV === 'production';
 
   app.disable('x-powered-by');
@@ -356,7 +477,51 @@ async function startServer() {
   app.use(express.json({ limit: '50mb' }));
 
   app.get('/api/health', (_req, res) => {
-    res.json({ status: 'ok' });
+    const appCheckEnforce = process.env.APP_CHECK_ENFORCE === 'true';
+    const adminReady = Boolean(process.env.FIREBASE_SERVICE_ACCOUNT_JSON?.trim());
+    const trustDevices = process.env.TRUST_DEVICES === 'true';
+    res.json({
+      status: 'ok',
+      appCheck: {
+        enforce: appCheckEnforce,
+        adminReady,
+        mode: appCheckEnforce ? (adminReady ? 'enforce' : 'enforce_unavailable') : 'soft',
+      },
+      sessionTrust: {
+        trustDevices,
+        revokeSupported: true,
+      },
+      match: {
+        ...matchAffinityHealth(),
+        bus: matchQueueBusStats(),
+        pubsub: matchPubSubConsumerStats(),
+      },
+      yjs: yjsSnapshotStats(),
+      uploads: resumableUploadStats(),
+      gemini: geminiCircuit.getSnapshot(),
+      circuitAlerts: recentCircuitAlerts().slice(-5),
+      agent: agentBudgetSnapshot(),
+    });
+  });
+
+  /** Synthetic probe: Match affinity + queue bus (no enqueue side-effect). */
+  app.get('/api/health/match', (_req, res) => {
+    res.json({
+      ok: true,
+      ...matchAffinityHealth(),
+      bus: matchQueueBusStats(),
+      pubsub: matchPubSubConsumerStats(),
+    });
+  });
+
+  /** Synthetic probe: Yjs durable store stats. */
+  app.get('/api/health/yjs', (_req, res) => {
+    res.json({ ok: true, ...yjsSnapshotStats() });
+  });
+
+  /** Machine-readable spine adoption cards (0–17). */
+  app.get('/api/spine/adoption', (_req, res) => {
+    res.json(spineAdoptionSummary());
   });
 
   app.get('/api/health/gemini', async (_req, res) => {
@@ -366,21 +531,25 @@ async function startServer() {
         code: 'missing_key',
         message:
           'Set GEMINI_API_KEY in .env.local (also accepts GOOGLE_API_KEY / GOOGLE_GENERATIVE_AI_API_KEY).',
+        circuit: geminiCircuit.getSnapshot(),
       });
       return;
     }
 
     try {
-      const response = await ai.models.generateContent({
-        model: geminiChatModel,
-        contents: 'Reply with exactly: OK',
-      });
+      const response = await geminiCircuit.exec(() =>
+        ai.models.generateContent({
+          model: geminiChatModel,
+          contents: 'Reply with exactly: OK',
+        }),
+      );
       res.json({
         ok: true,
         model: geminiChatModel,
         embedModel: geminiEmbedModel,
         key: geminiKeyFingerprint(geminiApiKey),
         sample: (response.text ?? '').trim().slice(0, 80),
+        circuit: geminiCircuit.getSnapshot(),
       });
     } catch (error) {
       const formatted = formatGeminiApiError(error);
@@ -390,6 +559,7 @@ async function startServer() {
         message: formatted.message,
         model: geminiChatModel,
         key: geminiKeyFingerprint(geminiApiKey),
+        circuit: geminiCircuit.getSnapshot(),
       });
     }
   });
@@ -451,7 +621,11 @@ async function startServer() {
     res.status(204).end();
   });
 
+  app.use(createTraceMiddleware());
   app.use('/api', generalApiLimiter);
+
+  const enforceAppCheck = process.env.APP_CHECK_ENFORCE === 'true';
+  app.use('/api', createAppCheckMiddleware(enforceAppCheck));
 
   app.use('/api', (req, res, next) => {
     if (isPublicApiRoute(req)) {
@@ -463,7 +637,13 @@ async function startServer() {
         next(authErr);
         return;
       }
-      protectedApiLimiter(req, res, next);
+      protectedApiLimiter(req, res, (limitErr) => {
+        if (limitErr) {
+          next(limitErr);
+          return;
+        }
+        createIdempotencyMiddleware()(req, res, next);
+      });
     });
   });
 
@@ -523,9 +703,7 @@ async function startServer() {
   app.post('/api/ocr', upload.single('image'), async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ error: 'Image file is required' });
-      if (!req.file.mimetype.startsWith('image/')) {
-        return res.status(400).json({ error: 'Only image files are supported for OCR' });
-      }
+      const guarded = assertUploadAllowed(req.file.buffer, req.file.mimetype, 'ocr');
 
       const base64Image = req.file.buffer.toString('base64');
       const response = await ai.models.generateContent({
@@ -536,7 +714,7 @@ async function startServer() {
             parts: [
               {
                 inlineData: {
-                  mimeType: req.file.mimetype,
+                  mimeType: guarded.mime,
                   data: base64Image,
                 },
               },
@@ -548,20 +726,24 @@ async function startServer() {
         ],
       });
 
-      res.json({ text: response.text ?? '', filename: req.file.originalname });
+      const budgeted = enforceExtractBudgets(response.text ?? '');
+      res.json({
+        text: budgeted.text,
+        filename: req.file.originalname,
+        truncated: budgeted.truncated,
+        sniffedMime: guarded.sniffed,
+      });
     } catch (error) {
       console.error('OCR Error:', error);
-      res.status(500).json({ error: 'Failed to extract text from image' });
+      sendRouteError(res, error, 'OCR Error', 'Failed to extract text from image');
     }
   });
 
   app.post('/api/analyze-media', upload.single('media'), async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ error: 'Media file is required' });
-      const mime = req.file.mimetype;
-      if (!mime.startsWith('image/') && !mime.startsWith('video/') && !mime.startsWith('audio/')) {
-        return res.status(400).json({ error: 'Only image, video, or audio files are supported' });
-      }
+      const guarded = assertUploadAllowed(req.file.buffer, req.file.mimetype, 'media');
+      const mime = guarded.mime;
 
       const base64 = req.file.buffer.toString('base64');
       const response = await ai.models.generateContent({
@@ -579,101 +761,89 @@ async function startServer() {
         ],
       });
 
-      const summary = response.text ?? '';
+      const budgeted = enforceExtractBudgets(response.text ?? '');
       res.json({
-        summary,
-        text: mime.startsWith('image/') ? summary : undefined,
+        summary: budgeted.text,
+        text: mime.startsWith('image/') ? budgeted.text : undefined,
         filename: req.file.originalname,
+        truncated: budgeted.truncated,
+        sniffedMime: guarded.sniffed,
       });
     } catch (error) {
       console.error('Analyze Media Error:', error);
-      res.status(500).json({ error: 'Failed to analyze media' });
+      sendRouteError(res, error, 'Analyze Media Error', 'Failed to analyze media');
     }
   });
 
   app.post('/api/xapi/statements', async (req, res) => {
     try {
-      const statement = req.body;
-      const lrsUrl = process.env.XAPI_LRS_ENDPOINT;
-      const lrsKey = process.env.XAPI_LRS_KEY;
-
-      if (lrsUrl && lrsKey) {
-        const auth = Buffer.from(`${lrsKey}:`).toString('base64');
-        const forward = await fetch(`${lrsUrl.replace(/\/$/, '')}/statements`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Basic ${auth}`,
-            'X-Experience-API-Version': '1.0.3',
-          },
-          body: JSON.stringify(statement),
-        });
-        if (!forward.ok) {
-          const detail = await forward.text();
-          return res.status(502).json({ error: 'LRS rejected statement', detail });
-        }
-      }
-
-      res.status(204).end();
+      await xapiStatementsHandler(req, res);
     } catch (error) {
-      console.error('xAPI Error:', error);
-      res.status(500).json({ error: 'Failed to record xAPI statement' });
+      sendRouteError(res, error, 'xAPI Error', 'Failed to record xAPI statement');
     }
   });
 
   app.post('/api/ingest/file', upload.single('file'), async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ error: 'File is required' });
-      
+
       const buffer = req.file.buffer;
-      const mimeType = req.file.mimetype;
+      const guarded = assertUploadAllowed(buffer, req.file.mimetype, 'ingest');
+      const mimeType = guarded.mime;
 
       let text = '';
-      let extractionMethod = "plain-text";
-      if (mimeType === 'application/pdf') {
+      let extractionMethod = 'plain-text';
+      let pageCount: number | undefined;
+      if (mimeType === 'application/pdf' || guarded.sniffed === 'application/pdf') {
         const data = await pdfParse(buffer);
         text = data.text;
-        extractionMethod = "pdf-text";
+        pageCount = typeof data.numpages === 'number' ? data.numpages : undefined;
+        extractionMethod = 'pdf-text';
         if (text.trim().length < 50) {
-          text = await extractVisualDocumentText(buffer, mimeType);
-          extractionMethod = "vision-ocr";
+          text = await extractVisualDocumentText(buffer, 'application/pdf');
+          extractionMethod = 'vision-ocr';
         }
       } else if (mimeType.startsWith('text/')) {
         text = buffer.toString('utf-8');
-      } else if (mimeType.startsWith("image/")) {
+      } else if (mimeType.startsWith('image/')) {
         text = await extractVisualDocumentText(buffer, mimeType);
-        extractionMethod = "vision-ocr";
+        extractionMethod = 'vision-ocr';
       } else if (
         [
-          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-          "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          "application/vnd.oasis.opendocument.text",
-          "application/vnd.oasis.opendocument.presentation",
-          "application/rtf",
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'application/vnd.oasis.opendocument.text',
+          'application/vnd.oasis.opendocument.presentation',
+          'application/rtf',
+          'application/zip',
         ].includes(mimeType)
       ) {
         const document = await OfficeParser.parseOffice(buffer);
-        text = (await document.to("text")).value;
-        extractionMethod = "office-parser";
+        text = (await document.to('text')).value;
+        extractionMethod = 'office-parser';
       } else {
         return res.status(400).json({
           error:
-            "Unsupported file type. Upload text, PDF, image, Word, PowerPoint, spreadsheet, OpenDocument, or RTF material.",
+            'Unsupported file type. Upload text, PDF, image, Word, PowerPoint, spreadsheet, OpenDocument, or RTF material.',
         });
       }
 
       if (!text.trim()) {
-        throw new HttpError(422, "No readable text was found in this file");
+        throw new HttpError(422, 'No readable text was found in this file');
       }
+      const budgeted = enforceExtractBudgets(text, { pageCount });
       res.json({
-        text,
+        text: budgeted.text,
         filename: req.file.originalname,
         extractionMethod,
+        truncated: budgeted.truncated,
+        pageCount: budgeted.pageCount,
+        sniffedMime: guarded.sniffed,
       });
     } catch (error) {
       console.error('Ingest File Error:', error);
-      res.status(500).json({ error: 'Failed to extract content from file' });
+      sendRouteError(res, error, 'Ingest File Error', 'Failed to extract content from file');
     }
   });
 
@@ -696,33 +866,72 @@ async function startServer() {
 
   // AI Agent Route
   app.post('/api/agent/chat', async (req, res) => {
+    const started = Date.now();
     try {
+      validateObject(req.body ?? {}, {
+        messages: { type: 'array', required: true },
+        systemInstruction: { type: 'string', maxLength: 20_000 },
+        mode: { type: 'string', maxLength: 64 },
+        model: { type: 'string', maxLength: 128 },
+      });
       const { messages, systemInstruction, model } = req.body;
+      try {
+        assertAgentRequestBudget(messages);
+      } catch (budgetErr) {
+        const status = Number((budgetErr as { status?: number }).status) || 413;
+        throw new HttpError(status, (budgetErr as Error).message);
+      }
+      const mode = normalizeAgentMode(req.body?.mode);
+      const userTexts = extractAgentUserTexts(messages);
+      for (const t of userTexts.slice(-3)) {
+        const mod = await moderatePlatformContent(t, 'chat');
+        if (!mod.allowed) throw new HttpError(400, mod.reason);
+      }
+      const instruction = appendModeSafety(String(systemInstruction ?? ''), mode);
+      const tools = modeAllowsGoogleSearch(mode) ? [{ googleSearch: {} }] : [];
       const response = await generateChatWithFallback(ai, {
         model: model || geminiChatModel,
         contents: messages,
         config: {
-          systemInstruction,
-          tools: [{ googleSearch: {} }],
-          toolConfig: { includeServerSideToolInvocations: true }
+          systemInstruction: instruction,
+          ...(tools.length
+            ? {
+                tools,
+                toolConfig: { includeServerSideToolInvocations: true },
+              }
+            : {}),
         }
       });
       
       let text = response.text || '';
+      if (mode === 'exam-coach' && looksLikeExamAnswerDump(text)) {
+        text =
+          'Exam Coach policy: I will not provide a complete submit-ready answer. Attempt the question first, then I can score your reasoning and share a rubric.';
+      }
       let urls: any[] = [];
       const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
       if (chunks) {
         urls = chunks.map((c: any) => c.web?.uri).filter(Boolean);
       }
-      
-      res.json({ text, urls });
+
+      const latencyMs = Date.now() - started;
+      const budget = noteAgentLatency(latencyMs, 'chat');
+      res.setHeader('X-Agent-Latency-Ms', String(latencyMs));
+      res.setHeader('X-Agent-Budget-Ok', budget.withinBudget ? '1' : '0');
+      res.json({ text, urls, mode, traceId: res.locals.traceId, latencyMs, budgetOk: budget.withinBudget });
     } catch (error) {
+      res.setHeader('X-Agent-Latency-Ms', String(Date.now() - started));
+      if (error instanceof HttpError) {
+        sendRouteError(res, error, 'Agent Moderation', error.message);
+        return;
+      }
       sendGeminiError(res, error, 'Gemini API Error');
     }
   });
 
   // AI Agent streaming (SSE)
   app.post('/api/agent/chat/stream', async (req, res) => {
+    const started = Date.now();
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
@@ -730,13 +939,40 @@ async function startServer() {
 
     try {
       const { messages, systemInstruction, model } = req.body;
+      try {
+        assertAgentRequestBudget(Array.isArray(messages) ? messages : []);
+      } catch (budgetErr) {
+        res.write(
+          `data: ${JSON.stringify({ error: (budgetErr as Error).message, code: 'budget_exceeded' })}\n\n`,
+        );
+        res.write('data: [DONE]\n\n');
+        res.end();
+        return;
+      }
+      const mode = normalizeAgentMode(req.body?.mode);
+      const userTexts = extractAgentUserTexts(messages);
+      for (const t of userTexts.slice(-3)) {
+        const mod = await moderatePlatformContent(t, 'chat');
+        if (!mod.allowed) {
+          res.write(`data: ${JSON.stringify({ error: mod.reason, code: 'moderation_blocked' })}\n\n`);
+          res.write('data: [DONE]\n\n');
+          res.end();
+          return;
+        }
+      }
+      const instruction = appendModeSafety(String(systemInstruction ?? ''), mode);
+      const tools = modeAllowsGoogleSearch(mode) ? [{ googleSearch: {} }] : [];
       const stream = await streamChatWithFallback(ai, {
         model: model || geminiChatModel,
         contents: messages,
         config: {
-          systemInstruction,
-          tools: [{ googleSearch: {} }],
-          toolConfig: { includeServerSideToolInvocations: true },
+          systemInstruction: instruction,
+          ...(tools.length
+            ? {
+                tools,
+                toolConfig: { includeServerSideToolInvocations: true },
+              }
+            : {}),
         },
       });
 
@@ -766,7 +1002,13 @@ async function startServer() {
         }
       }
 
-      res.write(`data: ${JSON.stringify({ done: true, urls: groundingUrls })}\n\n`);
+      const latencyMs = Date.now() - started;
+      const budget = noteAgentLatency(latencyMs, 'stream');
+      res.setHeader('X-Agent-Latency-Ms', String(latencyMs));
+      res.setHeader('X-Agent-Budget-Ok', budget.withinBudget ? '1' : '0');
+      res.write(
+        `data: ${JSON.stringify({ done: true, urls: groundingUrls, latencyMs, budgetOk: budget.withinBudget })}\n\n`,
+      );
       res.end();
     } catch (error) {
       const formatted = formatGeminiApiError(error);
@@ -840,22 +1082,22 @@ async function startServer() {
     }
   });
 
-  // Real Google Forms creation with graceful fallback.
-  // Pass an OAuth access token (scope: forms.body) via body.accessToken or the
-  // GOOGLE_ACCESS_TOKEN env var to create a real Form; otherwise a "create new
-  // form" fallback URL is returned so the flow never dead-ends.
+  // Real Google Forms creation with graceful fallback + room/class audit link.
   app.post('/api/google/forms', async (req, res) => {
     const { title, accessToken } = req.body ?? {};
     const token = accessToken || process.env.GOOGLE_ACCESS_TOKEN;
     const formTitle = title || `Study Quiz - ${new Date().toLocaleDateString()}`;
 
     if (!token) {
-      return res.json({
+      const result = {
         fallback: true,
         editUrl: 'https://docs.google.com/forms/create',
-        responderUrl: null,
+        responderUrl: null as string | null,
+        formId: null as string | null,
         title: formTitle,
-      });
+      };
+      await auditFormFromRequest(req, res, result);
+      return res.json(result);
     }
 
     try {
@@ -872,35 +1114,39 @@ async function startServer() {
         formId?: string;
         responderUri?: string;
       };
-      const formId = form.formId;
-      res.json({
+      const formId = form.formId ?? null;
+      const result = {
         fallback: false,
         formId,
         editUrl: formId ? `https://docs.google.com/forms/d/${formId}/edit` : null,
         responderUrl: form.responderUri ?? null,
         title: formTitle,
-      });
+      };
+      await auditFormFromRequest(req, res, result);
+      res.json(result);
     } catch (error) {
       console.error('Google Forms Error:', error);
-      res.json({
+      const result = {
         fallback: true,
         editUrl: 'https://docs.google.com/forms/create',
-        responderUrl: null,
+        responderUrl: null as string | null,
+        formId: null as string | null,
         title: formTitle,
         error: error instanceof Error ? error.message : 'Forms API failed',
-      });
+      };
+      await auditFormFromRequest(req, res, result);
+      res.json(result);
     }
   });
 
-  // Real Google Meet space creation with graceful fallback.
-  // Pass an OAuth access token (scope: meetings.space.created) via
-  // body.accessToken or GOOGLE_ACCESS_TOKEN to create a real Meet space;
-  // otherwise the universal "start a new meeting" URL is returned.
+  // Real Google Meet space creation with graceful fallback + room/class audit link.
   app.post('/api/google/meet', async (req, res) => {
     const token = (req.body && req.body.accessToken) || process.env.GOOGLE_ACCESS_TOKEN;
 
     if (!token) {
-      return res.json({ fallback: true, meetUrl: 'https://meet.google.com/new' });
+      const result = { fallback: true, meetUrl: 'https://meet.google.com/new' };
+      await auditMeetFromRequest(req, res, result);
+      return res.json(result);
     }
 
     try {
@@ -914,14 +1160,21 @@ async function startServer() {
       });
       if (!spaceRes.ok) throw new Error(`Meet API ${spaceRes.status}`);
       const space = (await spaceRes.json()) as { meetingUri?: string };
-      res.json({ fallback: false, meetUrl: space.meetingUri ?? 'https://meet.google.com/new' });
+      const result = {
+        fallback: false,
+        meetUrl: space.meetingUri ?? 'https://meet.google.com/new',
+      };
+      await auditMeetFromRequest(req, res, result);
+      res.json(result);
     } catch (error) {
       console.error('Google Meet Error:', error);
-      res.json({
+      const result = {
         fallback: true,
         meetUrl: 'https://meet.google.com/new',
         error: error instanceof Error ? error.message : 'Meet API failed',
-      });
+      };
+      await auditMeetFromRequest(req, res, result);
+      res.json(result);
     }
   });
 
@@ -1394,25 +1647,27 @@ ${text}`,
   });
 
 
-  // Web Clipper Endpoint
+  // Web Clipper Endpoint — SSRF-safe public fetch only
   app.post('/api/clipper', async (req, res) => {
     try {
       const { url } = req.body;
       if (!url) return res.status(400).json({ error: 'URL is required' });
 
-      const parsed = await assertPublicHttpUrl(url);
-      const response = await fetch(parsed.href);
-      const html = await response.text();
+      const { text: html } = await fetchPublicText(url, {
+        maxBytes: 1_000_000,
+        timeoutMs: 8_000,
+        maxRedirects: 3,
+      });
       const $ = cheerio.load(html);
-      
+
       $('script, style, nav, footer, header, aside').remove();
       const title = $('title').text() || 'Clipped Article';
-      let content = $('body').text().replace(/\s+/g, ' ').trim();
-      
+      const content = $('body').text().replace(/\s+/g, ' ').trim();
+
       res.json({ title, content: content.substring(0, 5000) });
     } catch (error) {
       console.error('Clipper Error:', error);
-      res.status(500).json({ error: 'Failed to clip URL' });
+      sendRouteError(res, error, 'Clipper Error', 'Failed to clip URL');
     }
   });
 
@@ -1495,6 +1750,504 @@ Use pixel coordinates relative to the image. Include 1-12 labels. confidence is 
     }
   });
 
+  // Voice tutor — Gemini STT + optional client TTS fallback (audio never persisted)
+  app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
+    const started = Date.now();
+    try {
+      if (!req.file) return res.status(400).json({ error: 'Audio file is required' });
+      assertUploadAllowed(req.file.buffer, req.file.mimetype || 'audio/webm', 'audio');
+
+      const response = await ai.models.generateContent({
+        model: geminiChatModel,
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                inlineData: {
+                  mimeType: req.file.mimetype || 'audio/webm',
+                  data: req.file.buffer.toString('base64'),
+                },
+              },
+              {
+                text: 'Transcribe the spoken words in this audio faithfully. Return only the transcript text with no commentary.',
+              },
+            ],
+          },
+        ],
+      });
+
+      // Drop buffer reference ASAP — ephemeral audio policy
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (req as any).file = undefined;
+
+      const text = (response.text ?? '').trim();
+      if (text) {
+        const mod = await moderatePlatformContent(text, 'chat');
+        if (!mod.allowed) {
+          return res.status(400).json({
+            error: mod.reason,
+            code: 'moderation_blocked',
+            text: '',
+          });
+        }
+      }
+      const latencyMs = Date.now() - started;
+      res.setHeader('X-Voice-Latency-Ms', String(latencyMs));
+      res.json({
+        text,
+        retention: 'ephemeral_client',
+        audioRetention: 'none',
+        latencyMs,
+        traceId: res.locals.traceId,
+      });
+    } catch (error) {
+      sendRouteError(res, error, 'Transcribe Error', 'Failed to transcribe audio');
+    }
+  });
+
+  app.post('/api/tts', async (req, res) => {
+    const started = Date.now();
+    try {
+      validateObject(req.body ?? {}, {
+        text: { type: 'string', required: true, maxLength: 4000 },
+        voice: { type: 'string', maxLength: 64 },
+      });
+      const text = String(req.body?.text ?? '').trim();
+      if (!text) return res.status(400).json({ error: 'Text is required' });
+      const mod = await moderatePlatformContent(text, 'chat');
+      if (!mod.allowed) {
+        return res.status(400).json({ error: mod.reason, code: 'moderation_blocked' });
+      }
+
+      const voice = String(req.body?.voice ?? 'Kore');
+      const geminiVoiceMap: Record<string, string> = {
+        alloy: 'Kore',
+        nova: 'Aoede',
+        shimmer: 'Leda',
+        echo: 'Charon',
+        fable: 'Fenrir',
+        onyx: 'Puck',
+      };
+      const voiceName = geminiVoiceMap[voice.toLowerCase()] ?? voice;
+
+      try {
+        const response = await ai.models.generateContent({
+          model: process.env.GEMINI_TTS_MODEL?.trim() || 'gemini-2.5-flash-preview-tts',
+          contents: [{ role: 'user', parts: [{ text: text.slice(0, 4000) }] }],
+          config: {
+            responseModalities: ['AUDIO'],
+            speechConfig: {
+              voiceConfig: { prebuiltVoiceConfig: { voiceName } },
+            },
+          },
+        });
+
+        const parts = response.candidates?.[0]?.content?.parts ?? [];
+        const audioPart = parts.find((part) => part.inlineData?.mimeType?.startsWith('audio/'));
+        if (audioPart?.inlineData?.data) {
+          const mime = audioPart.inlineData.mimeType || 'audio/mp3';
+          res.setHeader('X-Voice-Latency-Ms', String(Date.now() - started));
+          res.json({
+            audio: `data:${mime};base64,${audioPart.inlineData.data}`,
+            audioRetention: 'none',
+            latencyMs: Date.now() - started,
+          });
+          return;
+        }
+      } catch (ttsError) {
+        console.warn('[Memora] Gemini TTS unavailable, using client fallback:', ttsError);
+      }
+
+      res.json({ clientFallback: true, text: text.slice(0, 4000) });
+    } catch (error) {
+      sendRouteError(res, error, 'TTS Error', 'Failed to synthesize speech');
+    }
+  });
+
+  // Teacher / class dashboard (Firestore via Admin SDK)
+  app.post('/api/classes', async (req, res) => {
+    try {
+      await createClassHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Create Class Error', 'Failed to create class');
+    }
+  });
+
+  app.get('/api/classes', async (req, res) => {
+    try {
+      await listClassesHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'List Classes Error', 'Failed to list classes');
+    }
+  });
+
+  app.post('/api/classes/join', async (req, res) => {
+    try {
+      await joinClassHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Join Class Error', 'Failed to join class');
+    }
+  });
+
+  app.get('/api/classes/:classId', async (req, res) => {
+    try {
+      await classDetailHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Class Detail Error', 'Failed to load class');
+    }
+  });
+
+  app.post('/api/progress', async (req, res) => {
+    try {
+      await reportProgressHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Progress Error', 'Failed to report progress');
+    }
+  });
+
+  // Institution spine — Classroom roster consent sync + assignment maps
+  app.post('/api/classes/:classId/classroom/sync', async (req, res) => {
+    try {
+      await syncClassroomRosterHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Classroom Sync Error', 'Failed to sync Classroom roster');
+    }
+  });
+  app.post('/api/classes/:classId/assignments/map', async (req, res) => {
+    try {
+      await mapAssignmentHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Assignment Map Error', 'Failed to map assignment');
+    }
+  });
+  app.get('/api/classes/:classId/assignments', async (req, res) => {
+    try {
+      await listAssignmentMapsHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Assignment List Error', 'Failed to list assignment maps');
+    }
+  });
+
+  // Study Match — server-side focus-buddy matchmaking (no public queue)
+  app.post('/api/match/enqueue', async (req, res) => {
+    try {
+      await enqueueMatchHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Match Enqueue Error', 'Failed to join match queue');
+    }
+  });
+  app.delete('/api/match/queue', async (req, res) => {
+    try {
+      await leaveQueueHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Match Queue Error', 'Failed to leave match queue');
+    }
+  });
+  app.get('/api/match/status', async (req, res) => {
+    try {
+      await matchStatusHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Match Status Error', 'Failed to load match status');
+    }
+  });
+  app.get('/api/match/session/:sessionId', async (req, res) => {
+    try {
+      await getSessionHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Match Session Error', 'Failed to load session');
+    }
+  });
+  app.post('/api/match/session/:sessionId/leave', async (req, res) => {
+    try {
+      await leaveSessionHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Match Leave Error', 'Failed to leave session');
+    }
+  });
+  app.post('/api/match/session/:sessionId/report', async (req, res) => {
+    try {
+      await reportSessionHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Match Report Error', 'Failed to submit report');
+    }
+  });
+  app.post('/api/match/session/:sessionId/meet-consent', async (req, res) => {
+    try {
+      await meetConsentHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Meet Consent Error', 'Failed to update Meet consent');
+    }
+  });
+  app.post('/api/match/session/:sessionId/meet', async (req, res) => {
+    try {
+      await createMeetHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Match Meet Error', 'Failed to create Meet link');
+    }
+  });
+  app.patch('/api/match/session/:sessionId/notes', async (req, res) => {
+    try {
+      await saveNotesHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Match Notes Error', 'Failed to save notes');
+    }
+  });
+  app.post('/api/match/session/:sessionId/message', async (req, res) => {
+    try {
+      await postMessageHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Match Chat Error', 'Failed to send message');
+    }
+  });
+  app.post('/api/match/session/:sessionId/heartbeat', async (req, res) => {
+    try {
+      await heartbeatHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Match Heartbeat Error', 'Failed to update presence');
+    }
+  });
+  app.post('/api/match/session/:sessionId/pomodoro', async (req, res) => {
+    try {
+      await pomodoroHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Match Pomodoro Error', 'Failed to update Pomodoro phase');
+    }
+  });
+  app.post('/api/match/session/:sessionId/quiet-focus', async (req, res) => {
+    try {
+      await quietFocusHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Quiet Focus Error', 'Failed to update quiet focus');
+    }
+  });
+  app.get('/api/match/metrics', async (req, res) => {
+    try {
+      await matchMetricsHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Match Metrics Error', 'Failed to load match metrics');
+    }
+  });
+
+  // Platform spine — shared content moderation preflight
+  app.post('/api/moderate', async (req, res) => {
+    try {
+      await moderateContentHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Moderation Error', 'Failed to moderate content');
+    }
+  });
+
+  // Learning spine — server-authoritative pedagogy events
+  app.post('/api/learning/events', async (req, res) => {
+    try {
+      await postLearningEventHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Learning Event Error', 'Failed to record learning event');
+    }
+  });
+  app.get('/api/learning/summary', async (req, res) => {
+    try {
+      await getLearningSummaryHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Learning Summary Error', 'Failed to load learning summary');
+    }
+  });
+
+  // Privacy spine — export / delete request (no peer PII)
+  app.get('/api/privacy/export', async (req, res) => {
+    try {
+      await privacyExportHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Privacy Export Error', 'Failed to export data');
+    }
+  });
+  app.post('/api/privacy/delete-request', async (req, res) => {
+    try {
+      await privacyDeleteRequestHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Privacy Delete Error', 'Failed to queue deletion');
+    }
+  });
+
+  // Evidence spine — research export, eval harness, principles, xAPI purge
+  app.get('/api/research/export', async (req, res) => {
+    try {
+      await researchExportHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Research Export Error', 'Failed to export research data');
+    }
+  });
+  app.get('/api/evidence/principles', async (req, res) => {
+    try {
+      await evidencePrinciplesHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Evidence Principles Error', 'Failed to load principles');
+    }
+  });
+  app.post('/api/evidence/eval', async (req, res) => {
+    try {
+      await evidenceEvalHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Evidence Eval Error', 'Failed to run evaluation harness');
+    }
+  });
+  app.post('/api/evidence/transfer', async (req, res) => {
+    try {
+      await evidenceTransferHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Evidence Transfer Error', 'Failed to run transfer battery');
+    }
+  });
+  app.post('/api/admin/xapi/purge-expired', async (req, res) => {
+    try {
+      await purgeExpiredXapiHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'xAPI Purge Error', 'Failed to purge expired statements');
+    }
+  });
+
+  // Session trust — revoke-all + durable device registry
+  app.post('/api/auth/revoke-sessions', async (req, res) => {
+    try {
+      await revokeSessionsHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Revoke Sessions Error', 'Failed to revoke sessions');
+    }
+  });
+  app.post('/api/auth/trusted-devices', async (req, res) => {
+    try {
+      await registerTrustedDeviceHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Trusted Device Error', 'Failed to register trusted device');
+    }
+  });
+  app.get('/api/auth/trusted-devices', async (req, res) => {
+    try {
+      await listTrustedDevicesHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Trusted Device List Error', 'Failed to list trusted devices');
+    }
+  });
+  app.delete('/api/auth/trusted-devices/:deviceId', async (req, res) => {
+    try {
+      await revokeTrustedDeviceHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Trusted Device Revoke Error', 'Failed to revoke device');
+    }
+  });
+
+  // Resumable uploads + AV quarantine
+  app.post('/api/uploads/resumable', async (req, res) => {
+    try {
+      await initResumableUploadHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Resumable Init Error', 'Failed to start upload');
+    }
+  });
+  app.put('/api/uploads/resumable/:id', async (req, res) => {
+    try {
+      await appendResumableChunkHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Resumable Chunk Error', 'Failed to append chunk');
+    }
+  });
+  app.get('/api/uploads/resumable/:id', async (req, res) => {
+    try {
+      await getResumableUploadHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Resumable Status Error', 'Failed to read upload');
+    }
+  });
+  app.post('/api/admin/yjs/compact', async (_req, res) => {
+    const removed = compactExpiredYjsSnapshots();
+    res.json({ ok: true, removed, ...yjsSnapshotStats() });
+  });
+  app.post('/api/admin/privacy/purge', async (req, res) => {
+    try {
+      await privacyPurgeHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Privacy Purge Error', 'Failed to purge deletion queue');
+    }
+  });
+  app.post('/api/ops/privacy/purge-tick', async (req, res) => {
+    try {
+      await privacyPurgeTickHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Privacy Purge Tick Error', 'Failed privacy purge tick');
+    }
+  });
+
+  // Claims + break-glass (two-person rule when BREAK_GLASS_REQUIRED=true)
+  app.post('/api/admin/claims', async (req, res) => {
+    try {
+      await assignClaimHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Claims Error', 'Failed to assign claim');
+    }
+  });
+  app.get('/api/admin/break-glass', async (req, res) => {
+    try {
+      await listBreakGlassHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Break-glass List Error', 'Failed to list break-glass requests');
+    }
+  });
+  app.post('/api/admin/break-glass/:id/approve', async (req, res) => {
+    try {
+      await approveBreakGlassHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Break-glass Approve Error', 'Failed to approve break-glass request');
+    }
+  });
+
+  app.post('/api/match/session/:sessionId/react', async (req, res) => {
+    try {
+      await reactMessageHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Match React Error', 'Failed to react');
+    }
+  });
+  app.post('/api/match/session/:sessionId/respect', async (req, res) => {
+    try {
+      await respectVoteHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Match Respect Error', 'Failed to save respect vote');
+    }
+  });
+
+  // Cross-device library sync (Firebase Admin or local data/library-sync)
+  app.get('/api/library', async (req, res) => {
+    try {
+      await getLibraryHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Library GET Error', 'Failed to load library');
+    }
+  });
+  app.put('/api/library', async (req, res) => {
+    try {
+      await putLibraryHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Library PUT Error', 'Failed to save library');
+    }
+  });
+
+  // Lightweight per-user RAG index (complements client-side hybrid RAG)
+  app.post('/api/rag/index', async (req, res) => {
+    try {
+      await ragIndexHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'RAG Index Error', 'Failed to index document');
+    }
+  });
+  app.post('/api/rag/query', async (req, res) => {
+    try {
+      await ragQueryHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'RAG Query Error', 'Failed to query index');
+    }
+  });
+
   app.get('/api/admin/audit', async (req, res) => {
     const limit = Math.min(Number(req.query.limit) || 50, 200);
     const firestoreLogs = await fetchPlatformAuditFromFirestore(limit);
@@ -1504,6 +2257,51 @@ Use pixel coordinates relative to the image. Include 1-12 labels. confidence is 
     }
     const logs = merged.slice(-limit).reverse();
     res.json({ logs, persistedPath: process.env.AUDIT_STORE_PATH ?? 'data/audit-log.jsonl' });
+  });
+
+  app.get('/api/admin/room-reports', async (req, res) => {
+    try {
+      await listRoomReportsHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Room Reports Error', 'Failed to list reports');
+    }
+  });
+
+  // Social spine — unified Circles + Match + Collab policy
+  app.post('/api/social/report', async (req, res) => {
+    try {
+      await socialReportHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Social Report Error', 'Failed to submit report');
+    }
+  });
+  app.post('/api/social/rooms/:roomId/meet-consent', async (req, res) => {
+    try {
+      await roomMeetConsentHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Room Meet Consent Error', 'Failed to update Meet consent');
+    }
+  });
+  app.post('/api/social/rooms/:roomId/meet', async (req, res) => {
+    try {
+      await roomCreateMeetHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Room Meet Error', 'Failed to create Meet link');
+    }
+  });
+  app.get('/api/admin/social-reports', async (req, res) => {
+    try {
+      await listSocialReportsHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Social Reports Error', 'Failed to list social reports');
+    }
+  });
+  app.patch('/api/admin/social-reports/:reportId', async (req, res) => {
+    try {
+      await triageSocialReportHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Social Triage Error', 'Failed to triage report');
+    }
   });
 
   app.get('/api/admin/tenant-metrics', async (_req, res) => {
@@ -1555,8 +2353,14 @@ Use pixel coordinates relative to the image. Include 1-12 labels. confidence is 
 
   try {
     const { attachYjsWebSocketServer } = await import('./yjsServer.js');
-    attachYjsWebSocketServer(httpServer);
-    console.log(`Yjs websocket on ws://localhost:${PORT}/yjs`);
+    const requireApiAuth = process.env.REQUIRE_API_AUTH === 'true';
+    attachYjsWebSocketServer(httpServer, {
+      projectId: firebaseConfig.projectId,
+      requireAuth: requireApiAuth,
+    });
+    console.log(
+      `Yjs websocket on ws://localhost:${PORT}/yjs (auth=${requireApiAuth ? 'required' : 'optional'})`,
+    );
   } catch (err) {
     console.warn('[Memora] Yjs websocket unavailable (collab uses IndexedDB offline):', err);
   }
@@ -1573,6 +2377,19 @@ Use pixel coordinates relative to the image. Include 1-12 labels. confidence is 
 
   httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    if (process.env.NODE_ENV === 'production') {
+      if (process.env.REQUIRE_API_AUTH !== 'true') {
+        console.warn('[Memora] WARN: REQUIRE_API_AUTH is not true in production');
+      }
+      if (process.env.APP_CHECK_ENFORCE !== 'true') {
+        console.warn(
+          '[Memora] WARN: APP_CHECK_ENFORCE is not true in production — see docs/APP_CHECK_AND_API_KEYS.md',
+        );
+      }
+    }
+    void startMatchPubSubConsumer().then((r) => {
+      if (r.ok) console.log(`[Memora] Match PubSub consumer: ${r.reason ?? 'live'}`);
+    });
   });
 }
 

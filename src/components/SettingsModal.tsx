@@ -1,4 +1,5 @@
-import { X, Type, Database, Download } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { X, Type, Database, Download, Languages, Shield } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../store/useStore';
 import { cn } from '../lib/utils';
@@ -8,6 +9,16 @@ import localforage from 'localforage';
 import { toast } from "sonner";
 import { BEHAVIOR_EVENTS_KEY } from "../lib/learningProfile";
 import { useLearningProfileStore } from "../store/useLearningProfileStore";
+import { exportMyData, requestAccountDeletion } from "../lib/privacyApi";
+import { useLanguage } from '../lib/i18n';
+import { useFocusTrap } from '../hooks/useFocusTrap';
+import {
+  getOrCreateDeviceId,
+  listTrustedDevices,
+  registerThisDevice,
+  revokeTrustedDevice,
+  type TrustedDeviceRow,
+} from '../lib/deviceTrust';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -16,6 +27,11 @@ interface SettingsModalProps {
 
 export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const { isDyslexiaFont, toggleDyslexiaFont } = useStore();
+  const { language, setLanguage, t, tc, dir } = useLanguage();
+  const dialogRef = useFocusTrap<HTMLDivElement>(isOpen, onClose);
+  const [trustedDevices, setTrustedDevices] = useState<TrustedDeviceRow[]>([]);
+  const [deviceBusy, setDeviceBusy] = useState(false);
+  const thisDeviceId = getOrCreateDeviceId();
   const learningProfile = useLearningProfileStore((state) => state.profile);
   const profilingEnabled = useLearningProfileStore(
     (state) => state.profilingEnabled,
@@ -69,10 +85,83 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     };
   };
 
+  useEffect(() => {
+    if (!isOpen || !auth.currentUser) return;
+    void listTrustedDevices().then(setTrustedDevices).catch(() => setTrustedDevices([]));
+  }, [isOpen]);
+
+  const handleRegisterDevice = async () => {
+    setDeviceBusy(true);
+    try {
+      await registerThisDevice();
+      setTrustedDevices(await listTrustedDevices());
+      toast.success(t('This device is now trusted.', 'Αυτή η συσκευή είναι πλέον έμπιστη.'));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Device trust failed');
+    } finally {
+      setDeviceBusy(false);
+    }
+  };
+
+  const handleRevokeDevice = async (deviceId: string) => {
+    setDeviceBusy(true);
+    try {
+      await revokeTrustedDevice(deviceId);
+      setTrustedDevices(await listTrustedDevices());
+      toast.success(t('Device revoked.', 'Η συσκευή ανακλήθηκε.'));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Revoke failed');
+    } finally {
+      setDeviceBusy(false);
+    }
+  };
+
   const handleResetLearningProfile = async () => {
     resetLearningProfile();
     await localforage.removeItem(BEHAVIOR_EVENTS_KEY);
     toast.success("Adaptive evidence reset.");
+  };
+
+  const handlePrivacyServerExport = async () => {
+    try {
+      const data = await exportMyData();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `memora-privacy-export-${Date.now()}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("Privacy export downloaded (no peer identities)");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Privacy export failed");
+    }
+  };
+
+  const handleResearchExport = async () => {
+    try {
+      const { exportResearchData } = await import("../lib/privacyApi");
+      const data = await exportResearchData();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `memora-research-export-${Date.now()}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("Anonymized research export downloaded");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Research export failed");
+    }
+  };
+
+  const handleDeletionRequest = async () => {
+    try {
+      await requestAccountDeletion("user_settings_request");
+      toast.success("Deletion request queued");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Deletion request failed");
+    }
   };
 
   const handleExportJSON = async () => {
@@ -132,6 +221,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50"
           />
           <motion.div
+            ref={dialogRef}
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -141,10 +231,12 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden z-50 max-h-[90vh] overflow-y-auto"
           >
             <div className="flex items-center justify-between p-4 border-b border-slate-100 dark:border-slate-800 sticky top-0 bg-white dark:bg-slate-900 z-10">
-              <h3 id="settings-title" className="font-bold text-slate-900 dark:text-white">Settings</h3>
+              <h3 id="settings-title" className="font-bold text-slate-900 dark:text-white">
+                {t('Settings', 'Ρυθμίσεις')}
+              </h3>
               <button
                 onClick={onClose}
-                aria-label="Close settings"
+                aria-label={t('Close settings', 'Κλείσιμο ρυθμίσεων')}
                 className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
               >
                 <X className="w-5 h-5" />
@@ -153,7 +245,56 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
             <div className="p-6 flex flex-col gap-8">
               <div>
-                <h4 className="text-sm font-semibold text-slate-900 dark:text-white mb-4 uppercase tracking-wider">Appearance & Accessibility</h4>
+                <h4 className="text-sm font-semibold text-slate-900 dark:text-white mb-4 uppercase tracking-wider">
+                  {t('Appearance & Accessibility', 'Εμφάνιση & Προσβασιμότητα')}
+                </h4>
+
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-sky-50 dark:bg-sky-900/30 flex items-center justify-center text-sky-600 dark:text-sky-400">
+                      <Languages className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-slate-900 dark:text-white">
+                        {t('Language', 'Γλώσσα')}
+                      </p>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">
+                        {t(
+                          `EL/EN · layout dir=${dir} (RTL-ready)`,
+                          `EL/EN · κατεύθυνση=${dir} (έτοιμο για RTL)`,
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden" role="group" aria-label={t('Language', 'Γλώσσα')}>
+                    <button
+                      type="button"
+                      onClick={() => setLanguage('en')}
+                      aria-pressed={language === 'en'}
+                      className={cn(
+                        'px-3 py-1.5 text-xs font-semibold min-h-10',
+                        language === 'en'
+                          ? 'bg-indigo-600 text-white'
+                          : 'bg-transparent text-slate-600 dark:text-slate-300',
+                      )}
+                    >
+                      EN
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLanguage('el')}
+                      aria-pressed={language === 'el'}
+                      className={cn(
+                        'px-3 py-1.5 text-xs font-semibold min-h-10',
+                        language === 'el'
+                          ? 'bg-indigo-600 text-white'
+                          : 'bg-transparent text-slate-600 dark:text-slate-300',
+                      )}
+                    >
+                      EL
+                    </button>
+                  </div>
+                </div>
                 
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -294,6 +435,53 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               </div>
 
               <div>
+                <h4 className="text-sm font-semibold text-slate-900 dark:text-white mb-4 uppercase tracking-wider">
+                  {tc('settings.deviceTrust')}
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
+                  {t(
+                    'Register this browser so TRUST_DEVICES production mode can bind your session.',
+                    'Καταχώρισε αυτό το πρόγραμμα περιήγησης ώστε το TRUST_DEVICES να δεσμεύει τη συνεδρία σου.',
+                  )}
+                </p>
+                <p className="text-[11px] font-mono text-slate-400 mb-3 break-all">
+                  {thisDeviceId}
+                </p>
+                <button
+                  type="button"
+                  disabled={deviceBusy || !auth.currentUser}
+                  onClick={() => void handleRegisterDevice()}
+                  className="mb-3 flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-700 disabled:opacity-50 dark:border-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300"
+                >
+                  <Shield className="w-4 h-4" aria-hidden="true" />
+                  {t('Trust this device', 'Εμπιστοσύνη σε αυτή τη συσκευή')}
+                </button>
+                {trustedDevices.length > 0 && (
+                  <ul className="space-y-2">
+                    {trustedDevices.map((d) => (
+                      <li
+                        key={d.deviceId}
+                        className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700"
+                      >
+                        <span className="truncate">
+                          {d.label}
+                          {d.deviceId === thisDeviceId ? ' · this device' : ''}
+                        </span>
+                        <button
+                          type="button"
+                          disabled={deviceBusy}
+                          onClick={() => void handleRevokeDevice(d.deviceId)}
+                          className="text-xs font-semibold text-rose-600 hover:underline"
+                        >
+                          {t('Revoke', 'Ανάκληση')}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div>
                 <h4 className="text-sm font-semibold text-slate-900 dark:text-white mb-4 uppercase tracking-wider">Data Management</h4>
                 
                 <div className="flex flex-col gap-3">
@@ -321,6 +509,27 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       <Download className="w-4 h-4" /> CSV
                     </button>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => void handlePrivacyServerExport()}
+                    className="mt-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                  >
+                    Server privacy export (Match / Circles / Library meta)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleResearchExport()}
+                    className="mt-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                  >
+                    Anonymized research export (xAPI / learning events)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleDeletionRequest()}
+                    className="rounded-xl border border-rose-200 px-4 py-2 text-sm font-medium text-rose-600 transition-colors hover:bg-rose-50 dark:border-rose-900 dark:text-rose-300 dark:hover:bg-rose-950/40"
+                  >
+                    Request account deletion
+                  </button>
                   <button
                     type="button"
                     onClick={handleResetLearningProfile}

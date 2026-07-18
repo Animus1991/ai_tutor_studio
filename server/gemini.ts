@@ -1,4 +1,5 @@
 import type { GoogleGenAI } from '@google/genai';
+import { geminiCircuit } from './circuitBreaker.js';
 
 export const geminiChatModel =
   process.env.GEMINI_CHAT_MODEL?.trim() || 'gemini-2.0-flash';
@@ -69,8 +70,18 @@ export function sendGeminiError(
   error: unknown,
   logLabel: string,
 ): void {
+  const code = (error as { code?: string } | undefined)?.code;
+  if (code === 'circuit_open') {
+    console.warn(`${logLabel}: Gemini circuit open`);
+    res.status(503).json({
+      error: 'AI temporarily unavailable — circuit open after repeated failures. Retry shortly.',
+      code: 'circuit_open',
+    });
+    return;
+  }
   const formatted = formatGeminiApiError(error);
   if (formatted.code === 'gemini_quota_exhausted') {
+    geminiCircuit.noteBudgetPressure('gemini_quota_exhausted');
     console.error(
       `${logLabel}: Gemini quota/credits exhausted for this Google Cloud project — creating a new API key in the same project does not add credits. Top up billing or use a new AI Studio project.`,
     );
@@ -89,52 +100,56 @@ export async function generateChatWithFallback(
   ai: GoogleGenAI,
   params: GenerateContentParams,
 ) {
-  const requested = params.model;
-  const candidates = requested
-    ? [String(requested), ...CHAT_MODEL_FALLBACKS]
-    : CHAT_MODEL_FALLBACKS;
-  const models = candidates.filter(
-    (model, index, all) => all.indexOf(model) === index,
-  );
+  return geminiCircuit.exec(async () => {
+    const requested = params.model;
+    const candidates = requested
+      ? [String(requested), ...CHAT_MODEL_FALLBACKS]
+      : CHAT_MODEL_FALLBACKS;
+    const models = candidates.filter(
+      (model, index, all) => all.indexOf(model) === index,
+    );
 
-  let lastError: unknown;
-  for (const model of models) {
-    try {
-      return await ai.models.generateContent({ ...params, model });
-    } catch (error) {
-      lastError = error;
-      const formatted = formatGeminiApiError(error);
-      if (formatted.code === 'gemini_model_not_found') continue;
-      throw error;
+    let lastError: unknown;
+    for (const model of models) {
+      try {
+        return await ai.models.generateContent({ ...params, model });
+      } catch (error) {
+        lastError = error;
+        const formatted = formatGeminiApiError(error);
+        if (formatted.code === 'gemini_model_not_found') continue;
+        throw error;
+      }
     }
-  }
 
-  throw lastError ?? new Error('No Gemini chat model available');
+    throw lastError ?? new Error('No Gemini chat model available');
+  });
 }
 
 export async function streamChatWithFallback(
   ai: GoogleGenAI,
   params: GenerateContentParams,
 ) {
-  const requested = params.model;
-  const candidates = requested
-    ? [String(requested), ...CHAT_MODEL_FALLBACKS]
-    : CHAT_MODEL_FALLBACKS;
-  const models = candidates.filter(
-    (model, index, all) => all.indexOf(model) === index,
-  );
+  return geminiCircuit.exec(async () => {
+    const requested = params.model;
+    const candidates = requested
+      ? [String(requested), ...CHAT_MODEL_FALLBACKS]
+      : CHAT_MODEL_FALLBACKS;
+    const models = candidates.filter(
+      (model, index, all) => all.indexOf(model) === index,
+    );
 
-  let lastError: unknown;
-  for (const model of models) {
-    try {
-      return await ai.models.generateContentStream({ ...params, model });
-    } catch (error) {
-      lastError = error;
-      const formatted = formatGeminiApiError(error);
-      if (formatted.code === 'gemini_model_not_found') continue;
-      throw error;
+    let lastError: unknown;
+    for (const model of models) {
+      try {
+        return await ai.models.generateContentStream({ ...params, model });
+      } catch (error) {
+        lastError = error;
+        const formatted = formatGeminiApiError(error);
+        if (formatted.code === 'gemini_model_not_found') continue;
+        throw error;
+      }
     }
-  }
 
-  throw lastError ?? new Error('No Gemini chat model available');
+    throw lastError ?? new Error('No Gemini chat model available');
+  });
 }

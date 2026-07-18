@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '../../lib/utils';
+import { useFocusTrap } from '../../hooks/useFocusTrap';
 
 type MemberRole = 'student' | 'mentor' | 'facilitator' | 'observer';
 
@@ -115,7 +116,7 @@ export default function StudyRoomPanel(props: StudyRoomPanelProps) {
   const [followLeader, setFollowLeader] = useState(true);
   const [videoOpen, setVideoOpen] = useState(false);
   const isApplyingRemoteNotes = useRef(false);
-  const panelRef = useRef<HTMLDivElement>(null);
+  const panelRef = useFocusTrap<HTMLDivElement>(open, onClose);
   const nameInputRef = useRef<HTMLInputElement>(null);
 
   const inviteCode = (meta.get('inviteCode') as string | undefined) ?? roomId;
@@ -172,47 +173,11 @@ export default function StudyRoomPanel(props: StudyRoomPanelProps) {
     setLeadToolSync(currentLeader === selfId);
   }, [leader, selfId]);
 
-  // Focus + ESC + focus trap.
   useEffect(() => {
     if (!open) return;
+    // Prefer name field when present; useFocusTrap also focuses first control.
     nameInputRef.current?.focus();
-
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        onClose();
-        return;
-      }
-
-      if (e.key !== 'Tab') return;
-      const root = panelRef.current;
-      if (!root) return;
-
-      const focusable = Array.from(
-        root.querySelectorAll<HTMLElement>(
-          'a[href],button:not([disabled]),textarea,input,select,[tabindex]:not([tabindex="-1"])',
-        ),
-      ).filter((el) => el.tabIndex !== -1);
-
-      if (focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      const active = document.activeElement as HTMLElement | null;
-
-      if (e.shiftKey && active === first) {
-        e.preventDefault();
-        last.focus();
-        return;
-      }
-      if (!e.shiftKey && active === last) {
-        e.preventDefault();
-        first.focus();
-      }
-    };
-
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [open, onClose]);
+  }, [open]);
 
   useEffect(() => {
     if (!timerRunning) return;

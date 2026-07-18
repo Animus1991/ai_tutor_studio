@@ -32,10 +32,19 @@ export interface XapiStatement {
   timestamp: string;
 }
 
+/** Local retention: 90 days · max 500 statements (mirrors server policy). */
+const XAPI_LOCAL_MAX = 500;
+const XAPI_LOCAL_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+
 class XapiTracker {
   private getStatements(): XapiStatement[] {
     const stmts = localStorage.getItem('memora-xapi-statements');
-    return stmts ? JSON.parse(stmts) : [];
+    const parsed: XapiStatement[] = stmts ? JSON.parse(stmts) : [];
+    const cutoff = Date.now() - XAPI_LOCAL_TTL_MS;
+    return parsed.filter((s) => {
+      const t = new Date(s.timestamp).getTime();
+      return !Number.isNaN(t) && t >= cutoff;
+    });
   }
 
   sendStatement(statement: Omit<XapiStatement, 'timestamp'>) {
@@ -46,9 +55,10 @@ class XapiTracker {
 
     const stmts = this.getStatements();
     stmts.push(fullStatement);
-    localStorage.setItem('memora-xapi-statements', JSON.stringify(stmts));
+    const trimmed = stmts.slice(-XAPI_LOCAL_MAX);
+    localStorage.setItem('memora-xapi-statements', JSON.stringify(trimmed));
 
-    void apiRequest('/api/xapi/statements', {
+    void apiRequest('/api/xapi/statements?meta=1', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(fullStatement),

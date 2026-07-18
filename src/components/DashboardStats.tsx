@@ -132,8 +132,8 @@ export default function DashboardStats() {
   );
 
   return (
-    <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800 p-6 rounded-2xl shadow-sm mb-8 transition-colors duration-300 card-hover">
-      <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
+    <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800 p-4 sm:p-5 rounded-2xl shadow-sm mb-4 transition-colors duration-300 card-hover">
+      <div className="flex flex-col md:flex-row md:items-center justify-between mb-4 gap-3">
         <div>
           <h3 className="font-display font-bold text-lg text-slate-900 dark:text-white">
             {t('7-Day Activity Summary', 'Σύνοψη 7 Ημερών')}
@@ -184,7 +184,7 @@ export default function DashboardStats() {
         </div>
       </div>
 
-      <div className="h-64 w-full">
+      <div className="h-52 sm:h-56 w-full">
         {loading ? (
           <div className="h-full w-full animate-pulse bg-slate-100 dark:bg-slate-800 rounded-xl" />
         ) : (

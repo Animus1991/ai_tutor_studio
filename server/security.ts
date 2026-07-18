@@ -1,13 +1,7 @@
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import type { RequestHandler } from "express";
-import { createRemoteJWKSet, jwtVerify } from "jose";
-
-const FIREBASE_JWKS = createRemoteJWKSet(
-  new URL(
-    "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com",
-  ),
-);
+import { extractBearerToken, verifyFirebaseIdToken } from "./firebaseToken.js";
 
 export class HttpError extends Error {
   constructor(
@@ -24,32 +18,41 @@ export function createFirebaseAuthMiddleware(
   required: boolean,
 ): RequestHandler {
   return async (req, res, next) => {
-    if (!required) {
-      next();
-      return;
-    }
+    const token = extractBearerToken(req.header("authorization"));
 
-    const authorization = req.header("authorization");
-    const token = authorization?.match(/^Bearer (.+)$/i)?.[1];
+    // Even when auth is optional, parse a present Bearer so handlers can
+    // use res.locals.user (e.g. Teacher dashboard in local/preview mode).
     if (!token) {
-      res.status(401).json({ error: "Authentication required" });
+      if (required) {
+        res.status(401).json({ error: "Authentication required" });
+        return;
+      }
+      next();
       return;
     }
 
     try {
-      const { payload } = await jwtVerify(token, FIREBASE_JWKS, {
-        audience: projectId,
-        issuer: `https://securetoken.google.com/${projectId}`,
-        algorithms: ["RS256"],
-      });
-
-      if (!payload.sub) {
-        throw new Error("Token does not contain a subject");
+      const user = await verifyFirebaseIdToken(token, projectId);
+      const { assertSessionNotRevoked, assertDeviceTrusted } = await import("./sessionTrust.js");
+      try {
+        await assertSessionNotRevoked(user.uid, user.claims);
+        const headerDeviceId = String(req.header("x-device-id") ?? "").trim().slice(0, 128);
+        await assertDeviceTrusted(user.uid, user.claims, headerDeviceId || null);
+      } catch (trustErr) {
+        if (trustErr instanceof HttpError) {
+          res.status(trustErr.status).json({ error: trustErr.message });
+          return;
+        }
+        throw trustErr;
       }
-      res.locals.user = { uid: payload.sub, claims: payload };
+      res.locals.user = { uid: user.uid, claims: user.claims };
       next();
     } catch {
-      res.status(401).json({ error: "Invalid or expired authentication token" });
+      if (required) {
+        res.status(401).json({ error: "Invalid or expired authentication token" });
+        return;
+      }
+      next();
     }
   };
 }

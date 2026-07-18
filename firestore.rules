@@ -13,6 +13,13 @@ service cloud.firestore {
       return isSignedIn() && request.auth.token.email_verified == true;
     }
 
+    // Always compare lowercased emails — clients must store memberEmails normalized.
+    function authEmail() {
+      return isSignedIn() && request.auth.token.email is string
+        ? request.auth.token.email.lower()
+        : '';
+    }
+
     function isValidId(id) {
       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
@@ -135,17 +142,24 @@ service cloud.firestore {
     }
 
     function hasRoomAccess(roomId) {
-      let room = get(/databases/$(database)/documents/rooms/$(roomId)).data;
       return isSignedIn() && isVerified() &&
-             (room.ownerId == request.auth.uid ||
-              (request.auth.token.email is string &&
-               room.memberEmails is list &&
-               request.auth.token.email in room.memberEmails));
+             exists(/databases/$(database)/documents/rooms/$(roomId)) &&
+             (
+               get(/databases/$(database)/documents/rooms/$(roomId)).data.ownerId == request.auth.uid ||
+               (
+                 authEmail() != '' &&
+                 get(/databases/$(database)/documents/rooms/$(roomId)).data.memberEmails is list &&
+                 authEmail() in get(/databases/$(database)/documents/rooms/$(roomId)).data.memberEmails
+               )
+             );
     }
 
     function isValidRoom(data, uid) {
       return data.keys().hasAll(['ownerId', 'memberEmails', 'createdAt']) &&
-             data.keys().hasOnly(['ownerId', 'memberEmails', 'createdAt', 'offer', 'answer']) &&
+             data.keys().hasOnly([
+               'ownerId', 'memberEmails', 'createdAt', 'offer', 'answer',
+               'meetConsent', 'meetUrl'
+             ]) &&
              data.ownerId == uid &&
              data.memberEmails is list && data.memberEmails.size() <= 100;
     }
@@ -314,9 +328,105 @@ service cloud.firestore {
       allow read, update, delete: if false; 
     }
 
+    // In-room safety reports — create-only for members; triage via Admin SDK
+    match /rooms/{roomId}/reports/{reportId} {
+      allow create: if isValidId(roomId) && isValidId(reportId) && hasRoomAccess(roomId) &&
+                       incoming().keys().hasOnly(['reporterId', 'messageId', 'reason', 'note', 'createdAt']) &&
+                       incoming().reporterId == request.auth.uid &&
+                       incoming().messageId is string && incoming().messageId.size() <= 128 &&
+                       incoming().reason is string &&
+                       incoming().reason.matches('^(harassment|hate|spam|off_topic|privacy|other)$') &&
+                       incoming().note is string && incoming().note.size() <= 280 &&
+                       incoming().createdAt == request.time;
+      allow read, update, delete: if false;
+    }
+
+    // Encouragement kudos (no free-text social scoring)
+    match /rooms/{roomId}/kudos/{kudosId} {
+      allow read, list: if isValidId(roomId) && hasRoomAccess(roomId);
+      allow create: if isValidId(roomId) && isValidId(kudosId) && hasRoomAccess(roomId) &&
+                       incoming().keys().hasOnly(['fromUserId', 'toUserId', 'kind', 'createdAt']) &&
+                       incoming().fromUserId == request.auth.uid &&
+                       incoming().toUserId is string && incoming().toUserId.size() <= 128 &&
+                       incoming().toUserId != request.auth.uid &&
+                       incoming().kind is string &&
+                       incoming().kind.matches('^(helpful|clarify|encourage)$') &&
+                       incoming().createdAt == request.time;
+      allow update, delete: if false;
+    }
+
+    function isValidStudyCircle(data, uid) {
+      return data.keys().hasAll(['name', 'topic', 'ownerId', 'memberEmails', 'purpose', 'createdAt']) &&
+             data.keys().hasOnly(['name', 'topic', 'ownerId', 'memberEmails', 'purpose', 'createdAt']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 80 &&
+             data.topic is string && data.topic.size() <= 120 &&
+             data.ownerId == uid &&
+             data.purpose == 'learning' &&
+             data.memberEmails is list && data.memberEmails.size() <= 40;
+    }
+
+    // Invite-only study circles (learning purpose only — no public discovery)
+    match /studyCircles/{circleId} {
+      allow read: if isSignedIn() && isVerified() && isValidId(circleId) &&
+                     resource.data.memberEmails is list &&
+                     authEmail() != '' &&
+                     authEmail() in resource.data.memberEmails;
+      allow create: if isSignedIn() && isVerified() && isValidId(circleId) &&
+                       isValidStudyCircle(incoming(), request.auth.uid) &&
+                       incoming().createdAt == request.time &&
+                       authEmail() != '' &&
+                       authEmail() in incoming().memberEmails;
+      allow update: if isSignedIn() && isVerified() && isValidId(circleId) &&
+                       resource.data.ownerId == request.auth.uid &&
+                       incoming().ownerId == existing().ownerId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().purpose == 'learning' &&
+                       isValidStudyCircle(incoming(), existing().ownerId);
+      allow delete: if false;
+    }
+
+    // Study Match — queue/blocks are Admin-only; members may read own session docs
+    match /matchQueue/{userId} {
+      allow read: if isSignedIn() && isVerified() && request.auth.uid == userId;
+      allow write: if false;
+    }
+
+    match /matchSessions/{sessionId} {
+      allow read: if isSignedIn() && isVerified() && isValidId(sessionId) &&
+                     resource.data.memberIds is list &&
+                     request.auth.uid in resource.data.memberIds;
+      allow create, update, delete: if false;
+
+      match /reports/{reportId} {
+        allow read, write: if false;
+      }
+    }
+
+    match /matchBlocks/{blockId} {
+      allow read, write: if false;
+    }
+
+    // Post-report rematch cooldowns — Admin SDK only
+    match /matchCooldowns/{userId} {
+      allow read, write: if false;
+    }
+
     // Platform audit — written only via Firebase Admin SDK on the server
     match /platform_audit/{eventId} {
       allow read, write: if false;
+    }
+
+    // Privacy deletion queue — Admin SDK only (users request via /api/privacy/*)
+    match /privacyDeletionRequests/{userId} {
+      allow read, write: if false;
+    }
+
+    // Server-authoritative learning events — Admin SDK only
+    match /userLearningEvents/{userId} {
+      allow read, write: if false;
+      match /events/{eventId} {
+        allow read, write: if false;
+      }
     }
   }
 }

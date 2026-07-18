@@ -5,6 +5,7 @@
 
 import type { ConceptEngagement } from './workspaceConceptBus';
 import type { WorkspaceToolId } from './workspaceNoteContent';
+import { persistenceKeyForTool } from './workspaceToolRegistry';
 
 const STORAGE_PREFIX = 'synapse:workspace:';
 
@@ -22,9 +23,41 @@ function storageKey(progressKey: string): string {
   return `${STORAGE_PREFIX}${progressKey}`;
 }
 
+const WORKSPACE_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+
+/** Purge workspace sessions older than Privacy TTL (90d). */
+export function gcExpiredWorkspaceSessions(now = Date.now()): number {
+  let removed = 0;
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const k = localStorage.key(i);
+      if (k?.startsWith(STORAGE_PREFIX)) keys.push(k);
+    }
+    for (const k of keys) {
+      try {
+        const raw = localStorage.getItem(k);
+        if (!raw) continue;
+        const parsed = JSON.parse(raw) as { lastAccessed?: number };
+        const last = Number(parsed.lastAccessed ?? 0);
+        if (last > 0 && now - last > WORKSPACE_TTL_MS) {
+          localStorage.removeItem(k);
+          removed += 1;
+        }
+      } catch {
+        /* skip */
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return removed;
+}
+
 export function saveWorkspaceSession(progressKey: string, state: WorkspaceSessionState): void {
   try {
-    const json = JSON.stringify(state);
+    gcExpiredWorkspaceSessions();
+    const json = JSON.stringify({ ...state, lastAccessed: Date.now() });
     localStorage.setItem(storageKey(progressKey), json);
   } catch {
     // Storage quota exceeded — silently fail
@@ -33,9 +66,16 @@ export function saveWorkspaceSession(progressKey: string, state: WorkspaceSessio
 
 export function loadWorkspaceSession(progressKey: string): WorkspaceSessionState | null {
   try {
+    gcExpiredWorkspaceSessions();
     const json = localStorage.getItem(storageKey(progressKey));
     if (!json) return null;
-    return JSON.parse(json) as WorkspaceSessionState;
+    const state = JSON.parse(json) as WorkspaceSessionState;
+    const last = Number(state.lastAccessed ?? 0);
+    if (last > 0 && Date.now() - last > WORKSPACE_TTL_MS) {
+      localStorage.removeItem(storageKey(progressKey));
+      return null;
+    }
+    return state;
   } catch {
     return null;
   }
@@ -65,15 +105,17 @@ export function loadConceptBus(progressKey: string): Record<string, ConceptEngag
 
 export function saveToolState(progressKey: string, toolId: WorkspaceToolId, state: unknown): void {
   try {
-    localStorage.setItem(`${storageKey(progressKey)}:tool:${toolId}`, JSON.stringify(state));
+    localStorage.setItem(persistenceKeyForTool(progressKey, toolId), JSON.stringify(state));
   } catch {
-    // Silently fail
+    /* quota */
   }
 }
 
 export function loadToolState<T = unknown>(progressKey: string, toolId: WorkspaceToolId): T | null {
   try {
-    const json = localStorage.getItem(`${storageKey(progressKey)}:tool:${toolId}`);
+    const json =
+      localStorage.getItem(persistenceKeyForTool(progressKey, toolId)) ??
+      localStorage.getItem(`${storageKey(progressKey)}:tool:${toolId}`);
     if (!json) return null;
     return JSON.parse(json) as T;
   } catch {

@@ -1,15 +1,15 @@
-// Cross-device library sync against the FastAPI backend (/api/library).
-// Only active for authenticated (non-demo) users; cookies carry the session.
+// Cross-device library sync (optional /api/library) + teacher progress reporting.
 import { useLibraryStore } from "../store/useLibraryStore";
 import { useAuthStore } from "../store/useAuthStore";
 import { loadLibrary, saveLibrary, type LibraryState } from "./libraryStorage";
+import { apiRequest } from "./apiClient";
+import { reportProgress } from "./teacher";
 
 let pushTimer: ReturnType<typeof setTimeout> | null = null;
 let started = false;
 
 async function api(path: string, init?: RequestInit): Promise<Response> {
-  return fetch(`/api${path}`, {
-    credentials: "include",
+  return apiRequest(`/api${path}`, {
     headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
     ...init,
   });
@@ -48,8 +48,9 @@ export async function pullLibrary(): Promise<void> {
     const merged: LibraryState = {
       courses: mergeById(local.courses || [], remote.courses || []),
       uploadedFiles: mergeById(local.uploadedFiles || [], remote.uploadedFiles || []),
+      libraryVersion: local.libraryVersion,
     };
-    await saveLibrary(merged);
+    await saveLibrary(merged, local.libraryVersion);
     await useLibraryStore.getState().hydrate();
   } catch {
     /* ignore */
@@ -85,18 +86,13 @@ export async function reportProgressSnapshot(): Promise<void> {
     ? Math.round(subjects.reduce((a, s) => a + s.mastery, 0) / subjects.length)
     : 0;
   try {
-    await fetch('/api/progress', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        masteryPct,
-        cardsDue: courses.length * 3,
-        streak: 5,
-        studyMinutes: courses.length * 20,
-        decks: courses.length,
-        subjects,
-      }),
+    await reportProgress({
+      masteryPct,
+      cardsDue: courses.length * 3,
+      streak: 5,
+      studyMinutes: courses.length * 20,
+      decks: courses.length,
+      subjects,
     });
   } catch {
     /* ignore */
@@ -135,9 +131,8 @@ export async function indexDocumentOnServer(docId: string, title: string, text: 
   const chunks = chunkText(text);
   if (chunks.length === 0) return;
   try {
-    await fetch('/api/rag/index', {
+    await apiRequest('/api/rag/index', {
       method: 'POST',
-      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ docId, title, chunks }),
     });
@@ -152,9 +147,8 @@ export interface ServerRagResult { docId: string; title: string; chunk: string; 
 export async function serverRagQuery(query: string, docId?: string, topK = 5): Promise<{ results: ServerRagResult[]; context: string } | null> {
   if (!isSyncEligible()) return null;
   try {
-    const res = await fetch('/api/rag/query', {
+    const res = await apiRequest('/api/rag/query', {
       method: 'POST',
-      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query, topK, docId }),
     });

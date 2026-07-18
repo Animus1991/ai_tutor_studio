@@ -1,8 +1,11 @@
 import { useState } from 'react';
 import { Loader2, Sparkles, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { feynmanCheck, checkHealth } from '../../lib/api';
-import { useMasteryStore } from '../../store/useMasteryStore';
 import { logActivity } from '../../lib/activity';
+import {
+  applyPedagogyWriteback,
+  feynmanGapsToScore01,
+} from '../../lib/pedagogyWriteback';
 import { toast } from 'sonner';
 
 type FeynmanFeedback = {
@@ -47,8 +50,6 @@ export default function FeynmanToolPanel({
   const [explanation, setExplanation] = useState('');
   const [feedback, setFeedback] = useState<FeynmanFeedback | null>(null);
   const [isChecking, setIsChecking] = useState(false);
-  const updateFeynmanScore = useMasteryStore((s) => s.updateFeynmanScore);
-
   const handleCheck = async () => {
     if (!explanation.trim()) return;
     setIsChecking(true);
@@ -71,8 +72,13 @@ export default function FeynmanToolPanel({
       }
 
       setFeedback(result);
-      const score = Math.max(1, 10 - (result.gaps?.length ?? 0) * 2);
-      updateFeynmanScore(score);
+      applyPedagogyWriteback({
+        surface: 'feynman',
+        concept,
+        score01: feynmanGapsToScore01(result.gaps?.length ?? 0),
+        gapsCount: result.gaps?.length ?? 0,
+        courseTitle,
+      });
       logActivity(
         `Feynman check: ${courseTitle ?? concept} (${result.gaps.length} gaps)`,
         'study',

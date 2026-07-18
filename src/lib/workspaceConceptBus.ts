@@ -1,7 +1,5 @@
 /**
- * Workspace Concept Bus — cross-tool concept engagement tracking.
- * Each tool emits signals when a concept is studied; the bus aggregates
- * per-concept engagement and struggle scores for cross-tool awareness.
+ * Workspace Concept Bus — cross-tool engagement + typed append-only event log.
  */
 
 import type { WorkspaceToolId } from './workspaceNoteContent';
@@ -19,8 +17,19 @@ export type ConceptSignal =
   | 'leitner-easy'
   | 'leitner-hard';
 
+/** Typed event envelope for the concept bus log. */
+export type ConceptBusEvent = {
+  id: string;
+  ts: number;
+  concept: string;
+  tool: WorkspaceToolId;
+  signal: ConceptSignal;
+  meta?: Record<string, unknown>;
+};
+
 const STRUGGLE_SIGNALS: ConceptSignal[] = ['quiz-wrong', 'leitner-hard'];
 const MASTERY_SIGNALS: ConceptSignal[] = ['quiz-correct', 'leitner-easy', 'explained'];
+const EVENT_LOG_MAX = 500;
 
 export interface ConceptEngagement {
   concept: string;
@@ -32,23 +41,34 @@ export interface ConceptEngagement {
 
 export interface ConceptBusState {
   entries: Map<string, ConceptEngagement>;
+  eventLog: ConceptBusEvent[];
 }
 
 function createEmptyBusState(): ConceptBusState {
-  return { entries: new Map() };
+  return { entries: new Map(), eventLog: [] };
 }
 
 let _busState: ConceptBusState = createEmptyBusState();
 const _listeners: Set<(state: ConceptBusState) => void> = new Set();
+const _eventListeners: Set<(event: ConceptBusEvent) => void> = new Set();
 
 function notify() {
   for (const fn of _listeners) fn(_busState);
+}
+
+function appendEvent(event: ConceptBusEvent): void {
+  _busState.eventLog.push(event);
+  if (_busState.eventLog.length > EVENT_LOG_MAX) {
+    _busState.eventLog = _busState.eventLog.slice(-EVENT_LOG_MAX);
+  }
+  for (const fn of _eventListeners) fn(event);
 }
 
 export function noteConceptActivity(
   concept: string,
   tool: WorkspaceToolId,
   signal: ConceptSignal,
+  meta?: Record<string, unknown>,
 ): void {
   const key = concept.toLowerCase().trim();
   if (!key) return;
@@ -60,17 +80,37 @@ export function noteConceptActivity(
   }
 
   if (!entry.tools.includes(tool)) entry.tools.push(tool);
-  entry.signals.push({ signal, tool, ts: Date.now() });
-  entry.lastSeen = Date.now();
+  const ts = Date.now();
+  entry.signals.push({ signal, tool, ts });
+  entry.lastSeen = ts;
 
-  // Recalculate struggle score
   let delta = 0;
   if (STRUGGLE_SIGNALS.includes(signal)) delta = -0.2;
   else if (MASTERY_SIGNALS.includes(signal)) delta = 0.15;
-  // else neutral (0)
 
   entry.struggleScore = Math.max(-1, Math.min(1, entry.struggleScore + delta));
+
+  appendEvent({
+    id: `cbe_${ts.toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
+    ts,
+    concept: key,
+    tool,
+    signal,
+    meta,
+  });
   notify();
+}
+
+/** Read-only typed event log (newest last). */
+export function getConceptEventLog(limit = 100): ConceptBusEvent[] {
+  return _busState.eventLog.slice(-limit);
+}
+
+export function subscribeConceptEvents(fn: (event: ConceptBusEvent) => void): () => void {
+  _eventListeners.add(fn);
+  return () => {
+    _eventListeners.delete(fn);
+  };
 }
 
 export function getConceptEngagement(concept: string): ConceptEngagement | undefined {

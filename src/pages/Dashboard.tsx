@@ -27,17 +27,66 @@ import {
   LOCAL_TASKS_UPDATED_EVENT,
   readLocalTasks,
 } from "../lib/localTasks";
+import { filterDueItems, rankReviewQueue } from "../lib/jointScheduler";
+import { explainWhyNow } from "../lib/evidencePrinciples";
+import { useLanguage } from "../lib/i18n";
+import {
+  getConflictCount,
+  getOfflineQueueSize,
+  OFFLINE_CONFLICTS_UPDATED_EVENT,
+  OFFLINE_QUEUE_UPDATED_EVENT,
+} from "../lib/offlineSyncQueue";
+import { PAGE_CONTENT } from "../components/layout/pageLayout";
+import { computeCalibration } from "../lib/calibration";
+import { applyPedagogyWriteback } from "../lib/pedagogyWriteback";
+
+const COLLAB_ROOM_KEY = "memora-collab-room-id";
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const { language } = useLanguage();
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
   const [upcomingTasks, setUpcomingTasks] = useState<any[]>([]);
+  const [dueReviews, setDueReviews] = useState<
+    Array<{ id: string; title: string; domainKey: string; score: number; reasons: string[]; why: string }>
+  >([]);
   const [tasksDone, setTasksDone] = useState(0);
   const [completionRate, setCompletionRate] = useState(0);
   const [loading, setLoading] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
+  const [syncDebt, setSyncDebt] = useState({ queued: 0, conflicts: 0 });
+  const [lastCollabRoom, setLastCollabRoom] = useState<string | null>(null);
+  const [calibration, setCalibration] = useState<{
+    mace: number | null;
+    brier: number | null;
+    n: number;
+  }>({ mace: null, brier: null, n: 0 });
   
   const [layoutOrder, setLayoutOrder] = useState(['stats', 'charts', 'actionable', 'tools']);
+
+  useEffect(() => {
+    const refreshSyncDebt = () => {
+      void (async () => {
+        const [queued, conflicts] = await Promise.all([getOfflineQueueSize(), getConflictCount()]);
+        setSyncDebt({ queued, conflicts });
+        try {
+          const room = window.localStorage.getItem(COLLAB_ROOM_KEY);
+          setLastCollabRoom(room && room.length >= 8 ? room : null);
+        } catch {
+          setLastCollabRoom(null);
+        }
+      })();
+    };
+    refreshSyncDebt();
+    window.addEventListener(OFFLINE_QUEUE_UPDATED_EVENT, refreshSyncDebt);
+    window.addEventListener(OFFLINE_CONFLICTS_UPDATED_EVENT, refreshSyncDebt);
+    window.addEventListener("online", refreshSyncDebt);
+    return () => {
+      window.removeEventListener(OFFLINE_QUEUE_UPDATED_EVENT, refreshSyncDebt);
+      window.removeEventListener(OFFLINE_CONFLICTS_UPDATED_EVENT, refreshSyncDebt);
+      window.removeEventListener("online", refreshSyncDebt);
+    };
+  }, []);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -60,10 +109,48 @@ export default function Dashboard() {
       // For simplicity, we just take the first few as "upcoming"
       setUpcomingTasks(incomplete.slice(0, 4));
 
+      const schedulable = incomplete.map((t) => ({
+        id: String(t.id),
+        domainKey: String(t.subject || t.courseId || t.title || "general"),
+        dueAt: t.nextReviewDate || t.fsrsCard?.due || t.dueDate || null,
+        mastery: typeof t.mastery === "number" ? t.mastery : undefined,
+      }));
+      const due = filterDueItems(schedulable);
+      const ranked = rankReviewQueue(due.length ? due : schedulable, { limit: 4 });
+      setDueReviews(
+        ranked.map((r) => ({
+          id: r.id,
+          title: String(incomplete.find((t) => String(t.id) === r.id)?.title || r.domainKey),
+          domainKey: r.domainKey,
+          score: r.score,
+          reasons: r.reasons,
+          why: explainWhyNow(r.reasons, language === 'el' ? 'el' : 'en'),
+        })),
+      );
+
       // Calculate tasks done and completion rate
       const completed = tasksData.filter(t => t.completed).length;
       setTasksDone(completed);
       setCompletionRate(tasksData.length > 0 ? Math.round((completed / tasksData.length) * 100) : 0);
+
+      // Calibration summary — mastery/confidence vs review outcome (not vanity %)
+      const observations = tasksData
+        .filter((t) => t.lastReviewQuality != null || t.fsrsCard?.stability != null || t.completed)
+        .slice(0, 60)
+        .map((t) => {
+          const predicted =
+            typeof t.mastery === 'number'
+              ? Math.min(1, Math.max(0, t.mastery > 1 ? t.mastery / 100 : t.mastery))
+              : typeof t.fsrsCard?.difficulty === 'number'
+                ? Math.min(1, Math.max(0, 1 - t.fsrsCard.difficulty / 10))
+                : 0.65;
+          const quality = Number(t.lastReviewQuality);
+          const actual: 0 | 1 =
+            Number.isFinite(quality) ? (quality >= 3 ? 1 : 0) : t.completed ? 1 : 0;
+          return { predicted, actual };
+        });
+      const report = computeCalibration(observations);
+      setCalibration({ mace: report.mace, brier: report.brier, n: report.n });
 
       // Fetch AI logs as recent activity
       const logs = await getRecentActivity(10);
@@ -132,11 +219,11 @@ export default function Dashboard() {
 
   const blocks: Record<string, React.ReactNode> = {
     stats: (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <DailyStreak />
         <DailyGoalRing />
         
-        <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 rounded-xl p-4 sm:p-5 shadow-sm flex flex-col justify-between print-break-inside-avoid">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 rounded-xl p-4 shadow-sm flex flex-col justify-between print-break-inside-avoid">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-8 h-8 rounded-lg bg-sky-50 dark:bg-sky-900/30 flex items-center justify-center text-sky-500 shrink-0">
               <Clock className="w-4 h-4" />
@@ -157,7 +244,7 @@ export default function Dashboard() {
           )}
         </div>
 
-        <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 rounded-xl p-4 sm:p-5 shadow-sm flex flex-col justify-between print-break-inside-avoid">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 rounded-xl p-4 shadow-sm flex flex-col justify-between print-break-inside-avoid">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-900/30 flex items-center justify-center text-emerald-500 shrink-0">
               <CheckCircle2 className="w-4 h-4" />
@@ -181,23 +268,67 @@ export default function Dashboard() {
       </div>
     ),
     charts: (
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="h-[320px] lg:col-span-2 print-expand print-break-inside-avoid">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+        <div className="h-[300px] lg:col-span-2 print-expand print-break-inside-avoid">
           <StudyProgressChart />
         </div>
-        <div className="h-[320px] lg:col-span-1 print-expand print-break-inside-avoid">
+        <div className="h-[300px] lg:col-span-1 print-expand print-break-inside-avoid">
           <TaskCompletionChart />
         </div>
       </div>
     ),
     actionable: (
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        <div className="xl:col-span-1 h-[420px] md:h-[380px] print-expand print-break-inside-avoid">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+        <div className="h-[380px] md:h-[360px] print-expand print-break-inside-avoid">
           <Flashcards />
         </div>
         
+        {/* FSRS / joint-scheduler due reviews */}
+        <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 rounded-xl p-4 shadow-sm h-[380px] md:h-[360px] flex flex-col print-expand print-break-inside-avoid">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-white tracking-tight">
+              Due reviews
+            </h3>
+            <Link to="/tasks" className="text-indigo-600 dark:text-indigo-400 text-xs font-medium hover:underline">
+              Open Tasks
+            </Link>
+          </div>
+          <p className="text-[11px] text-slate-400 mb-3">
+            Ranked by FSRS × mastery × IRT fit — each item cites PRODUCT_BLUEPRINT evidence principles.
+          </p>
+          <div className="flex-1 overflow-y-auto pr-1 space-y-2">
+            {loading ? (
+              <div className="space-y-3 animate-pulse">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="h-12 bg-slate-100 dark:bg-slate-800/50 rounded-lg" />
+                ))}
+              </div>
+            ) : dueReviews.length > 0 ? (
+              dueReviews.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => navigate("/tasks")}
+                  className="w-full flex items-center justify-between p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700/50 text-left"
+                >
+                  <div className="min-w-0 pr-2">
+                    <h4 className="text-sm font-medium text-slate-900 dark:text-white">{item.title}</h4>
+                    <p className="text-[10px] text-slate-500">{item.domainKey}</p>
+                    <p className="text-[10px] text-indigo-600/80 dark:text-indigo-400/80 mt-0.5 leading-snug">
+                      {item.why || explainWhyNow(item.reasons ?? [], language === 'el' ? 'el' : 'en')}
+                    </p>
+                  </div>
+                  <span className="text-[10px] font-mono text-slate-400 shrink-0">{item.score.toFixed(2)}</span>
+                </button>
+              ))
+            ) : (
+              <p className="text-sm text-slate-500 py-6 text-center">No spaced-repetition due items.</p>
+            )}
+          </div>
+        </div>
+
         {/* Upcoming Tasks */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 rounded-xl p-4 sm:p-5 shadow-sm xl:col-span-1 h-[420px] md:h-[380px] flex flex-col print-expand print-break-inside-avoid">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 rounded-xl p-4 shadow-sm h-[380px] md:h-[360px] flex flex-col print-expand print-break-inside-avoid">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-slate-900 dark:text-white tracking-tight">
               Upcoming Deadlines
@@ -242,7 +373,7 @@ export default function Dashboard() {
         </div>
 
         {/* Recent Activity */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 rounded-xl p-4 sm:p-5 shadow-sm xl:col-span-1 h-[420px] md:h-[380px] flex flex-col print-expand print-break-inside-avoid">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 rounded-xl p-4 shadow-sm h-[380px] md:h-[360px] flex flex-col print-expand print-break-inside-avoid">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-slate-900 dark:text-white tracking-tight">
               Recent Activity
@@ -285,64 +416,181 @@ export default function Dashboard() {
       </div>
     ),
     tools: (
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
-        <div className="h-[420px] lg:col-span-1 print-expand print-break-inside-avoid">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 items-stretch">
+        <div className="min-h-[360px] h-full print-expand print-break-inside-avoid">
           <StudyRoadmap />
         </div>
-        <div className="space-y-4 lg:col-span-1 print-expand print-break-inside-avoid">
-          <FocusSession />
+        <div className="flex flex-col gap-3 min-h-[360px] print-expand print-break-inside-avoid">
+          <div className="flex-1 min-h-0">
+            <FocusSession />
+          </div>
+          <div className="flex-1 min-h-0">
+            <AudioNoteRecorder />
+          </div>
         </div>
-        <div className="space-y-4 lg:col-span-1 print-expand print-break-inside-avoid">
-          <AudioNoteRecorder />
-        </div>
-        <div className="space-y-4 lg:col-span-1 print-expand print-break-inside-avoid">
+        <div className="min-h-[360px] h-full print-expand print-break-inside-avoid">
           <OptimalStudyTimes />
         </div>
-        <div className="space-y-4 lg:col-span-1 print-expand print-break-inside-avoid">
+        <div className="flex flex-col gap-3 min-h-[360px] print-expand print-break-inside-avoid">
           <LearningProfileInsights />
+          <MasteryDashboard />
         </div>
       </div>
     )
   };
 
   return (
-    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: "easeOut" }} className="flex-1 overflow-y-auto relative">
-      <header className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-slate-200/60 dark:border-slate-800/60 sticky top-0 z-40 px-4 sm:px-6 py-3 sm:py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
+    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, ease: "easeOut" }} className="relative w-full">
+      <header className="ux-page-header mb-4 sm:mb-5">
+        <div className="min-w-0">
           <h1 className="text-xl sm:text-2xl font-display font-bold text-slate-900 dark:text-white tracking-tight">
             Dashboard
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-            Welcome back! Here's your study overview.
+            Learning OS — due FSRS, open social rooms, offline sync debt.
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto">
           <button 
             onClick={handleDownloadReport}
             disabled={isExporting}
-            className="flex items-center gap-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 text-slate-700 dark:text-slate-200 px-4 py-2 rounded-lg font-medium text-sm transition-colors shadow-sm disabled:opacity-50"
+            className="touch-target flex-1 sm:flex-none inline-flex items-center justify-center gap-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 text-slate-700 dark:text-slate-200 px-3 sm:px-4 py-2.5 rounded-xl font-medium text-sm transition-colors shadow-sm disabled:opacity-50"
           >
             {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
             <span className="hidden sm:inline">{isExporting ? 'Exporting...' : 'Download Report'}</span>
           </button>
           <button 
             onClick={() => navigate('/agent')}
-            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium text-sm transition-colors shadow-sm"
+            className="touch-target flex-[1.4] sm:flex-none inline-flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-3 sm:px-4 py-2.5 rounded-xl font-medium text-sm transition-colors shadow-sm"
           >
             <Play className="w-3.5 h-3.5 fill-current" />
-            Quick Start Session
+            <span className="truncate">Quick Start</span>
           </button>
         </div>
       </header>
+
+      <div
+        className="mb-4 grid grid-cols-2 lg:grid-cols-5 gap-2 sm:gap-3"
+        data-testid="learning-os-strip"
+      >
+        <button
+          type="button"
+          onClick={() => navigate('/tasks')}
+          className="text-left p-3 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm"
+        >
+          <p className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold">Due FSRS</p>
+          <p className="text-lg font-bold text-slate-900 dark:text-white mt-0.5">
+            {loading ? '—' : dueReviews.length}
+          </p>
+          <p className="text-[11px] text-slate-500 truncate">Joint scheduler queue</p>
+        </button>
+        <button
+          type="button"
+          onClick={() => navigate('/match')}
+          className="text-left p-3 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm"
+        >
+          <p className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold">Open Match</p>
+          <p className="text-lg font-bold text-slate-900 dark:text-white mt-0.5 flex items-center gap-1.5">
+            <Users className="w-4 h-4 text-indigo-500" /> Lobby
+          </p>
+          <p className="text-[11px] text-slate-500 truncate">Focus buddy · invite-scoped</p>
+        </button>
+        <button
+          type="button"
+          onClick={() => navigate(lastCollabRoom ? `/collab/${lastCollabRoom}` : '/circles')}
+          className="text-left p-3 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm"
+        >
+          <p className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold">
+            {lastCollabRoom ? 'Open Collab' : 'Open Circles'}
+          </p>
+          <p className="text-lg font-bold text-slate-900 dark:text-white mt-0.5 truncate font-mono text-sm sm:text-base">
+            {lastCollabRoom ? lastCollabRoom.slice(0, 12) : 'Circles'}
+          </p>
+          <p className="text-[11px] text-slate-500 truncate">Safe social · dual Meet</p>
+        </button>
+        <button
+          type="button"
+          onClick={() => navigate('/tasks')}
+          className="text-left p-3 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm"
+          data-testid="offline-sync-debt"
+        >
+          <p className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold">Offline sync debt</p>
+          <p className="text-lg font-bold text-slate-900 dark:text-white mt-0.5">
+            {syncDebt.queued}
+            {syncDebt.conflicts > 0 ? (
+              <span className="text-amber-600 text-sm font-semibold ml-1">
+                · {syncDebt.conflicts} conflict{syncDebt.conflicts === 1 ? '' : 's'}
+              </span>
+            ) : null}
+          </p>
+          <p className="text-[11px] text-slate-500 truncate">
+            {syncDebt.queued + syncDebt.conflicts === 0
+              ? 'Queue clear'
+              : 'Resolve conflicts before silent drop'}
+          </p>
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            applyPedagogyWriteback({
+              surface: 'focus',
+              concept: 'calibration-review',
+              score01: calibration.mace == null ? 0.5 : Math.max(0, 1 - calibration.mace),
+            });
+            navigate('/tasks');
+          }}
+          className="text-left p-3 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm"
+          data-testid="calibration-summary"
+        >
+          <p className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold">
+            Calibration
+          </p>
+          <p className="text-lg font-bold text-slate-900 dark:text-white mt-0.5">
+            {calibration.n === 0
+              ? '—'
+              : `MACE ${calibration.mace ?? '—'} · Brier ${calibration.brier ?? '—'}`}
+          </p>
+          <p className="text-[11px] text-slate-500 truncate">
+            {calibration.n === 0
+              ? 'Needs review outcomes'
+              : `${calibration.n} observations · not vanity %`}
+          </p>
+        </button>
+      </div>
+
+      {/* Mobile/tablet quick jumps */}
+      <div className="ux-chip-scroll mb-4 md:hidden -mx-1 px-1">
+        {[
+          { to: '/voice', label: 'Voice', icon: Brain },
+          { to: '/library', label: 'Library', icon: Upload },
+          { to: '/tasks', label: 'Tasks', icon: CheckCircle2 },
+          { to: '/circles', label: 'Circles', icon: Users },
+          { to: '/match', label: 'Match', icon: Users },
+          { to: '/collab', label: 'Collab', icon: Users },
+          { to: '/workspace', label: 'Workspace', icon: Calendar },
+        ].map((item) => {
+          const Icon = item.icon;
+          return (
+            <Link
+              key={item.to}
+              to={item.to}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 min-h-10 rounded-full bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-sm"
+            >
+              <Icon className="w-3.5 h-3.5 text-indigo-500" />
+              {item.label}
+            </Link>
+          );
+        })}
+      </div>
       
-      <div id="dashboard-content" className="p-4 sm:p-6 max-w-7xl mx-auto min-h-screen">
+      <div id="dashboard-content" className={PAGE_CONTENT}>
         <DragDropContext onDragEnd={handleDragEnd}>
           <Droppable droppableId="dashboard-sections">
             {(provided) => (
               <div 
                 {...provided.droppableProps}
                 ref={provided.innerRef}
-                className="space-y-6"
+                className="space-y-3 sm:space-y-4"
               >
                 {layoutOrder.map((blockId, index) => (
                   <Draggable key={blockId} draggableId={blockId} index={index}>
@@ -354,7 +602,7 @@ export default function Dashboard() {
                       >
                         <div 
                           {...provided.dragHandleProps}
-                          className={`absolute -left-3 top-1/2 -translate-y-1/2 p-1 text-slate-300 hover:text-slate-600 dark:text-slate-700 dark:hover:text-slate-400 cursor-grab active:cursor-grabbing transition-colors opacity-0 hover:opacity-100 lg:opacity-100 ${snapshot.isDragging ? 'opacity-100' : ''}`}
+                          className={`absolute -left-3 top-1/2 -translate-y-1/2 p-1 text-slate-300 hover:text-slate-600 dark:text-slate-700 dark:hover:text-slate-400 cursor-grab active:cursor-grabbing transition-colors opacity-0 hover:opacity-100 lg:opacity-100 hidden md:block ${snapshot.isDragging ? 'opacity-100' : ''}`}
                           title="Drag to reorder"
                         >
                           <GripHorizontal className="w-5 h-5" />
