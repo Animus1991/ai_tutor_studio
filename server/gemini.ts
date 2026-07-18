@@ -81,6 +81,7 @@ export function sendGeminiError(
   }
   const formatted = formatGeminiApiError(error);
   if (formatted.code === 'gemini_quota_exhausted') {
+    geminiCircuit.noteBudgetPressure('gemini_quota_exhausted');
     console.error(
       `${logLabel}: Gemini quota/credits exhausted for this Google Cloud project — creating a new API key in the same project does not add credits. Top up billing or use a new AI Studio project.`,
     );

@@ -37,6 +37,8 @@ import {
   OFFLINE_QUEUE_UPDATED_EVENT,
 } from "../lib/offlineSyncQueue";
 import { PAGE_CONTENT } from "../components/layout/pageLayout";
+import { computeCalibration } from "../lib/calibration";
+import { applyPedagogyWriteback } from "../lib/pedagogyWriteback";
 
 const COLLAB_ROOM_KEY = "memora-collab-room-id";
 
@@ -54,6 +56,11 @@ export default function Dashboard() {
   const [isExporting, setIsExporting] = useState(false);
   const [syncDebt, setSyncDebt] = useState({ queued: 0, conflicts: 0 });
   const [lastCollabRoom, setLastCollabRoom] = useState<string | null>(null);
+  const [calibration, setCalibration] = useState<{
+    mace: number | null;
+    brier: number | null;
+    n: number;
+  }>({ mace: null, brier: null, n: 0 });
   
   const [layoutOrder, setLayoutOrder] = useState(['stats', 'charts', 'actionable', 'tools']);
 
@@ -125,6 +132,25 @@ export default function Dashboard() {
       const completed = tasksData.filter(t => t.completed).length;
       setTasksDone(completed);
       setCompletionRate(tasksData.length > 0 ? Math.round((completed / tasksData.length) * 100) : 0);
+
+      // Calibration summary — mastery/confidence vs review outcome (not vanity %)
+      const observations = tasksData
+        .filter((t) => t.lastReviewQuality != null || t.fsrsCard?.stability != null || t.completed)
+        .slice(0, 60)
+        .map((t) => {
+          const predicted =
+            typeof t.mastery === 'number'
+              ? Math.min(1, Math.max(0, t.mastery > 1 ? t.mastery / 100 : t.mastery))
+              : typeof t.fsrsCard?.difficulty === 'number'
+                ? Math.min(1, Math.max(0, 1 - t.fsrsCard.difficulty / 10))
+                : 0.65;
+          const quality = Number(t.lastReviewQuality);
+          const actual: 0 | 1 =
+            Number.isFinite(quality) ? (quality >= 3 ? 1 : 0) : t.completed ? 1 : 0;
+          return { predicted, actual };
+        });
+      const report = computeCalibration(observations);
+      setCalibration({ mace: report.mace, brier: report.brier, n: report.n });
 
       // Fetch AI logs as recent activity
       const logs = await getRecentActivity(10);
@@ -442,7 +468,7 @@ export default function Dashboard() {
       </header>
 
       <div
-        className="mb-4 grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3"
+        className="mb-4 grid grid-cols-2 lg:grid-cols-5 gap-2 sm:gap-3"
         data-testid="learning-os-strip"
       >
         <button
@@ -499,6 +525,33 @@ export default function Dashboard() {
             {syncDebt.queued + syncDebt.conflicts === 0
               ? 'Queue clear'
               : 'Resolve conflicts before silent drop'}
+          </p>
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            applyPedagogyWriteback({
+              surface: 'focus',
+              concept: 'calibration-review',
+              score01: calibration.mace == null ? 0.5 : Math.max(0, 1 - calibration.mace),
+            });
+            navigate('/tasks');
+          }}
+          className="text-left p-3 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm"
+          data-testid="calibration-summary"
+        >
+          <p className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold">
+            Calibration
+          </p>
+          <p className="text-lg font-bold text-slate-900 dark:text-white mt-0.5">
+            {calibration.n === 0
+              ? '—'
+              : `MACE ${calibration.mace ?? '—'} · Brier ${calibration.brier ?? '—'}`}
+          </p>
+          <p className="text-[11px] text-slate-500 truncate">
+            {calibration.n === 0
+              ? 'Needs review outcomes'
+              : `${calibration.n} observations · not vanity %`}
           </p>
         </button>
       </div>

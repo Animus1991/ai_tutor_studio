@@ -416,7 +416,29 @@ async function listWaitingCandidates(
       (e) => e.status === 'waiting' && e.durationMin === durationMin,
     );
   }
-  return pool.filter((e) => new Date(e.expiresAt).getTime() > now);
+  const live: QueueEntry[] = [];
+  for (const e of pool) {
+    if (new Date(e.expiresAt).getTime() > now) {
+      live.push(e);
+      continue;
+    }
+    // Expired waiter → DLQ + bus (multi-instance observe)
+    const { writeMatchDlq } = await import('./matchQueueBus.js');
+    await writeMatchDlq(
+      {
+        uid: e.uid,
+        topicKey: e.topicKey,
+        durationMin: e.durationMin,
+        status: e.status,
+        createdAt: e.createdAt,
+        expiresAt: e.expiresAt,
+      },
+      'expired',
+      'queue TTL exceeded',
+    );
+    await deleteQueueEntry(db, e.uid);
+  }
+  return live;
 }
 
 async function pairUsers(
@@ -1012,10 +1034,12 @@ export async function matchMetricsHandler(_req: Request, res: Response): Promise
   getAuthUser(res);
   const waiting = [...memoryQueue.values()].filter((e) => e.status === 'waiting').length;
   const active = [...memorySessions.values()].filter((s) => s.status === 'active').length;
+  const { matchQueueBusStats } = await import('./matchQueueBus.js');
   res.json({
     ...matchMetrics,
     queueWaiting: waiting,
     sessionsActive: active,
+    bus: matchQueueBusStats(),
     generatedAt: new Date().toISOString(),
   });
 }

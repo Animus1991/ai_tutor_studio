@@ -20,5 +20,13 @@
   "teacher.title": "Πίνακας Εκπαιδευτικού",
   "common.loading": "Φόρτωση…",
   "common.error": "Κάτι πήγε στραβά",
-  "a11y.liveStatus": "Ενημερώσεις κατάστασης"
+  "a11y.liveStatus": "Ενημερώσεις κατάστασης",
+  "dashboard.calibration": "Βαθμονόμηση",
+  "dashboard.syncDebt": "Χρέος offline συγχρονισμού",
+  "dashboard.queueClear": "Ουρά καθαρή",
+  "voice.sessionEnded": "Η συνεδρία έληξε — το μικρόφωνο σταμάτησε",
+  "voice.blocked": "Η φωνή αποκλείστηκε από το φίλτρο ασφαλείας",
+  "guidelines.title": "Οδηγίες κοινότητας",
+  "common.confirm": "Επιβεβαίωση",
+  "common.cancel": "Ακύρωση"
 }

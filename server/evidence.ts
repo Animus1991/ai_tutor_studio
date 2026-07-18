@@ -209,15 +209,12 @@ export async function evidencePrinciplesHandler(_req: Request, res: Response): P
   res.json({ principles: EVIDENCE_PRINCIPLES, source: 'PRODUCT_BLUEPRINT.md §1' });
 }
 
-/** Ops helper: purge expired xAPI (callable from admin). */
-export async function purgeExpiredXapiHandler(req: Request, res: Response): Promise<void> {
-  const user = getAuthUser(res);
-  requireRole(user, ['admin']);
+/** Shared xAPI TTL purge (admin handler + privacy cron). */
+export async function purgeExpiredXapiStatements(opts?: { uidFallback?: string }): Promise<number> {
   const db = await getAdminFirestore();
-  if (!db) throw new HttpError(503, 'Admin SDK required');
+  if (!db) return 0;
 
   const now = new Date();
-  // Collection-group query may need index; best-effort for this uid only if group fails
   let deleted = 0;
   try {
     const snap = await db
@@ -232,10 +229,10 @@ export async function purgeExpiredXapiHandler(req: Request, res: Response): Prom
     });
     if (deleted) await batch.commit();
   } catch {
-    // Fallback: purge current admin's expired only
+    if (!opts?.uidFallback) return 0;
     const snap = await db
       .collection('userXapi')
-      .doc(user.uid)
+      .doc(opts.uidFallback)
       .collection('statements')
       .where('expireAt', '<=', now)
       .limit(200)
@@ -247,6 +244,15 @@ export async function purgeExpiredXapiHandler(req: Request, res: Response): Prom
     });
     if (deleted) await batch.commit();
   }
+  return deleted;
+}
 
+/** Ops helper: purge expired xAPI (callable from admin). */
+export async function purgeExpiredXapiHandler(req: Request, res: Response): Promise<void> {
+  const user = getAuthUser(res);
+  requireRole(user, ['admin']);
+  const db = await getAdminFirestore();
+  if (!db) throw new HttpError(503, 'Admin SDK required');
+  const deleted = await purgeExpiredXapiStatements({ uidFallback: user.uid });
   res.json({ ok: true, deleted, retentionDays: XAPI_RETENTION_DAYS });
 }

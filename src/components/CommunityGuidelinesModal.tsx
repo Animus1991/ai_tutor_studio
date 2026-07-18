@@ -2,6 +2,7 @@ import { ShieldCheck, BookOpen, HeartHandshake, Flag } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useLanguage } from '../lib/i18n';
 import { acceptCommunityGuidelines } from '../lib/safeSocial';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 type Props = {
   open: boolean;
@@ -10,6 +11,7 @@ type Props = {
 
 export default function CommunityGuidelinesModal({ open, onAccept }: Props) {
   const { t } = useLanguage();
+  const trapRef = useFocusTrap<HTMLDivElement>(open);
   if (!open) return null;
 
   const accept = () => {
@@ -55,6 +57,7 @@ export default function CommunityGuidelinesModal({ open, onAccept }: Props) {
   return (
     <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center bg-slate-900/50 backdrop-blur-sm p-0 sm:p-6" role="dialog" aria-modal="true" aria-labelledby="guidelines-title">
       <motion.div
+        ref={trapRef}
         initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-lg max-h-[min(90dvh,640px)] overflow-y-auto bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl p-5 sm:p-6 pb-[max(1.25rem,env(safe-area-inset-bottom))]"

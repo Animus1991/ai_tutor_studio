@@ -1,8 +1,9 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { AlertTriangle, X } from 'lucide-react';
 import { useLanguage } from '../../lib/i18n';
 import { cn } from '../../lib/utils';
+import { useFocusTrap } from '../../hooks/useFocusTrap';
 
 export interface ConfirmDialogProps {
   open: boolean;
@@ -30,20 +31,10 @@ export function ConfirmDialog({
   icon,
 }: ConfirmDialogProps) {
   const { t } = useLanguage();
-  const cancelRef = useRef<HTMLButtonElement>(null);
+  const trapRef = useFocusTrap<HTMLDivElement>(open, onClose);
 
   const resolvedConfirmLabel = confirmLabel ?? t('Confirm', 'Επιβεβαίωση');
   const resolvedCancelLabel = cancelLabel ?? t('Cancel', 'Ακύρωση');
-
-  useEffect(() => {
-    if (!open) return;
-    cancelRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
 
   return (
     <AnimatePresence>
@@ -62,6 +53,7 @@ export function ConfirmDialog({
             onClick={onClose}
           />
           <motion.div
+            ref={trapRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby="confirm-dialog-title"
@@ -107,7 +99,6 @@ export function ConfirmDialog({
             </div>
             <div className="flex flex-col-reverse gap-2 border-t border-slate-200 dark:border-slate-800 p-4 sm:flex-row sm:justify-end">
               <button
-                ref={cancelRef}
                 type="button"
                 onClick={onClose}
                 disabled={confirming}

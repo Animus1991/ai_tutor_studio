@@ -110,6 +110,22 @@ export async function apiRequest(
     );
   }
 
+  if (response.status === 401 && isApiRequest(input)) {
+    // Session revoke / expired — surfaces (Voice mic, etc.) must tear down.
+    try {
+      const clone = response.clone();
+      const body = (await clone.json().catch(() => ({}))) as { error?: string };
+      const msg = String(body.error ?? '');
+      if (/revoked|sign in again|Authentication required/i.test(msg) || !auth.currentUser) {
+        window.dispatchEvent(
+          new CustomEvent('memora:session-revoked', { detail: { message: msg } }),
+        );
+      }
+    } catch {
+      window.dispatchEvent(new CustomEvent('memora:session-revoked', { detail: {} }));
+    }
+  }
+
   return response;
 }
 

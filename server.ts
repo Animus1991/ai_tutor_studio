@@ -132,11 +132,17 @@ import {
   resumableUploadStats,
 } from './server/resumableUpload.js';
 import { matchAffinityHealth } from './server/matchAffinity.js';
+import { matchQueueBusStats } from './server/matchQueueBus.js';
 import { spineAdoptionSummary } from './server/spineAdoption.js';
 import {
   compactExpiredYjsSnapshots,
   yjsSnapshotStats,
 } from './server/yjsSnapshotStore.js';
+import {
+  privacyPurgeHandler,
+  privacyPurgeTickHandler,
+} from './server/privacyPurge.js';
+import { geminiCircuit, recentCircuitAlerts } from './server/circuitBreaker.js';
 import { validateObject } from './server/requestSpine.js';
 const _require = createRequire(typeof import.meta !== 'undefined' && import.meta.url ? import.meta.url : 'file://' + process.cwd() + '/server.ts');
 const pdfParse = _require('pdf-parse');
@@ -475,10 +481,26 @@ async function startServer() {
         trustDevices,
         revokeSupported: true,
       },
-      match: matchAffinityHealth(),
+      match: { ...matchAffinityHealth(), bus: matchQueueBusStats() },
       yjs: yjsSnapshotStats(),
       uploads: resumableUploadStats(),
+      gemini: geminiCircuit.getSnapshot(),
+      circuitAlerts: recentCircuitAlerts().slice(-5),
     });
+  });
+
+  /** Synthetic probe: Match affinity + queue bus (no enqueue side-effect). */
+  app.get('/api/health/match', (_req, res) => {
+    res.json({
+      ok: true,
+      ...matchAffinityHealth(),
+      bus: matchQueueBusStats(),
+    });
+  });
+
+  /** Synthetic probe: Yjs durable store stats. */
+  app.get('/api/health/yjs', (_req, res) => {
+    res.json({ ok: true, ...yjsSnapshotStats() });
   });
 
   /** Machine-readable spine adoption cards (0–17). */
@@ -493,21 +515,25 @@ async function startServer() {
         code: 'missing_key',
         message:
           'Set GEMINI_API_KEY in .env.local (also accepts GOOGLE_API_KEY / GOOGLE_GENERATIVE_AI_API_KEY).',
+        circuit: geminiCircuit.getSnapshot(),
       });
       return;
     }
 
     try {
-      const response = await ai.models.generateContent({
-        model: geminiChatModel,
-        contents: 'Reply with exactly: OK',
-      });
+      const response = await geminiCircuit.exec(() =>
+        ai.models.generateContent({
+          model: geminiChatModel,
+          contents: 'Reply with exactly: OK',
+        }),
+      );
       res.json({
         ok: true,
         model: geminiChatModel,
         embedModel: geminiEmbedModel,
         key: geminiKeyFingerprint(geminiApiKey),
         sample: (response.text ?? '').trim().slice(0, 80),
+        circuit: geminiCircuit.getSnapshot(),
       });
     } catch (error) {
       const formatted = formatGeminiApiError(error);
@@ -517,6 +543,7 @@ async function startServer() {
         message: formatted.message,
         model: geminiChatModel,
         key: geminiKeyFingerprint(geminiApiKey),
+        circuit: geminiCircuit.getSnapshot(),
       });
     }
   });
@@ -2083,6 +2110,20 @@ Use pixel coordinates relative to the image. Include 1-12 labels. confidence is 
   app.post('/api/admin/yjs/compact', async (_req, res) => {
     const removed = compactExpiredYjsSnapshots();
     res.json({ ok: true, removed, ...yjsSnapshotStats() });
+  });
+  app.post('/api/admin/privacy/purge', async (req, res) => {
+    try {
+      await privacyPurgeHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Privacy Purge Error', 'Failed to purge deletion queue');
+    }
+  });
+  app.post('/api/ops/privacy/purge-tick', async (req, res) => {
+    try {
+      await privacyPurgeTickHandler(req, res);
+    } catch (error) {
+      sendRouteError(res, error, 'Privacy Purge Tick Error', 'Failed privacy purge tick');
+    }
   });
 
   // Claims + break-glass (two-person rule when BREAK_GLASS_REQUIRED=true)

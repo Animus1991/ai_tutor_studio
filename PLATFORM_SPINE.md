@@ -15,10 +15,10 @@ Machine-readable cards: `GET /api/spine/adoption` (`server/spineAdoption.ts`).
 | 0 | Authorization | **Hardened** | Room ACL · Yjs membership · `new_room` denied when `REQUIRE_API_AUTH` (invite allow-list first) |
 | 0 | Data contracts | **Hardened** | `validateObject` · Match `notesVersion` · library `libraryVersion` · Yjs snapshot `version` · resumable uploads |
 | 0 | Safety | **Live spine** | Heuristics→Gemini · moderate image/board · MIME sniff · SSRF-safe `fetchPublicText` · AV quarantine hook |
-| 0 | Reliability | **Hardened** | Gemini circuit breaker · Idempotency-Key · Firestore Match queue · Yjs rate limits · **durable Yjs snapshots** · Match sticky affinity |
-| 0 | Observability | **Partial** | `X-Request-Id` · health exposes appCheck/match/yjs/uploads · audit / social-reports / match metrics |
-| 0 | Pedagogy telemetry | **Evidence wired** | xAPI + 90d TTL · `/api/learning/*` · Feynman/Debate **writeback** · research export |
-| 0 | Privacy | **Partial** | Export / delete-request · snapshot TTL compaction · no peer PII |
+| 0 | Reliability | **Hardened** | Gemini circuit breaker + **budget alerts** · Match **DLQ/PubSub bus** · durable Yjs · sticky affinity |
+| 0 | Observability | **Hardened** | Health probes `/api/health/{match,yjs,gemini}` · circuit alerts · `chaos:spine` · audit / metrics |
+| 0 | Pedagogy telemetry | **Evidence wired** | xAPI + 90d TTL · `/api/learning/*` · Feynman/Debate writeback · Dashboard calibration |
+| 0 | Privacy | **Hardened** | Export / delete-request · **automated purge drain** · Yjs/xAPI TTL compaction · no peer PII |
 | 0 | Deploy | **Done** | Dockerfile ships `server/` + `dist/server.cjs` · authenticated Yjs |
 | 1 | Auth / Google | **Ops wired** | App Check hooks · scoped OAuth · claims + break-glass · Contacts opt-in |
 | 4 / 7 | Agent / Voice | **Learning wired** | Mode contracts · grounded RAG · barge-in · offline Voice pack · latency headers |
@@ -80,7 +80,6 @@ Machine-readable cards: `GET /api/spine/adoption` (`server/spineAdoption.ts`).
 ## Next implementation order
 
 1. Turn on `APP_CHECK_ENFORCE=true` + referrer keys in production (runbook: `docs/APP_CHECK_AND_API_KEYS.md`)
-2. Expand `locales/` coverage across remaining UI strings
-3. Wire Match PubSub / shared queue for true multi-instance pairing
+2. Expand `locales/` coverage across remaining UI strings + remaining modal focus traps
+3. Wire real `@google-cloud/pubsub` consumer so Match queue is shared across instances (publisher stub ready via `MATCH_PUBSUB_TOPIC`)
 4. Institutional DPA sign-off + independent WCAG / efficacy gates
-5. Expand chaos/SLO probes to Agent, Voice, Teacher, Offline

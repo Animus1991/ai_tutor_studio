@@ -20,5 +20,13 @@
   "teacher.title": "Teacher Dashboard",
   "common.loading": "Loading…",
   "common.error": "Something went wrong",
-  "a11y.liveStatus": "Status updates"
+  "a11y.liveStatus": "Status updates",
+  "dashboard.calibration": "Calibration",
+  "dashboard.syncDebt": "Offline sync debt",
+  "dashboard.queueClear": "Queue clear",
+  "voice.sessionEnded": "Session ended — microphone stopped",
+  "voice.blocked": "Voice blocked by safety filter",
+  "guidelines.title": "Community guidelines",
+  "common.confirm": "Confirm",
+  "common.cancel": "Cancel"
 }

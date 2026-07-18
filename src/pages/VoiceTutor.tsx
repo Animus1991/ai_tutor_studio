@@ -21,6 +21,7 @@ import {
   type VoicePhase,
   type VoiceTurn,
 } from '../lib/voiceTutorSession';
+import { moderatePlatformText } from '../lib/platformModeration';
 
 type Phase = VoicePhase;
 type Turn = VoiceTurn;
@@ -142,6 +143,19 @@ export default function VoiceTutor() {
         setPhase('idle');
         return;
       }
+
+      const mod = await moderatePlatformText(text, 'agent');
+      if (!mod.allowed) {
+        toast.error(
+          t(
+            `Voice blocked by safety filter: ${mod.reason}`,
+            `Η φωνή αποκλείστηκε από το φίλτρο ασφαλείας: ${mod.reason}`,
+          ),
+        );
+        setPhase('idle');
+        return;
+      }
+
       setTranscript(text);
       const userTurn: Turn = {
         id: Date.now().toString(),
@@ -222,13 +236,34 @@ export default function VoiceTutor() {
     await startRecording();
   };
 
-  const reset = () => {
+  const reset = useCallback(() => {
     audioRef.current?.pause();
+    if (audioRef.current) audioRef.current.src = '';
+    if (isRecording) stopRecording();
     clearVoiceTurns();
     setTurns([]);
     setTranscript('');
     setPhase('idle');
-  };
+  }, [isRecording, stopRecording]);
+
+  // Session revoke / auth loss must kill the mic pipeline immediately.
+  useEffect(() => {
+    const onRevoked = () => {
+      reset();
+      toast.message(
+        t('Session ended — microphone stopped', 'Η συνεδρία έληξε — το μικρόφωνο σταμάτησε'),
+      );
+    };
+    window.addEventListener('memora:session-revoked', onRevoked);
+    return () => window.removeEventListener('memora:session-revoked', onRevoked);
+  }, [reset, t]);
+
+  useEffect(() => {
+    return () => {
+      audioRef.current?.pause();
+      if (isRecording) stopRecording();
+    };
+  }, [isRecording, stopRecording]);
 
   const statusText = {
     idle: t('Tap the mic and start speaking', 'Πάτησε το μικρόφωνο και μίλα'),
